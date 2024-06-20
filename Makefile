@@ -1,2 +1,4 @@
-run:
-	go run -gcflags='all=-N -l' .
+
+build:
+	go build -o /usr/local/bin/tailpipe .
+

@@ -1,0 +1,41 @@
+# TODO
+
+## sdk
+- validation function to confirm the row types implement the required JSON tags
+- if plugins will live longer than CLI instance - then we need a remove observer function to close the strea
+- TODO should we encpasulate the plugin to hide all protobuf details from the plugin - and map between plugin types and protobuf types
+
+## plugins
+- naming conventions - alias/identifier/full name
+- location
+- installation commands - as steampipe?
+
+## cancellation
+- implement/test cancellation scenarios - ensure context cancellation and interrupt catching works
+
+##  config
+- configure inbox location: per execution? single location?
+
+## colection
+- add collection config to collect request
+
+## parsing
+- Handle 3 part names for parsing etc - impacts name functions and eval ctx
+- Do we load files recusrively from config location 
+
+## Errors
+- How to handle: 
+  - wait for execution fails
+  - handleFileWatcherEvent:
+    - convertJSONLToParquet 
+    - FileNameToExecutionId
+    - delete JSON file
+  - error on plugin stream
+  - nil event on plugin stream
+## Return Codes
+- How does top level exit when there is an error - look at FailOnError usage
+- Define return codes and ensure they are always used
+- How do other apps do it?
+
+## Logging
+- [ ] Logging: getting logs from plugin etc., stripping duplicate preface and controlling log level
