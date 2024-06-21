@@ -39,7 +39,6 @@ func New(o Observer, inboxPath string) *PluginManager {
 }
 
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given collection.
-// TODO: to cancel the collection, just cancel the context
 func (p *PluginManager) Collect(ctx context.Context, collection *config.Collection) (string, error) {
 	// start plugin if needed
 	plugin, err := p.getPlugin(collection.Plugin)

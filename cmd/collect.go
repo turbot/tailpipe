@@ -61,6 +61,7 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	fmt.Println()
 	collections := []*config.Collection{
 		{
+			Type:   "pipes_audit_log",
 			Plugin: "pipes",
 		},
 	}

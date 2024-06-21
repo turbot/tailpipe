@@ -34,12 +34,15 @@ type Collector struct {
 
 func New(ctx context.Context) (*Collector, error) {
 	// todo configure inbox folder
-	inboxPath, err := ensureSourceJSONPath()
+	inboxPath, err := ensureSourcePath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create inbxo path: %w", err)
 	}
 	// TODO configure parquet output folder
-	parquetPath := inboxPath
+	parquetPath, err := ensureDestPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create parquet path: %w", err)
+	}
 
 	c := &Collector{
 		Events:     make(chan *proto.Event, eventBufferSize),
@@ -253,7 +256,7 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 	}()
 }
 
-func ensureSourceJSONPath() (string, error) {
+func ensureSourcePath() (string, error) {
 	// TODO configure inbox location
 	sourceFilePath, err := filepath.Abs("./source")
 	if err != nil {
@@ -268,4 +271,21 @@ func ensureSourceJSONPath() (string, error) {
 	}
 
 	return sourceFilePath, nil
+}
+
+func ensureDestPath() (string, error) {
+	// TODO configure dest location
+	destFilePath, err := filepath.Abs("./dest")
+	if err != nil {
+		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)
+	}
+	// ensure it exists
+	if _, err := os.Stat(destFilePath); os.IsNotExist(err) {
+		err = os.MkdirAll(destFilePath, 0755)
+		if err != nil {
+			return "", fmt.Errorf("could not create dest directory %s: %w", destFilePath, err)
+		}
+	}
+
+	return destFilePath, nil
 }
