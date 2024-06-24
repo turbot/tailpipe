@@ -3,10 +3,12 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"math/rand"
+	"os"
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
@@ -47,7 +49,7 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 	}
 
 	// TODO consider the flow
-	// currently we create an observer for each collection, i.e. create an event satream per collection
+	// currently we create an observer for each collection, i.e. create an event stream per collection
 	// perhaps instead we should have a single observer for all collections?
 	// if we keep it as it is now, it may be worth merging Colection and AddObserver and just have collect returning a stream
 
@@ -131,6 +133,10 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 		Plugins:          pluginMap,
 		Cmd:              exec.Command("sh", "-c", pluginPath),
 		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		// send plugin stderr (logging) to our stderr
+		Stderr: os.Stderr,
+		// suppress GRPC client logging
+		Logger: hclog.New(&hclog.LoggerOptions{Level: hclog.Off}),
 	})
 
 	return NewPluginClient(client, pluginName)

@@ -68,7 +68,7 @@ func (w *fileJobPool) Start() error {
 }
 
 func (w *fileJobPool) StartJobGroup(id, collectionType string) error {
-	slog.Info("starting jobGroup", "execution id", id)
+	slog.Debug("fileJobPool.StartJobGroup", "execution id", id)
 	// we expect this execution id WIL NOT be in the map already
 	// if it is, we should return an error
 	if _, ok := w.jobGroups[id]; ok {
@@ -175,7 +175,7 @@ func (w *fileJobPool) scheduler(g *jobGroup) {
 		select {
 		// wait for send completion
 		case <-sendChan:
-			slog.Debug("sent jobGroup to worker", "job", j)
+			slog.Debug("sent jobGroup to worker", "chunk", j.chunkNumber, "completion count", *j.completionCount)
 			// so we sent a jobGroup
 			// update the next chunkNumber
 			g.nextChunkIndex++

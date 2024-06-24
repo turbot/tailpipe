@@ -98,12 +98,12 @@ func (c *Collector) Notify(event *proto.Event) {
 // handlePluginEvent handles an event from a plugin
 func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	slog.Debug("handlePluginEvent", "event", e)
+
 	// handlePluginEvent the event
 	// switch based on the struct of the event
-
 	switch e.GetEvent().(type) {
 	case *proto.Event_StartedEvent:
-		slog.Info("Event_StartedEvent %s", e.GetStartedEvent().ExecutionId)
+		slog.Debug("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
 		executionId := e.GetStartedEvent().ExecutionId
 		c.executionsLock.Lock()
 		if e, ok := c.executions[executionId]; ok {
@@ -114,10 +114,9 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
-		slog.Info("Event_ChunkWrittenEvent %s", ev.ExecutionId)
-
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
+		slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 
 		err := c.parquetWriter.AddChunk(executionId, chunkNumber)
 		if err != nil {
@@ -125,7 +124,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			// TODO #errors what to do with this error?
 		}
 	case *proto.Event_CompleteEvent:
-		slog.Info("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
+		slog.Debug("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
 
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file

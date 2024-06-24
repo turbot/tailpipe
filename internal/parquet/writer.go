@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+	"log/slog"
 )
 
 /*
@@ -43,11 +44,12 @@ func (w *Writer) Start() error {
 // StartCollection schedules a jobGroup to be processed
 // it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
 func (w *Writer) StartCollection(executionId, collectionType string) error {
+	slog.Info("parquet.Writer.StartCollection", "executionId", executionId, "collectionType", collectionType)
 	return w.jobPool.StartJobGroup(executionId, collectionType)
 }
 
 // AddChunk adds available chunks to a jobGroup
-// this is making the assumpition that all files for a jobGroup are have a filename of format <execution_id>_<chunkNumber>.jsonl
+// this is making the assumption that all files for a jobGroup are have a filename of format <execution_id>_<chunkNumber>.jsonl
 // therefore we only need to pass the chunkNumber number
 func (w *Writer) AddChunk(executionID string, chunks ...int) error {
 	return w.jobPool.AddChunk(executionID, chunks...)
