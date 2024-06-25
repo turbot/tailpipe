@@ -49,7 +49,6 @@ func (w *fileWorkerBase) start() {
 	// loop until we are closed
 	for job := range w.jobChan {
 		// ok we have a job
-		//slog.Debug("worker received job", "groupId", job.groupId, "chunkNumber", job.chunkNumber)
 
 		if err := w.doWorkFunc(job); err != nil {
 			slog.Error("worker failed to process job", "error", err)
@@ -59,7 +58,12 @@ func (w *fileWorkerBase) start() {
 		}
 		// increment the completion count
 		atomic.AddInt32(job.completionCount, 1)
-		//slog.Debug("worker completed job", "groupId", job.groupId, "chunkNumber", job.chunkNumber)
+
+		// log the completion count
+		if *job.completionCount%100 == 0 {
+			slog.Debug("jobGroup completion count", "jobGroup", job.groupId, "count", *job.completionCount)
+		}
+
 	}
 
 	// we are done

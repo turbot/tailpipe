@@ -3,10 +3,8 @@
 ## sdk
 - validation function to confirm the row types implement the required JSON tags
 - if plugins will live longer than CLI instance - then we need a remove observer function to close the strea
-- TODO should we encpasulate the plugin to hide all protobuf details from the plugin - and map between plugin types and protobuf types
 
 ## plugins
-- naming conventions - alias/identifier/full name
 - location
 - installation commands - as steampipe?
 
@@ -38,4 +36,4 @@
 - How do other apps do it?
 
 ## Logging
-- [ ] Logging: getting logs from plugin etc., stripping duplicate preface and controlling log level
+- [x] Logging: getting logs from plugin etc., stripping duplicate preface and controlling log level

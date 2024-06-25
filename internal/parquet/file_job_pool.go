@@ -174,11 +174,6 @@ func (w *fileJobPool) scheduler(g *jobGroup) {
 			return
 		}
 
-		// log the completion count
-		if g.completionCount > 0 && g.completionCount%100 == 0 {
-			slog.Debug("jobGroup completion count", "execution id", g.id, "completion count", g.completionCount)
-		}
-
 		// send the jobGroup to the workers
 		// do in a goroutine so we can also check for completion/closure
 		j := fileJob{
