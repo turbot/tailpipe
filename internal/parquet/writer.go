@@ -17,7 +17,6 @@ File changes will be done as temp files with instant (almost transactional) rena
 - allowing DuckDB to use the files with minimal chance of locking / parse errors.
 */
 type Writer struct {
-
 	// the job pool
 	jobPool *fileJobPool
 }
@@ -27,7 +26,6 @@ func NewWriter(sourceDir, destDir string, workers int) (*Writer, error) {
 		jobPool: newFileJobPool(workers, sourceDir, destDir, newParquetConversionWorker),
 	}
 
-	// TODO READ ERROR CHANNEL
 	if err := w.Start(); err != nil {
 		w.Close()
 		return nil, fmt.Errorf("failed to start parquet writer: %w", err)
@@ -44,7 +42,7 @@ func (w *Writer) Start() error {
 // StartCollection schedules a jobGroup to be processed
 // it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
 func (w *Writer) StartCollection(executionId, collectionType string) error {
-	slog.Info("parquet.Writer.StartCollection", "executionId", executionId, "collectionType", collectionType)
+	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "collectionType", collectionType)
 	return w.jobPool.StartJobGroup(executionId, collectionType)
 }
 

@@ -6,6 +6,11 @@ import (
 	"sync"
 )
 
+type jobGroupError struct {
+	jobGroupId string
+	err        error
+}
+
 // fileJobPool is a pool of workers that process file jobs
 type fileJobPool struct {
 	// The queue of jobGroups to be processed
@@ -17,7 +22,7 @@ type fileJobPool struct {
 	// The channel to send jobGroups to the workers
 	jobChan chan fileJob
 	// The channel to receive errors from the workers
-	errorChan chan error
+	errorChan chan jobGroupError
 
 	// channel to indicate we are closing
 	closing chan struct{}
@@ -33,16 +38,16 @@ type fileJobPool struct {
 	newWorker newWorkerFunc
 }
 
-// ctor
+// create a new fileJobPool
 func newFileJobPool(workers int, sourceDir, destDir string, newWorker newWorkerFunc) *fileJobPool {
-
 	return &fileJobPool{
+		// map of running job groups, keyed by id
 		jobGroups: make(map[string]*jobGroup),
 		// create worker jobGroup channel
 		// amount of buffering is not crucial as the Writer will also be buffering the jobGroups
 		// just set to twice number of workers
 		jobChan:     make(chan fileJob, workers*2),
-		errorChan:   make(chan error),
+		errorChan:   make(chan jobGroupError),
 		closing:     make(chan struct{}),
 		workerCount: workers,
 		sourceDir:   sourceDir,
@@ -51,10 +56,14 @@ func newFileJobPool(workers int, sourceDir, destDir string, newWorker newWorkerF
 	}
 }
 
+// Start the fileJobPool - spawn workers
 func (w *fileJobPool) Start() error {
 	slog.Info("starting parquet Writer", "worker count", w.workerCount)
+	// start a goroutine to read the error channel
+	go w.readJobErrors()
 	// start the workers
 	for i := 0; i < w.workerCount; i++ {
+
 		wk, err := w.newWorker(w.jobChan, w.errorChan, w.sourceDir, w.destDir)
 		if err != nil {
 			return fmt.Errorf("failed to create worker: %w", err)
@@ -62,12 +71,17 @@ func (w *fileJobPool) Start() error {
 		}
 		// start the worker
 		go wk.start()
+
 	}
 
 	return nil
 }
 
+// StartJobGroup schedules a jobGroup to be processed
+// a job group represents a set of linked jobs, e.g. a set of JSONL files that need to be converted to Parquet for
+// a given collection execution
 func (w *fileJobPool) StartJobGroup(id, collectionType string) error {
+
 	slog.Debug("fileJobPool.StartJobGroup", "execution id", id)
 	// we expect this execution id WIL NOT be in the map already
 	// if it is, we should return an error
@@ -138,6 +152,8 @@ func (w *fileJobPool) JobGroupComplete(id string) error {
 func (w *fileJobPool) Close() {
 	// close the close channel to signal to the job schedulers to exit
 	close(w.closing)
+	// close the error channel to terminate the error reader
+	close(w.errorChan)
 	// close the job channel to terminate the workers
 	close(w.jobChan)
 }
@@ -158,6 +174,11 @@ func (w *fileJobPool) scheduler(g *jobGroup) {
 			return
 		}
 
+		// log the completion count
+		if g.completionCount > 0 && g.completionCount%100 == 0 {
+			slog.Debug("jobGroup completion count", "execution id", g.id, "completion count", g.completionCount)
+		}
+
 		// send the jobGroup to the workers
 		// do in a goroutine so we can also check for completion/closure
 		j := fileJob{
@@ -175,7 +196,7 @@ func (w *fileJobPool) scheduler(g *jobGroup) {
 		select {
 		// wait for send completion
 		case <-sendChan:
-			slog.Debug("sent jobGroup to worker", "chunk", j.chunkNumber, "completion count", *j.completionCount)
+			//slog.Debug("sent jobGroup to worker", "chunk", j.chunkNumber, "completion count", *j.completionCount)
 			// so we sent a jobGroup
 			// update the next chunkNumber
 			g.nextChunkIndex++
@@ -217,7 +238,7 @@ func (w *fileJobPool) waitForNextChunk(job *jobGroup) int {
 
 		// NOTE: trim the buffer
 		job.chunks = job.chunks[job.nextChunkIndex:]
-		// update the index to point to the start ogf the trimmed buffer
+		// update the index to point to the start of the trimmed buffer
 		job.nextChunkIndex = 0
 
 		// we have new chunks - return the next
@@ -229,5 +250,21 @@ func (w *fileJobPool) waitForNextChunk(job *jobGroup) int {
 	case <-job.done:
 		// jobGroup is done
 		return -1
+	}
+}
+
+func (w *fileJobPool) readJobErrors() {
+	for err := range w.errorChan {
+		// find the jobGroup and add the error
+		w.jobGroupLock.RLock()
+		jobGroup, ok := w.jobGroups[err.jobGroupId]
+		w.jobGroupLock.RUnlock()
+		if !ok {
+			slog.Error("failed to set error for jobGroup %s - job group not found", "execution id", err.jobGroupId)
+			continue
+		}
+		jobGroup.errorsLock.Lock()
+		jobGroup.errors = append(jobGroup.errors, err.err)
+		jobGroup.errorsLock.Unlock()
 	}
 }

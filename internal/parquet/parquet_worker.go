@@ -17,7 +17,7 @@ type parquetConversionWorker struct {
 }
 
 // ctor
-func newParquetConversionWorker(jobChan chan fileJob, errorChan chan error, sourceDir, destDir string) (worker, error) {
+func newParquetConversionWorker(jobChan chan fileJob, errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
 	w := &parquetConversionWorker{
 		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
 	}
@@ -39,41 +39,42 @@ func (w *parquetConversionWorker) close() {
 	w.db.Close()
 }
 
-func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob) {
+func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob) error {
 	// build the source filename
 	jsonFileName := plugin.ExecutionIdToFileName(job.groupId, job.chunkNumber)
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 
-	slog.Debug("source file", "path", jsonFilePath)
+	//slog.Debug("source file", "path", jsonFilePath)
 
 	// process the jobGroup
 	err := w.convertFile(jsonFilePath, job.collectionType)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
-		w.errorChan <- err
-		// TODO abort??
+		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
 	}
 
-	slog.Debug("converted file successfully, deleting JSONL file", "path", jsonFilePath)
+	//slog.Debug("converted file successfully, deleting JSONL file", "path", jsonFilePath)
 
 	// delete JSON file (configurable?)
 	if err := os.Remove(jsonFilePath); err != nil {
-		w.errorChan <- fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
+		return fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
 	}
+	return nil
 }
 
 // convert the given jsonl file to parquet
 func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType string) (err error) {
-	slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "collectionType", collectionType)
-	defer slog.Debug("worker.convertFile - done", "error", err)
+	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "collectionType", collectionType)
+	//defer slog.Debug("worker.convertFile - done", "error", err)
 
+	// TODO should this also handle CSV - configure the worker?
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
-		return fmt.Errorf("JSONL file must have a .jsonl extension")
+		return fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
 	}
 	// verify file exists
 	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("JSONL file does not exist: %s", jsonlFilePath)
+		return fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
 	// Create a view from the JSONL file
@@ -150,7 +151,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType stri
 			continue
 		}
 
-		slog.Debug("exported data to parquet", "file", filePath)
+		//slog.Debug("exported data to parquet", "file", filePath)
 	}
 
 	if err := rows.Err(); err != nil {

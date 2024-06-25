@@ -6,7 +6,7 @@ import (
 )
 
 // newWorkerFunc is a ctro for new workser - we pass this to the fileJobPool to create new workers
-type newWorkerFunc func(jobChan chan fileJob, errorChan chan error, sourceDir, destDir string) (worker, error)
+type newWorkerFunc func(jobChan chan fileJob, errorChan chan jobGroupError, sourceDir, destDir string) (worker, error)
 
 // worker is the interface that all workers must implement
 type worker interface {
@@ -19,25 +19,25 @@ type fileWorkerBase struct {
 	// channel to receive jobs from the writer
 	jobChan chan fileJob
 	// channel to send errors to the writer
-	errorChan chan error
+	errorChan chan jobGroupError
 
 	// source file location
 	sourceDir string
 	// dest file location
 	destDir string
 
-	// functions overriden by the real worker
-	doWorkFunc func(job fileJob)
+	// functions overridden by the real worker
+	doWorkFunc func(job fileJob) error
 	closeFunc  func()
 }
 
-func newWorker(jobChan chan fileJob, errorChan chan error, sourceDir, destDir string) fileWorkerBase {
+func newWorker(jobChan chan fileJob, errorChan chan jobGroupError, sourceDir, destDir string) fileWorkerBase {
 	return fileWorkerBase{
 		jobChan:    jobChan,
 		errorChan:  errorChan,
 		sourceDir:  sourceDir,
 		destDir:    destDir,
-		doWorkFunc: func(job fileJob) { panic("doWorkFunc must be implemented by worker implementation") },
+		doWorkFunc: func(job fileJob) error { panic("doWorkFunc must be implemented by worker implementation") },
 		closeFunc:  func() {},
 	}
 }
@@ -49,12 +49,17 @@ func (w *fileWorkerBase) start() {
 	// loop until we are closed
 	for job := range w.jobChan {
 		// ok we have a job
-		slog.Debug("worker received job", "groupId", job.groupId, "chunkNumber", job.chunkNumber)
+		//slog.Debug("worker received job", "groupId", job.groupId, "chunkNumber", job.chunkNumber)
 
-		w.doWorkFunc(job)
+		if err := w.doWorkFunc(job); err != nil {
+			slog.Error("worker failed to process job", "error", err)
+			// send the error to the writer
+			w.errorChan <- jobGroupError{job.groupId, err}
+			continue
+		}
 		// increment the completion count
 		atomic.AddInt32(job.completionCount, 1)
-		slog.Debug("worker completed job", "groupId", job.groupId, "chunkNumber", job.chunkNumber)
+		//slog.Debug("worker completed job", "groupId", job.groupId, "chunkNumber", job.chunkNumber)
 	}
 
 	// we are done

@@ -22,6 +22,9 @@ type jobGroup struct {
 	// sync.Cond to wait for the next chunkNumber to be available
 	chunkWrittenSignal *sync.Cond
 
+	// error which occurred during execution
+	errors     []error
+	errorsLock sync.RWMutex
 	// channel to mark jobGroup completion
 	done chan struct{}
 }

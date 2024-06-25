@@ -33,12 +33,12 @@ type Collector struct {
 }
 
 func New(ctx context.Context) (*Collector, error) {
-	// todo configure inbox folder
+	// todo #config configure inbox folder
 	inboxPath, err := ensureSourcePath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create inbxo path: %w", err)
+		return nil, fmt.Errorf("failed to create inbox path: %w", err)
 	}
-	// TODO configure parquet output folder
+	// TODO #config configure parquet output folder
 	parquetPath, err := ensureDestPath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parquet path: %w", err)
@@ -97,8 +97,6 @@ func (c *Collector) Notify(event *proto.Event) {
 
 // handlePluginEvent handles an event from a plugin
 func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
-	slog.Debug("handlePluginEvent", "event", e)
-
 	// handlePluginEvent the event
 	// switch based on the struct of the event
 	switch e.GetEvent().(type) {
@@ -116,7 +114,10 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
-		slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
+
+		if ev.ChunkNumber%100 == 0 {
+			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
+		}
 
 		err := c.parquetWriter.AddChunk(executionId, chunkNumber)
 		if err != nil {
@@ -166,7 +167,7 @@ func (c *Collector) Close() {
 	// wait for any ongoing collections to complete
 	err := c.waitForExecutions()
 	if err != nil {
-		// TODO WHAT????
+		// TODO #errors
 		slog.Error("error waiting for executions to complete", "error", err)
 	}
 
@@ -228,6 +229,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 }
 
 func (c *Collector) waitForExecutions() error {
+	// TODO #timeouts configure timeout
 	executionTimeout := 5 * time.Minute
 	retryInterval := 5 * time.Second
 
@@ -237,7 +239,7 @@ func (c *Collector) waitForExecutions() error {
 		defer c.executionsLock.RUnlock()
 		for _, e := range c.executions {
 			if e.state != ExecutionState_COMPLETE {
-				slog.Debug("waiting for executions to complete", "execution", e.id, "state", e.state)
+				//slog.Debug("waiting for executions to complete", "execution", e.id, "state", e.state)
 				return retry.RetryableError(fmt.Errorf("execution %s not complete", e.id))
 			}
 		}
@@ -256,7 +258,7 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 }
 
 func ensureSourcePath() (string, error) {
-	// TODO configure inbox location
+	// TODO #config configure inbox location
 	sourceFilePath, err := filepath.Abs("./source")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for source directory: %w", err)
@@ -273,7 +275,7 @@ func ensureSourcePath() (string, error) {
 }
 
 func ensureDestPath() (string, error) {
-	// TODO configure dest location
+	// TODO #config configure dest location
 	destFilePath, err := filepath.Abs("./dest")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)

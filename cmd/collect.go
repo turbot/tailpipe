@@ -16,7 +16,7 @@ import (
 	"strings"
 )
 
-// TODO have good think about error handling and return codes
+// TODO #errors have good think about error handling and return codes
 
 func collectCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -61,9 +61,13 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	fmt.Println()
 	collections := []*config.Collection{
 		{
-			Type:   "pipes_audit_log",
-			Plugin: "pipes",
+			Type:   "aws_cloudtrail_log",
+			Plugin: "aws",
 		},
+		//{
+		//	Type:   "pipes_audit_log",
+		//	Plugin: "pipes",
+		//},
 	}
 	// now we have the collections, we can start collecting
 
@@ -121,6 +125,6 @@ func setExitCodeForCollectError(err error) {
 		return
 	}
 
-	// TODO - assign exit codes
+	// TODO #errors - assign exit codes
 	exitCode = 1
 }

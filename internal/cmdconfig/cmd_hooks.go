@@ -37,7 +37,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	ew := initGlobalConfig()
 	// display any warnings
 	ew.ShowWarnings()
-	// TODO sort exit code
+	// TODO #errors sort exit code
 	// check for error
 	error_helpers.FailOnError(ew.Error)
 
