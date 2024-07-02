@@ -11,16 +11,16 @@ type jobGroupError struct {
 	err        error
 }
 
-// fileJobPool is a pool of workers that process file jobs
-type fileJobPool struct {
+// fileJobPool[T] is a pool of workers that process file jobs
+type fileJobPool[T any] struct {
 	// The queue of jobGroups to be processed
 	// this is a map keyed by execution id and the value is the list of json files to be processed
-	jobGroups map[string]*jobGroup
+	jobGroups map[string]*jobGroup[T]
 	// The lock to protect the jobGroups map
 	jobGroupLock sync.RWMutex
 
 	// The channel to send jobGroups to the workers
-	jobChan chan fileJob
+	jobChan chan fileJob[T]
 	// The channel to receive errors from the workers
 	errorChan chan jobGroupError
 
@@ -35,18 +35,18 @@ type fileJobPool struct {
 	// the number of workers
 	workerCount int
 	// function to create a new worker
-	newWorker newWorkerFunc
+	newWorker newWorkerFunc[T]
 }
 
-// create a new fileJobPool
-func newFileJobPool(workers int, sourceDir, destDir string, newWorker newWorkerFunc) *fileJobPool {
-	return &fileJobPool{
+// create a new fileJobPool[T]
+func newFileJobPool[T any](workers int, sourceDir, destDir string, newWorker newWorkerFunc[T]) *fileJobPool[T] {
+	return &fileJobPool[T]{
 		// map of running job groups, keyed by id
-		jobGroups: make(map[string]*jobGroup),
+		jobGroups: make(map[string]*jobGroup[T]),
 		// create worker jobGroup channel
 		// amount of buffering is not crucial as the Writer will also be buffering the jobGroups
 		// just set to twice number of workers
-		jobChan:     make(chan fileJob, workers*2),
+		jobChan:     make(chan fileJob[T], workers*2),
 		errorChan:   make(chan jobGroupError),
 		closing:     make(chan struct{}),
 		workerCount: workers,
@@ -56,8 +56,8 @@ func newFileJobPool(workers int, sourceDir, destDir string, newWorker newWorkerF
 	}
 }
 
-// Start the fileJobPool - spawn workers
-func (w *fileJobPool) Start() error {
+// Start the fileJobPool[T] - spawn workers
+func (w *fileJobPool[T]) Start() error {
 	slog.Info("starting parquet Writer", "worker count", w.workerCount)
 	// start a goroutine to read the error channel
 	go w.readJobErrors()
@@ -80,16 +80,16 @@ func (w *fileJobPool) Start() error {
 // StartJobGroup schedules a jobGroup to be processed
 // a job group represents a set of linked jobs, e.g. a set of JSONL files that need to be converted to Parquet for
 // a given collection execution
-func (w *fileJobPool) StartJobGroup(id, collectionType string) error {
+func (w *fileJobPool[T]) StartJobGroup(id, collectionType string, payload T) error {
 
-	slog.Debug("fileJobPool.StartJobGroup", "execution id", id)
+	slog.Debug("fileJobPool[T].StartJobGroup", "execution id", id)
 	// we expect this execution id WIL NOT be in the map already
 	// if it is, we should return an error
 	if _, ok := w.jobGroups[id]; ok {
 		fmt.Errorf("job group id %s already exists", id)
 	}
 
-	jobGroup := newJobGroup(id, collectionType)
+	jobGroup := newJobGroup(id, collectionType, payload)
 	w.jobGroupLock.Lock()
 	// add the jobGroup to the map
 	w.jobGroups[id] = jobGroup
@@ -101,7 +101,7 @@ func (w *fileJobPool) StartJobGroup(id, collectionType string) error {
 	return nil
 }
 
-func (w *fileJobPool) AddChunk(id string, chunks ...int) error {
+func (w *fileJobPool[T]) AddChunk(id string, chunks ...int) error {
 	// get the jobGroup
 	w.jobGroupLock.RLock()
 	collection, ok := w.jobGroups[id]
@@ -124,7 +124,7 @@ func (w *fileJobPool) AddChunk(id string, chunks ...int) error {
 	return nil
 }
 
-func (w *fileJobPool) GetChunksWritten(id string) (int32, error) {
+func (w *fileJobPool[T]) GetChunksWritten(id string) (int32, error) {
 	w.jobGroupLock.RLock()
 	defer w.jobGroupLock.RUnlock()
 	job, ok := w.jobGroups[id]
@@ -134,8 +134,8 @@ func (w *fileJobPool) GetChunksWritten(id string) (int32, error) {
 	return job.completionCount, nil
 }
 
-func (w *fileJobPool) JobGroupComplete(id string) error {
-	slog.Info("fileJobPool - jobGroup complete", "execution id", id)
+func (w *fileJobPool[T]) JobGroupComplete(id string) error {
+	slog.Info("fileJobPool[T] - jobGroup complete", "execution id", id)
 	// get the jobGroup
 	w.jobGroupLock.RLock()
 	c, ok := w.jobGroups[id]
@@ -149,7 +149,7 @@ func (w *fileJobPool) JobGroupComplete(id string) error {
 	return nil
 }
 
-func (w *fileJobPool) Close() {
+func (w *fileJobPool[T]) Close() {
 	// close the close channel to signal to the job schedulers to exit
 	close(w.closing)
 	// close the error channel to terminate the error reader
@@ -159,7 +159,7 @@ func (w *fileJobPool) Close() {
 }
 
 // scheduleJob is schedules a jobGroup to be processed
-func (w *fileJobPool) scheduler(g *jobGroup) {
+func (w *fileJobPool[T]) scheduler(g *jobGroup[T]) {
 	for {
 		// try to write to the jobGroup channel
 		// if we can't, wait for a jobGroup to be processed
@@ -176,11 +176,12 @@ func (w *fileJobPool) scheduler(g *jobGroup) {
 
 		// send the jobGroup to the workers
 		// do in a goroutine so we can also check for completion/closure
-		j := fileJob{
+		j := fileJob[T]{
 			groupId:         g.id,
 			chunkNumber:     nextChunk,
 			completionCount: &g.completionCount,
 			collectionType:  g.collectionType,
+			payload:         g.payload,
 		}
 		sendChan := make(chan struct{})
 		go func() {
@@ -206,7 +207,7 @@ func (w *fileJobPool) scheduler(g *jobGroup) {
 	}
 }
 
-func (w *fileJobPool) waitForNextChunk(job *jobGroup) int {
+func (w *fileJobPool[T]) waitForNextChunk(job *jobGroup[T]) int {
 	// if we have chunks available, build a filename from the next chunkNumber
 	if job.nextChunkIndex < len(job.chunks) {
 		return job.chunks[job.nextChunkIndex]
@@ -248,7 +249,7 @@ func (w *fileJobPool) waitForNextChunk(job *jobGroup) int {
 	}
 }
 
-func (w *fileJobPool) readJobErrors() {
+func (w *fileJobPool[T]) readJobErrors() {
 	for err := range w.errorChan {
 		// find the jobGroup and add the error
 		w.jobGroupLock.RLock()

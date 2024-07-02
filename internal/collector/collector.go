@@ -73,19 +73,21 @@ func New(ctx context.Context) (*Collector, error) {
 
 func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	// tell plugin to start collecting
-	executionId, err := c.pluginManager.Collect(ctx, col)
+	collectResponse, err := c.pluginManager.Collect(ctx, col)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
 
+	executionId := collectResponse.ExecutionId
 	// add the execution to the map
 	c.executions[executionId] = &execution{
 		plugin: col.Plugin,
 		id:     executionId,
 		state:  ExecutionState_PENDING,
 	}
+
 	// start the parquet writer job
-	c.parquetWriter.StartCollection(executionId, col.Type)
+	c.parquetWriter.StartCollection(executionId, col.Type, collectResponse.CollectionSchema)
 	return nil
 }
 

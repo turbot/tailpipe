@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"log/slog"
 )
 
@@ -18,7 +19,7 @@ File changes will be done as temp files with instant (almost transactional) rena
 */
 type Writer struct {
 	// the job pool
-	jobPool *fileJobPool
+	jobPool *fileJobPool[ParquetJobPayload]
 }
 
 func NewWriter(sourceDir, destDir string, workers int) (*Writer, error) {
@@ -41,9 +42,14 @@ func (w *Writer) Start() error {
 
 // StartCollection schedules a jobGroup to be processed
 // it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
-func (w *Writer) StartCollection(executionId, collectionType string) error {
+func (w *Writer) StartCollection(executionId, collectionType string, schema *schema.RowSchema) error {
 	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "collectionType", collectionType)
-	return w.jobPool.StartJobGroup(executionId, collectionType)
+
+	// create jobPayload
+	payload := ParquetJobPayload{
+		Schema: schema,
+	}
+	return w.jobPool.StartJobGroup(executionId, collectionType, payload)
 }
 
 // AddChunk adds available chunks to a jobGroup

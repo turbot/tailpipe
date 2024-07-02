@@ -3,19 +3,20 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
-	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"math/rand"
 	"os"
-	"time"
-
-	_ "github.com/marcboeker/go-duckdb"
-	"github.com/turbot/go-kit/helpers"
-	"github.com/turbot/tailpipe/internal/config"
 	"os/exec"
 	"sync"
+	"time"
+
+	"github.com/hashicorp/go-hclog"
+	"github.com/hashicorp/go-plugin"
+	_ "github.com/marcboeker/go-duckdb"
+	"github.com/turbot/go-kit/helpers"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 // todo configure this
@@ -40,12 +41,17 @@ func New(o Observer, inboxPath string) *PluginManager {
 	}
 }
 
+type CollectResponse struct {
+	ExecutionId      string
+	CollectionSchema *schema.RowSchema
+}
+
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given collection.
-func (p *PluginManager) Collect(ctx context.Context, collection *config.Collection) (string, error) {
+func (p *PluginManager) Collect(ctx context.Context, collection *config.Collection) (*CollectResponse, error) {
 	// start plugin if needed
 	plugin, err := p.getPlugin(collection.Plugin)
 	if err != nil {
-		return "", fmt.Errorf("error starting plugin %s: %w", collection.Plugin, err)
+		return nil, fmt.Errorf("error starting plugin %s: %w", collection.Plugin, err)
 	}
 
 	// TODO consider the flow
@@ -59,7 +65,7 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 	// otherwise be sure to colse the stream
 	eventStream, err := plugin.AddObserver()
 	if err != nil {
-		return "", fmt.Errorf("error adding observer for plugin %s: %w", plugin.Name, err)
+		return nil, fmt.Errorf("error adding observer for plugin %s: %w", plugin.Name, err)
 	}
 	executionID := getExecutionId()
 
@@ -68,15 +74,21 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 		ExecutionId: executionID,
 		OutputPath:  p.inboxPath})
 	if err != nil {
-		return "", fmt.Errorf("error starting collection for plugin %s: %w", plugin.Name, err)
+		return nil, fmt.Errorf("error starting collection for plugin %s: %w", plugin.Name, err)
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
 	// this will loop until it hits an error or the stream is closed
 	go p.doCollect(ctx, eventStream)
 
+	// get the schema for the collection (we will have fetched this when starting the plugin
+	collectionSchema := plugin.schemaMap[collection.Type]
+
 	// just return - the observer is responsible for waiting for completion
-	return executionID, nil
+	return &CollectResponse{
+		ExecutionId:      executionID,
+		CollectionSchema: collectionSchema,
+	}, nil
 }
 
 func (p *PluginManager) Close() {
@@ -112,7 +124,6 @@ func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
 				return nil, err
 			}
 
-			p.Plugins[pluginName] = client
 		}
 		p.pluginMutex.Unlock()
 	}
@@ -128,7 +139,7 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 		pluginName: &shared.TailpipeGRPCPlugin{},
 	}
 
-	client := plugin.NewClient(&plugin.ClientConfig{
+	c := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		Plugins:          pluginMap,
 		Cmd:              exec.Command("sh", "-c", pluginPath),
@@ -139,7 +150,24 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 		Logger: hclog.New(&hclog.LoggerOptions{Level: hclog.Off}),
 	})
 
-	return NewPluginClient(client, pluginName)
+	client, err := NewPluginClient(c, pluginName)
+	if err != nil {
+		return nil, err
+
+	}
+
+	// get the collection schemas for this plugin
+	collectionSchemas, err := client.GetSchema()
+	if err != nil {
+		return nil, fmt.Errorf("error getting schema for plugin %s: %w", pluginName, err)
+	}
+	// store the schema for this plugin
+	client.schemaMap = schema.SchemaMapFromProto(collectionSchemas.Schemas)
+
+	// store the client
+	p.Plugins[pluginName] = client
+
+	return client, nil
 }
 
 func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.TailpipePlugin_AddObserverClient) {

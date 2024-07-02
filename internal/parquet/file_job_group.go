@@ -6,7 +6,7 @@ import "sync"
 // it therefore has a unique execution id, and will potentially involve the conversion of multiple JSONL files
 // each file is assumed to have the filename format <execution_id>_<chunkNumber>.jsonl
 // so when new input files are available, we simply store the chunkNumber number
-type jobGroup struct {
+type jobGroup[T any] struct {
 	// The group id
 	id string
 	// The collection type
@@ -27,13 +27,16 @@ type jobGroup struct {
 	errorsLock sync.RWMutex
 	// channel to mark jobGroup completion
 	done chan struct{}
+	// group payload
+	payload T
 }
 
-func newJobGroup(id string, collectionType string) *jobGroup {
-	return &jobGroup{
+func newJobGroup[T any](id string, collectionType string, payload T) *jobGroup[T] {
+	return &jobGroup[T]{
 		id:                 id,
 		chunkWrittenSignal: sync.NewCond(&sync.Mutex{}),
 		done:               make(chan struct{}),
 		collectionType:     collectionType,
+		payload:            payload,
 	}
 }
