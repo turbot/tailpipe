@@ -2,12 +2,13 @@ package parquet
 
 import (
 	"fmt"
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/turbot/tailpipe-plugin-sdk/plugin"
+	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
@@ -92,7 +93,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType stri
 		return fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
-	selectQuery := w.buildSelectQuery(schema, jsonlFilePath)
+	selectQuery := buildViewQuery(schema, jsonlFilePath)
 	// Create a query to write to partitioned parquet files
 	partitionColumns := []string{"tp_collection", "tp_connection", "tp_year", "tp_month", "tp_day"}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
@@ -112,7 +113,7 @@ func (w *parquetConversionWorker) getParquetFileRoot(collectionType string) stri
 	return filepath.Join(w.destDir, collectionType)
 }
 
-func (w *parquetConversionWorker) buildSelectQuery(schema *schema.RowSchema, jsonlFilePath string) string {
+func buildViewQuery(schema *schema.RowSchema, jsonlFilePath string) string {
 	var str strings.Builder
 
 	/*
@@ -134,26 +135,113 @@ func (w *parquetConversionWorker) buildSelectQuery(schema *schema.RowSchema, jso
 
 	*/
 	str.WriteString("SELECT\n")
-	//for i, column := range schema.Columns {
-	//	if i > 0 {
-	//		str.WriteString(",\n")
-	//	}
-	//	if column.Type == "struct" {
-	//		str.WriteString("    struct_pack(\n")
-	//		for j, nestedColumn := range column.NestedColumns {
-	//			if j > 0 {
-	//				str.WriteString(",\n")
-	//			}
-	//			str.WriteString(fmt.Sprintf("        %s := %s::%s", nestedColumn.ColumnName, nestedColumn.SourceName, nestedColumn.Type))
-	//		}
-	//		str.WriteString(fmt.Sprintf("\n    ) AS %s", column.ColumnName))
-	//		continue
-	//	}
-	//
-	//	str.WriteString(fmt.Sprintf("\n    %s::%s AS %s", column.SourceName, column.Type, column.ColumnName))
-	//}
-	//str.WriteString(fmt.Sprintf("\n  FROM read_json_auto('%s', format='newline_delimited')", jsonlFilePath))
+	for i, column := range schema.Columns {
+		if i > 0 {
+			str.WriteString(",\n")
+		}
+		str.WriteString(fmt.Sprintf("%s", getSqlForField(column, 1)))
+	}
+	str.WriteString(fmt.Sprintf("\nFROM read_json_auto('%s', format='newline_delimited')", jsonlFilePath))
 
 	return str.String()
 
+}
+
+// return the sql line to select the given field
+func getSqlForField(column *schema.ColumnSchema, tabs int) string {
+
+	/* for scalar fields this wll be
+	    <SourceName>::<Type> AS <ColumnName>
+	e.g.
+		tpIps::VARCHAR[] AS tp_ips,
+
+
+		for struct fields this will be
+
+		struct_pack(
+			<ColumnName> := <ParentSourceName>.<SourceName>::<Type>,
+
+		where ParentSourceName is the SourceName of the struct field
+	e.g.
+		type_field := userIdentity.nested.typeField::VARCHAR,
+
+	struct_pack(
+		        type_feld := userIdentity.typeField::VARCHAR,
+		        session_context := userIdentity.sessionContext::VARCHAR
+				)
+	*/
+
+	// calculate the tab
+	tab := strings.Repeat("\t", tabs)
+	switch column.Type {
+	//case "ARRAY":
+	// TODO
+
+	//case "MAP":
+	//	// TODO
+
+	case "STRUCT[]":
+		// list_pack (
+		//  	struct_pack(
+		// 			 <StructColumnName> := <ParentSourceName>.<SourceName>::<Type>,
+		//  		...)
+		// 		) AS <ColumnName>
+		var str strings.Builder
+		str.WriteString(fmt.Sprintf("%slist_pack (\n%s\tstruct_pack(\n", tab, tab))
+
+		for j, nestedColumn := range column.ChildFields {
+			if j > 0 {
+				str.WriteString(",\n")
+			}
+			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, column.SourceName, tabs+2)))
+		}
+		str.WriteString(fmt.Sprintf("\n%s)\n%s) AS %s", tab, tab, column.ColumnName))
+		return str.String()
+
+	case "STRUCT":
+		//  struct_pack(
+		//  <StructColumnName> := <ParentSourceName>.<SourceName>::<Type>,
+		//  ...) AS <ColumnName>
+
+		var str strings.Builder
+		str.WriteString(fmt.Sprintf("%sstruct_pack(\n", tab))
+		for j, nestedColumn := range column.ChildFields {
+			if j > 0 {
+				str.WriteString(",\n")
+			}
+			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, column.SourceName, tabs+1)))
+		}
+		str.WriteString(fmt.Sprintf("\n%s) AS %s", tab, column.ColumnName))
+		return str.String()
+	default:
+		//<SourceName>::<Type> AS <ColumnName>
+		return fmt.Sprintf("%s%s::%s AS %s", tab, column.SourceName, column.Type, column.ColumnName)
+	}
+
+}
+
+// return the sql line to pack the given field as a struct
+// this will use ChildFields to build a struct_pack command
+func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, tabs int) string {
+	tab := strings.Repeat("\t", tabs)
+	switch column.Type {
+	//case "MAP":
+	//	// TODO
+
+	case "STRUCT":
+		var str strings.Builder
+		str.WriteString(fmt.Sprintf("%s%s := struct_pack(\n", tab, column.ColumnName))
+		for j, nestedColumn := range column.ChildFields {
+			if j > 0 {
+				str.WriteString(",\n")
+			}
+			// newParent is the parentName for the nested column
+			newParent := fmt.Sprintf("%s.%s", parentName, column.SourceName)
+			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, newParent, tabs+1)))
+		}
+		str.WriteString(fmt.Sprintf("\n%s)", tab))
+		return str.String()
+	default:
+		return fmt.Sprintf("%s%s := %s.%s::%s", tab, column.ColumnName, parentName, column.SourceName, column.Type)
+	}
 }
