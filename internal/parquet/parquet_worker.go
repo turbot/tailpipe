@@ -74,19 +74,6 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType stri
 		return fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
-	// Create a view from the JSONL file
-	//createViewQuery := fmt.Sprintf(`CREATE VIEW json_view AS SELECT * FROM read_json_auto('%s', format='newline_delimited');`, jsonlFilePath)
-	//_, err = w.db.Exec(createViewQuery)
-	//if err != nil {
-	//	return fmt.Errorf("failed to create view from JSONL file: %w", err)
-	//}
-	//defer func() {
-	//	// drop the view
-	//	if _, dropErr := w.db.Exec("DROP VIEW IF EXISTS json_view;"); dropErr != nil {
-	//		err = errors.Join(err, fmt.Errorf("failed to drop view: %w", dropErr))
-	//	}
-	//}()
-
 	// determine the root based on the collection type
 	fileRoot := w.getParquetFileRoot(collectionType)
 	if err := os.MkdirAll(filepath.Dir(fileRoot), 0755); err != nil {
@@ -121,16 +108,18 @@ func buildViewQuery(schema *schema.RowSchema, jsonlFilePath string) string {
 		SELECT
 		    tpIps::VARCHAR[] AS tp_ips,
 		    tpUsernames::VARCHAR[] AS tp_usernames,
-		    struct_pack(
-		        type_feld := userIdentity.typeField::VARCHAR,
-		        session_context := userIdentity.sessionContext::VARCHAR,
-		        invoked_by := userIdentity.invokedBy::JSON,
-		        identity_provider := userIdentity.identityProvider::VARCHAR,
-		        nested := struct_pack(
-		            type_field := userIdentity.nested.typeField::VARCHAR,
-		            identity_provider := userIdentity.nested.identityProvider::JSON
-		        )
-		    ) AS user_identity
+			list_pack (
+					struct_pack(
+						type_feld := userIdentity.typeField::VARCHAR,
+						session_context := userIdentity.sessionContext::VARCHAR,
+						invoked_by := userIdentity.invokedBy::JSON,
+						identity_provider := userIdentity.identityProvider::VARCHAR,
+						nested := struct_pack(
+							type_field := userIdentity.nested.typeField::VARCHAR,
+							identity_provider := userIdentity.nested.identityProvider::JSON
+						)
+					)
+			) AS user_identity
 		FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl');
 
 	*/
@@ -174,18 +163,46 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	// calculate the tab
 	tab := strings.Repeat("\t", tabs)
 	switch column.Type {
-	//case "ARRAY":
-	// TODO
 
-	//case "MAP":
-	//	// TODO
+	case "MAP":
+		//	// TODO
+		return fmt.Sprintf("%s%s AS %s", tab, column.SourceName, column.ColumnName)
 
 	case "STRUCT[]":
+		/*
+			THIS WORKS but need to read from JSON
+			-- Create the table
+			CREATE TABLE json_data (
+			    StructStringField VARCHAR,
+			    StructIntField INTEGER
+			);
+
+			-- Insert data
+			INSERT INTO json_data VALUES
+			('StringValue1', 1),
+			('StringValue2', 2);
+
+			-- Use list and struct_pack to construct a list of structs
+			SELECT
+			    list_pack(
+			        struct_pack(
+			            struct_string_field := StructStringField::VARCHAR,
+			            struct_int_field := StructIntField::INTEGER
+			        )
+			    ) AS struct_array_field
+			FROM
+			    json_data;
+
+		*/
 		// list_pack (
 		//  	struct_pack(
 		// 			 <StructColumnName> := <ParentSourceName>.<SourceName>::<Type>,
 		//  		...)
 		// 		) AS <ColumnName>
+
+		// TODO DO NOT CAST FOR NOW
+		return fmt.Sprintf("%s%s AS %s", tab, column.SourceName, column.ColumnName)
+
 		var str strings.Builder
 		str.WriteString(fmt.Sprintf("%slist_pack (\n%s\tstruct_pack(\n", tab, tab))
 

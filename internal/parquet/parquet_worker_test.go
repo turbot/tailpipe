@@ -258,7 +258,7 @@ FROM read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
 		//FROM read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
 		//        wantData: "StringValue1",
 		//    },
-		// TODO doesn;t work
+		// TODO doesn't work
 		//		{
 		//			name: "map types",
 		//			args: args{
