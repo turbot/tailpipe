@@ -1,0 +1,2 @@
+{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValueNested2", "StructIntField": 2}]}
+{"StructArrayField": [{"StructStringField": "StringValue3", "StructIntField": 3}, {"StructStringField": "StringValueNested4", "StructIntField": 4}]}

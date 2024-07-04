@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+	"github.com/turbot/go-kit/helpers"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -100,40 +101,167 @@ func (w *parquetConversionWorker) getParquetFileRoot(collectionType string) stri
 	return filepath.Join(w.destDir, collectionType)
 }
 
-func buildViewQuery(schema *schema.RowSchema, jsonlFilePath string) string {
+func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
 	var str strings.Builder
 
-	/*
+	var structSliceColumns []*schema.ColumnSchema
 
-		SELECT
-		    tpIps::VARCHAR[] AS tp_ips,
-		    tpUsernames::VARCHAR[] AS tp_usernames,
-			list_pack (
-					struct_pack(
-						type_feld := userIdentity.typeField::VARCHAR,
-						session_context := userIdentity.sessionContext::VARCHAR,
-						invoked_by := userIdentity.invokedBy::JSON,
-						identity_provider := userIdentity.identityProvider::VARCHAR,
-						nested := struct_pack(
-							type_field := userIdentity.nested.typeField::VARCHAR,
-							identity_provider := userIdentity.nested.identityProvider::JSON
-						)
-					)
-			) AS user_identity
-		FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl');
-
-	*/
 	str.WriteString("SELECT\n")
-	for i, column := range schema.Columns {
+	for i, column := range rowSchema.Columns {
 		if i > 0 {
 			str.WriteString(",\n")
 		}
 		str.WriteString(fmt.Sprintf("%s", getSqlForField(column, 1)))
+		if column.Type == "STRUCT[]" {
+			structSliceColumns = append(structSliceColumns, column)
+		}
 	}
 	str.WriteString(fmt.Sprintf("\nFROM read_json_auto('%s', format='newline_delimited')", jsonlFilePath))
 
-	return str.String()
+	q := str.String()
+	// if there are any struct[] field, we need to use this as a CTE and do further processing to cast the fields
+	if len(structSliceColumns) > 0 {
+		q = getViewQueryForStructSlices(q, rowSchema, structSliceColumns)
+	}
+	return q
+}
 
+func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSliceColumns []*schema.ColumnSchema) string {
+	var str strings.Builder
+
+	/* this is the what we want
+	WITH original_data AS (
+	    SELECT
+	        *,
+	        row_number() OVER () AS rowid
+	    FROM
+	        read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
+	),
+	unnested_data AS (
+	    SELECT
+	        rowid,
+	        UNNEST(StructArrayField) AS json_struct
+	    FROM
+	        original_data
+	),
+	json_data AS (
+	    SELECT
+	        rowid,
+	        json_extract(json_struct, '$.StructStringField')::VARCHAR AS StructStringField,
+	        json_extract(json_struct, '$.StructIntField')::INTEGER AS StructIntField
+	    FROM
+	        unnested_data
+	)
+	-- Aggregate the results back into an array of structs, grouped by the original row
+	SELECT
+	    rowid,
+	    listagg(struct_pack(
+	        struct_string_field := StructStringField,
+	        struct_int_field := StructIntField
+	    )) AS struct_array_field
+	FROM
+	    json_data
+	GROUP BY
+	    rowid;
+
+	*/
+	/*
+		// this is the what we have
+
+		WITH sl AS (
+			SELECT
+				UNNEST(StructArrayField) AS StructArrayField
+			FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
+		), json_data AS (
+			SELECT
+				json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
+				json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+			FROM sl
+		)
+		SELECT
+			list_pack(
+				struct_pack(
+					struct_string_field := StructArrayField_StructStringField::VARCHAR,
+					struct_int_field := StructArrayField_StructIntField::INTEGER
+				)
+			) AS struct_array_field
+		FROM sl, json_data;
+	*/
+
+	/*
+		/*  WITH sl AS (
+				  SELECT UNNEST(StructArrayField) AS StructArrayField
+				  FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
+			  ), json_data AS (
+				  SELECT
+	*/
+	str.WriteString("WITH sl AS (\n")
+	str.WriteString(helpers.Tabify(q, "\t"))
+	str.WriteString("\n), json_data AS (\n")
+	str.WriteString("\tSELECT\n")
+
+	/*
+				  json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
+				  json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+			  FROM sl
+		)
+	*/
+	for i, structSliceCol := range structSliceColumns {
+		// iterate over struct fields
+		for j, col := range structSliceCol.ChildFields {
+
+			if i > 0 || j > 0 {
+				str.WriteString(",\n")
+			}
+			// json_extract(<ParentStructSourceName>, '$.<SourceName>') AS <ParentStructSourceName>_<SourceName>
+			str.WriteString(fmt.Sprintf("\t\tjson_extract(StructArrayField, '$.%s') AS %s_%s", col.SourceName, structSliceCol.SourceName, col.SourceName))
+		}
+	}
+	str.WriteString("\n\tFROM sl\n)")
+
+	/*
+		SELECT
+			list_pack(
+				struct_pack(
+					struct_string_field := StructArrayField_StructStringField::VARCHAR,
+					struct_int_field := StructArrayField_StructIntField::INTEGER
+				)
+			) AS struct_array_field
+		FROM
+			json_data;
+	*/
+
+	str.WriteString("\nSELECT\n")
+
+	for i, column := range rowSchema.Columns {
+		if column.Type == "STRUCT[]" {
+			/*
+				list_pack(
+						struct_pack(
+							struct_string_field := StructArrayField_StructStringField::VARCHAR,
+							struct_int_field := StructArrayField_StructIntField::INTEGER
+						)
+					) AS struct_array_field
+			*/
+			str.WriteString(fmt.Sprintf("\tlist_pack(\n"))
+			str.WriteString(fmt.Sprintf("\t\tstruct_pack(\n"))
+			for j, nestedColumn := range column.ChildFields {
+				if i > 0 || j > 0 {
+					str.WriteString(",\n")
+				}
+				// <ColumnName> := <StructFieldSourceName>_<StructFieldSourceName>::TYPE,
+				str.WriteString(fmt.Sprintf("\t\t\t%s := %s_%s::%s", nestedColumn.ColumnName, column.SourceName, nestedColumn.SourceName, nestedColumn.Type))
+			}
+			str.WriteString(fmt.Sprintf("\n\t\t)\n\t) AS %s", column.ColumnName))
+		} else {
+			if i > 0 {
+				str.WriteString(",\n")
+			}
+			str.WriteString(fmt.Sprintf("sl.%s", column.ColumnName))
+		}
+	}
+	str.WriteString("\nFROM sl, json_data;")
+	return str.String()
 }
 
 // return the sql line to select the given field
@@ -169,51 +297,204 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 		return fmt.Sprintf("%s%s AS %s", tab, column.SourceName, column.ColumnName)
 
 	case "STRUCT[]":
+
 		/*
-			THIS WORKS but need to read from JSON
-			-- Create the table
-			CREATE TABLE json_data (
-			    StructStringField VARCHAR,
-			    StructIntField INTEGER
-			);
+			--ATTEMPTS
+													THIS WORKS but need to read from JSON
+													-- Create the table
+													CREATE TABLE json_data (
+													    StructStringField VARCHAR,
+													    StructIntField INTEGER
+													);
 
-			-- Insert data
-			INSERT INTO json_data VALUES
-			('StringValue1', 1),
-			('StringValue2', 2);
+													-- Insert data
+													INSERT INTO json_data VALUES
+													('StringValue1', 1),
+													('StringValue2', 2);
 
-			-- Use list and struct_pack to construct a list of structs
-			SELECT
-			    list_pack(
-			        struct_pack(
-			            struct_string_field := StructStringField::VARCHAR,
-			            struct_int_field := StructIntField::INTEGER
-			        )
-			    ) AS struct_array_field
-			FROM
-			    json_data;
+													-- Use list and struct_pack to construct a list of structs
+													SELECT
+													    list_pack(
+													        struct_pack(
+													            struct_string_field := StructStringField::VARCHAR,
+													            struct_int_field := StructIntField::INTEGER
+													        )
+													    ) AS struct_array_field
+													FROM
+													    json_data;
+
+
+
+												NEXT
+
+											CREATE TABLE json_table (data JSON);
+											INSERT INTO json_table VALUES ('{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}');
+											SELECT UNNEST(data->'$.StructArrayField[*]') FROM json_table;
+											SELECT
+												list_pack(
+													struct_pack(
+														struct_string_field := StructStringField::VARCHAR,
+														struct_int_field := StructIntField::INTEGER
+													)
+												) AS struct_array_field
+											FROM
+												(SELECT UNNEST(data->'$.StructArrayField[*]') FROM json_table);
+
+						TRIES
+
+										WITH sl as (SELECT UNNEST(data->'$.StructArrayField[*]') FROM json_table)
+								        SELECT sl->'$.StructStringField' as StructStringField, sl->'$.StructIntField' as StructIntField FROM sl
+
+										WITH sl as (SELECT UNNEST(data->'$.StructArrayField[*]') FROM json_table)
+								        SELECT * from sl;
+
+										WITH sl as (SELECT UNNEST(data->'$.StructArrayField[*]') FROM json_table)
+								        SELECT  $->StructStringField from sl;
+
+							-- getting there
+							-- Create the table and insert the JSON data
+							CREATE TABLE json_table (data JSON);
+
+							INSERT INTO json_table VALUES ('{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}');
+
+							-- Use UNNEST and then extract individual fields
+							WITH sl AS (
+							    SELECT UNNEST(data->'$.StructArrayField[*]') AS json_struct
+							    FROM json_table
+							)
+
+							SELECT
+							    json_extract(json_struct, '$.StructStringField') AS StructStringField,
+							    json_extract(json_struct, '$.StructIntField') AS StructIntField
+							FROM sl;
+
+						CREATE TABLE json_table (data JSON);
+
+									INSERT INTO json_table VALUES ('{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}');
+
+									-- Use UNNEST and then extract individual fields
+									WITH sl AS (
+									    SELECT UNNEST(data->'$.StructArrayField[*]') AS json_struct
+									    FROM json_table
+									)
+
+									SELECT
+									    json_extract(json_struct, '$.StructStringField') AS StructStringField,
+									    json_extract(json_struct, '$.StructIntField') AS StructIntField
+									FROM sl;
+
+
+					READING FROM TABLE
+					     WITH sl AS (
+				      SELECT
+				          UNNEST(StructArrayField) AS json_struct
+				      FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
+				  )
+				  SELECT
+				      json_extract(json_struct, '$.StructStringField') AS StructStringField,
+				      json_extract(json_struct, '$.StructIntField') AS StructIntField
+				  FROM sl;
+
+
+
+
+			WITH LIST PACK
+			READING FROM TABLE
+				 WITH sl AS (
+					  SELECT
+						  UNNEST(StructArrayField) AS json_struct
+					  FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
+				  ), json_data AS (
+				  SELECT
+					  json_extract(json_struct, '$.StructStringField') AS StructStringField,
+					  json_extract(json_struct, '$.StructIntField') AS StructIntField
+				  FROM sl)
+
+
+
+				-- Use list and struct_pack to construct a list of structs
+				SELECT
+					list_pack(
+						struct_pack(
+							struct_string_field := StructStringField::VARCHAR,
+							struct_int_field := StructIntField::INTEGER
+						)
+					) AS struct_array_field
+				FROM
+					json_data;
+
+
 
 		*/
-		// list_pack (
-		//  	struct_pack(
-		// 			 <StructColumnName> := <ParentSourceName>.<SourceName>::<Type>,
-		//  		...)
-		// 		) AS <ColumnName>
 
-		// TODO DO NOT CAST FOR NOW
-		return fmt.Sprintf("%s%s AS %s", tab, column.SourceName, column.ColumnName)
+		/*
+					READING FROM TABLE
+						 WITH sl AS (
+							  SELECT
 
-		var str strings.Builder
-		str.WriteString(fmt.Sprintf("%slist_pack (\n%s\tstruct_pack(\n", tab, tab))
+								  UNNEST(StructArrayField) AS json_struct
+							  FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
+						  ), json_data AS (
+						  SELECT
+							  json_extract(json_struct, '$.StructStringField') AS StructStringField,
+							  json_extract(json_struct, '$.StructIntField') AS StructIntField
+						  FROM sl)
 
-		for j, nestedColumn := range column.ChildFields {
-			if j > 0 {
-				str.WriteString(",\n")
-			}
-			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, column.SourceName, tabs+2)))
-		}
-		str.WriteString(fmt.Sprintf("\n%s)\n%s) AS %s", tab, tab, column.ColumnName))
-		return str.String()
+
+
+						-- Use list and struct_pack to construct a list of structs
+						SELECT
+							list_pack(
+								struct_pack(
+									struct_string_field := StructStringField::VARCHAR,
+									struct_int_field := StructIntField::INTEGER
+								)
+							) AS struct_array_field
+						FROM
+							json_data;
+
+
+			READING FROM TABLE
+						 WITH sl AS (
+							  SELECT UNNEST(StructArrayField) AS StructArrayField
+							  FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
+						  ), json_data AS (
+						  SELECT
+							  json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
+							  json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+						  FROM sl)
+
+
+
+						-- Use list and struct_pack to construct a list of structs
+						SELECT
+							list_pack(
+								struct_pack(
+									struct_string_field := StructArrayField_StructStringField::VARCHAR,
+									struct_int_field := StructArrayField_StructIntField::INTEGER
+								)
+							) AS struct_array_field
+						FROM
+							json_data;
+
+
+
+		*/
+
+		// just unnest - we will add a clause to extract the fields
+		return fmt.Sprintf("%sUNNEST(%s) AS %s", tab, column.SourceName, column.SourceName)
+		//
+		//var str strings.Builder
+		//str.WriteString(fmt.Sprintf("%slist_pack (\n%s\tstruct_pack(\n", tab, tab))
+		//
+		//for j, nestedColumn := range column.ChildFields {
+		//	if j > 0 {
+		//		str.WriteString(",\n")
+		//	}
+		//	str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, column.SourceName, tabs+2)))
+		//}
+		//str.WriteString(fmt.Sprintf("\n%s)\n%s) AS %s", tab, tab, column.ColumnName))
+		//return str.String()
 
 	case "STRUCT":
 		//  struct_pack(
