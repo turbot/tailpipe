@@ -102,30 +102,37 @@ func (w *parquetConversionWorker) getParquetFileRoot(collectionType string) stri
 }
 
 func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
-	var str strings.Builder
-
 	var structSliceColumns []*schema.ColumnSchema
 
-	str.WriteString("SELECT\n")
-	// add row number in case of potential grouping
-	str.WriteString("\trow_number() OVER () AS rowid,\n")
+	// first build the columns to select from the jsonl file
+	var columnStrings strings.Builder
 	for i, column := range rowSchema.Columns {
 		if i > 0 {
-			str.WriteString(",\n")
+			columnStrings.WriteString(",\n")
 		}
-		str.WriteString(fmt.Sprintf("%s", getSqlForField(column, 1)))
+		columnStrings.WriteString(fmt.Sprintf("%s", getSqlForField(column, 1)))
 		if column.Type == "STRUCT[]" {
 			structSliceColumns = append(structSliceColumns, column)
 		}
 	}
-	str.WriteString(fmt.Sprintf("\nFROM\n\tread_json_auto('%s', format='newline_delimited')", jsonlFilePath))
+	columnStrings.WriteString(fmt.Sprintf("\nFROM\n\tread_json_auto('%s', format='newline_delimited')", jsonlFilePath))
 
-	q := str.String()
-	// if there are any struct[] field, we need to use this as a CTE and do further processing to cast the fields
-	if len(structSliceColumns) > 0 {
-		q = getViewQueryForStructSlices(q, rowSchema, structSliceColumns)
+	// if there are no struct[] fields, we are done - just add the select at the start
+	if len(structSliceColumns) == 0 {
+		return fmt.Sprintf("SELECT\n%s", columnStrings.String())
 	}
-	return q
+
+	// if there are struct[] fields, we need to build a more complex query
+
+	// add row number in case of potential grouping
+	var str strings.Builder
+	str.WriteString("SELECT\n")
+	str.WriteString("\trow_number() OVER () AS rowid,\n")
+	str.WriteString(columnStrings.String())
+
+	// build the struct slice query
+	return getViewQueryForStructSlices(str.String(), rowSchema, structSliceColumns)
+
 }
 
 func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSliceColumns []*schema.ColumnSchema) string {
@@ -142,13 +149,13 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	), json_data AS (
 		SELECT
 			rowid,
-			json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
-			json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+			StructArrayField->>'StructStringField' AS StructArrayField_StructStringField,
+			StructArrayField->>'StructIntField' AS StructArrayField_StructIntField
 		FROM
 			sl
 	)
 	SELECT
-		listagg(struct_pack(
+		array_agg(struct_pack(
 			struct_string_field := StructArrayField_StructStringField::VARCHAR,
 			struct_int_field := StructArrayField_StructIntField::INTEGER
 		)) AS struct_array_field,
@@ -185,8 +192,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	str.WriteString("\t\trowid")
 
 	/*
-				  json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
-				  json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+				  StructArrayField->>'StructStringField' AS StructArrayField_StructStringField,
+				  StructArrayField->>'StructIntField' AS StructArrayField_StructIntField
 			  FROM sl
 		)
 	*/
@@ -196,7 +203,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 
 			str.WriteString(",\n")
 			// json_extract(<ParentStructSourceName>, '$.<SourceName>') AS <ParentStructSourceName>_<SourceName>
-			str.WriteString(fmt.Sprintf("\t\tjson_extract(StructArrayField, '$.%s') AS %s_%s", col.SourceName, structSliceCol.SourceName, col.SourceName))
+			str.WriteString(fmt.Sprintf("\t\t%s->>'%s' AS %s_%s", structSliceCol.SourceName, col.SourceName, structSliceCol.SourceName, col.SourceName))
 		}
 	}
 	str.WriteString("\n\tFROM\n\t\tsl\n)")
@@ -205,7 +212,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 
 		)
 		SELECT
-			listagg(struct_pack(
+			array_agg(struct_pack(
 				struct_string_field := StructArrayField_StructStringField::VARCHAR,
 				struct_int_field := StructArrayField_StructIntField::INTEGER
 			)) AS struct_array_field,
@@ -217,12 +224,12 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	for i, column := range rowSchema.Columns {
 		if column.Type == "STRUCT[]" {
 			/*
-				listagg(struct_pack(
+				array_agg(struct_pack(
 					struct_string_field := json_data.StructArrayField_StructStringField,
 					struct_int_field := json_data.StructArrayField_StructIntField
 				)) AS struct_array_field,
 			*/
-			str.WriteString(fmt.Sprintf("\tlistagg(struct_pack(\n"))
+			str.WriteString(fmt.Sprintf("\tarray_agg(struct_pack(\n"))
 			for j, nestedColumn := range column.ChildFields {
 				if i > 0 || j > 0 {
 					str.WriteString(",\n")
