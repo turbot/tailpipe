@@ -133,64 +133,53 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 
 	/* this is the what we want
 	WITH sl AS (
-	    SELECT
-	        row_number() OVER () AS rowid,
-	        UNNEST(StructArrayField) AS json_struct
-	    FROM
-	        read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
-	),
-	json_data AS (
-	    SELECT
-	        rowid,
-	        json_extract(json_struct, '$.StructStringField')::VARCHAR AS StructStringField,
-	        json_extract(json_struct, '$.StructIntField')::INTEGER AS StructIntField
-	    FROM
-	        sl
-	)
-	-- Aggregate the results back into an array of structs, grouped by the original row
-	SELECT
-	    listagg(struct_pack(
-	        struct_string_field := StructStringField,
-	        struct_int_field := StructIntField
-	    )) AS struct_array_field
-	FROM
-	    json_data
-	GROUP BY
-	    rowid;
-
-	*/
-	/*
-		// this is the what we have
-
-		WITH sl AS (
-			SELECT
-				UNNEST(StructArrayField) AS StructArrayField
-			FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
-		), json_data AS (
-			SELECT
-				json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
-				json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
-			FROM sl
-		)
 		SELECT
-			list_pack(
-				struct_pack(
-					struct_string_field := StructArrayField_StructStringField::VARCHAR,
-					struct_int_field := StructArrayField_StructIntField::INTEGER
-				)
-			) AS struct_array_field
-		FROM sl, json_data;
+			row_number() OVER () AS rowid,
+			UNNEST(StructArrayField) AS StructArrayField,
+			IntField::INTEGER AS int_field,
+		FROM
+			read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
+	), json_data AS (
+		SELECT
+			rowid,
+			json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
+			json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+		FROM
+			sl
+	)
+	SELECT
+		listagg(struct_pack(
+			struct_string_field := StructArrayField_StructStringField::VARCHAR,
+			struct_int_field := StructArrayField_StructIntField::INTEGER
+		)) AS struct_array_field,
+		sl.int_field
+	FROM
+		json_data
+	JOIN
+		sl ON json_data.rowid = sl.rowid
+	GROUP BY
+		sl.rowid, sl.int_field
+
 	*/
 
-	/*
-		/*  WITH sl AS (
-				  SELECT UNNEST(StructArrayField) AS StructArrayField
-				  FROM read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
-			  ), json_data AS (
-				  SELECT
+	/* 	WITH sl AS (
+	SELECT
+		row_number() OVER () AS rowid,
+		UNNEST(StructArrayField) AS StructArrayField,
+		IntField::INTEGER AS int_field,
+	FROM
+		read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
+
 	*/
 	str.WriteString("WITH sl AS (\n")
 	str.WriteString(helpers.Tabify(q, "\t"))
+
+	/*
+		), json_data AS (
+					SELECT
+						rowid,
+	*/
+
 	str.WriteString("\n), json_data AS (\n")
 	str.WriteString("\tSELECT\n")
 	str.WriteString("\t\trowid")
@@ -214,27 +203,13 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 
 	/*
 
-			-- Aggregate the results back into an array of structs, grouped by the original row
+		)
 		SELECT
 			listagg(struct_pack(
-				struct_string_field := json_data.StructArrayField_StructStringField,
-				struct_int_field := json_data.StructArrayField_StructIntField
+				struct_string_field := StructArrayField_StructStringField::VARCHAR,
+				struct_int_field := StructArrayField_StructIntField::INTEGER
 			)) AS struct_array_field,
-			sl.int_field,
-			sl.string_field,
-			sl.float_field,
-			sl.boolean_field,
-			sl.null_field,
-			sl.int_array_field,
-			sl.string_array_field,
-			sl.float_array_field,
-			sl.boolean_array_field
-		FROM
-			json_data
-		JOIN
-			sl ON json_data.rowid = sl.rowid
-		GROUP BY
-			sl.rowid, sl.int_field, sl.string_field, sl.float_field, sl.boolean_field, sl.null_field, sl.int_array_field, sl.string_array_field, sl.float_array_field, sl.boolean_array_field;
+			sl.int_field
 	*/
 
 	str.WriteString("\nSELECT\n")
@@ -269,7 +244,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 		JOIN
 			sl ON json_data.rowid = sl.rowid
 		GROUP BY
-			sl.rowid, sl.int_field, sl.string_field, sl.float_field, sl.boolean_field, sl.null_field, sl.int_array_field, sl.string_array_field, sl.float_array_field, sl.boolean_array_field;
+			sl.rowid, sl.int_field
 	*/
 	str.WriteString("\nFROM\n\tjson_data")
 	str.WriteString("\nJOIN\n\tsl ON json_data.rowid = sl.rowid")
