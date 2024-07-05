@@ -107,6 +107,8 @@ func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
 	var structSliceColumns []*schema.ColumnSchema
 
 	str.WriteString("SELECT\n")
+	// add row number in case of potential grouping
+	str.WriteString("\trow_number() OVER () AS rowid,\n")
 	for i, column := range rowSchema.Columns {
 		if i > 0 {
 			str.WriteString(",\n")
@@ -116,7 +118,7 @@ func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
 			structSliceColumns = append(structSliceColumns, column)
 		}
 	}
-	str.WriteString(fmt.Sprintf("\nFROM read_json_auto('%s', format='newline_delimited')", jsonlFilePath))
+	str.WriteString(fmt.Sprintf("\nFROM\n\tread_json_auto('%s', format='newline_delimited')", jsonlFilePath))
 
 	q := str.String()
 	// if there are any struct[] field, we need to use this as a CTE and do further processing to cast the fields
@@ -130,19 +132,12 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	var str strings.Builder
 
 	/* this is the what we want
-	WITH original_data AS (
+	WITH sl AS (
 	    SELECT
-	        *,
-	        row_number() OVER () AS rowid
-	    FROM
-	        read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
-	),
-	unnested_data AS (
-	    SELECT
-	        rowid,
+	        row_number() OVER () AS rowid,
 	        UNNEST(StructArrayField) AS json_struct
 	    FROM
-	        original_data
+	        read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/test_json/1.jsonl')
 	),
 	json_data AS (
 	    SELECT
@@ -150,11 +145,10 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	        json_extract(json_struct, '$.StructStringField')::VARCHAR AS StructStringField,
 	        json_extract(json_struct, '$.StructIntField')::INTEGER AS StructIntField
 	    FROM
-	        unnested_data
+	        sl
 	)
 	-- Aggregate the results back into an array of structs, grouped by the original row
 	SELECT
-	    rowid,
 	    listagg(struct_pack(
 	        struct_string_field := StructStringField,
 	        struct_int_field := StructIntField
@@ -199,6 +193,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	str.WriteString(helpers.Tabify(q, "\t"))
 	str.WriteString("\n), json_data AS (\n")
 	str.WriteString("\tSELECT\n")
+	str.WriteString("\t\trowid")
 
 	/*
 				  json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
@@ -206,29 +201,40 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 			  FROM sl
 		)
 	*/
-	for i, structSliceCol := range structSliceColumns {
+	for _, structSliceCol := range structSliceColumns {
 		// iterate over struct fields
-		for j, col := range structSliceCol.ChildFields {
+		for _, col := range structSliceCol.ChildFields {
 
-			if i > 0 || j > 0 {
-				str.WriteString(",\n")
-			}
+			str.WriteString(",\n")
 			// json_extract(<ParentStructSourceName>, '$.<SourceName>') AS <ParentStructSourceName>_<SourceName>
 			str.WriteString(fmt.Sprintf("\t\tjson_extract(StructArrayField, '$.%s') AS %s_%s", col.SourceName, structSliceCol.SourceName, col.SourceName))
 		}
 	}
-	str.WriteString("\n\tFROM sl\n)")
+	str.WriteString("\n\tFROM\n\t\tsl\n)")
 
 	/*
+
+			-- Aggregate the results back into an array of structs, grouped by the original row
 		SELECT
-			list_pack(
-				struct_pack(
-					struct_string_field := StructArrayField_StructStringField::VARCHAR,
-					struct_int_field := StructArrayField_StructIntField::INTEGER
-				)
-			) AS struct_array_field
+			listagg(struct_pack(
+				struct_string_field := json_data.StructArrayField_StructStringField,
+				struct_int_field := json_data.StructArrayField_StructIntField
+			)) AS struct_array_field,
+			sl.int_field,
+			sl.string_field,
+			sl.float_field,
+			sl.boolean_field,
+			sl.null_field,
+			sl.int_array_field,
+			sl.string_array_field,
+			sl.float_array_field,
+			sl.boolean_array_field
 		FROM
-			json_data;
+			json_data
+		JOIN
+			sl ON json_data.rowid = sl.rowid
+		GROUP BY
+			sl.rowid, sl.int_field, sl.string_field, sl.float_field, sl.boolean_field, sl.null_field, sl.int_array_field, sl.string_array_field, sl.float_array_field, sl.boolean_array_field;
 	*/
 
 	str.WriteString("\nSELECT\n")
@@ -236,31 +242,43 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	for i, column := range rowSchema.Columns {
 		if column.Type == "STRUCT[]" {
 			/*
-				list_pack(
-						struct_pack(
-							struct_string_field := StructArrayField_StructStringField::VARCHAR,
-							struct_int_field := StructArrayField_StructIntField::INTEGER
-						)
-					) AS struct_array_field
+				listagg(struct_pack(
+					struct_string_field := json_data.StructArrayField_StructStringField,
+					struct_int_field := json_data.StructArrayField_StructIntField
+				)) AS struct_array_field,
 			*/
-			str.WriteString(fmt.Sprintf("\tlist_pack(\n"))
-			str.WriteString(fmt.Sprintf("\t\tstruct_pack(\n"))
+			str.WriteString(fmt.Sprintf("\tlistagg(struct_pack(\n"))
 			for j, nestedColumn := range column.ChildFields {
 				if i > 0 || j > 0 {
 					str.WriteString(",\n")
 				}
 				// <ColumnName> := <StructFieldSourceName>_<StructFieldSourceName>::TYPE,
-				str.WriteString(fmt.Sprintf("\t\t\t%s := %s_%s::%s", nestedColumn.ColumnName, column.SourceName, nestedColumn.SourceName, nestedColumn.Type))
+				str.WriteString(fmt.Sprintf("\t\t%s := %s_%s::%s", nestedColumn.ColumnName, column.SourceName, nestedColumn.SourceName, nestedColumn.Type))
 			}
-			str.WriteString(fmt.Sprintf("\n\t\t)\n\t) AS %s", column.ColumnName))
+			str.WriteString(fmt.Sprintf("\n\t)) AS %s", column.ColumnName))
 		} else {
 			if i > 0 {
 				str.WriteString(",\n")
 			}
-			str.WriteString(fmt.Sprintf("sl.%s", column.ColumnName))
+			str.WriteString(fmt.Sprintf("\tsl.%s", column.ColumnName))
 		}
 	}
-	str.WriteString("\nFROM sl, json_data;")
+	/*
+		FROM
+			json_data
+		JOIN
+			sl ON json_data.rowid = sl.rowid
+		GROUP BY
+			sl.rowid, sl.int_field, sl.string_field, sl.float_field, sl.boolean_field, sl.null_field, sl.int_array_field, sl.string_array_field, sl.float_array_field, sl.boolean_array_field;
+	*/
+	str.WriteString("\nFROM\n\tjson_data")
+	str.WriteString("\nJOIN\n\tsl ON json_data.rowid = sl.rowid")
+	str.WriteString("\nGROUP BY\n\tsl.rowid")
+	for _, column := range rowSchema.Columns {
+		if column.Type != "STRUCT[]" {
+			str.WriteString(fmt.Sprintf(", sl.%s", column.ColumnName))
+		}
+	}
 	return str.String()
 }
 

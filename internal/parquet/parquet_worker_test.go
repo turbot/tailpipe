@@ -230,8 +230,47 @@ func Test_buildViewQuery(t *testing.T) {
 		//			wantData: []any{true, false},
 		//		},
 
+		//		{
+		//			name: "array of simple structs",
+		//			args: args{
+		//				schema: &schema.RowSchema{
+		//					Columns: []*schema.ColumnSchema{
+		//						{
+		//							SourceName: "StructArrayField",
+		//							ColumnName: "struct_array_field",
+		//							Type:       "STRUCT[]",
+		//							ChildFields: []*schema.ColumnSchema{
+		//								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
+		//								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
+		//							},
+		//						},
+		//					},
+		//				},
+		//				json:      `{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}`,
+		//				sqlColumn: "struct_array_field[0].struct_string_field",
+		//			},
+		//			wantQuery: fmt.Sprintf(`WITH sl AS (
+		//	SELECT
+		//		UNNEST(StructArrayField) AS StructArrayField
+		//	FROM read_json_auto('%s', format='newline_delimited')
+		//), json_data AS (
+		//	SELECT
+		//		json_extract(StructArrayField, '$.StructStringField') AS StructArrayField_StructStringField,
+		//		json_extract(StructArrayField, '$.StructIntField') AS StructArrayField_StructIntField
+		//	FROM sl
+		//)
+		//SELECT
+		//	list_pack(
+		//		struct_pack(
+		//			struct_string_field := StructArrayField_StructStringField::VARCHAR,
+		//			struct_int_field := StructArrayField_StructIntField::INTEGER
+		//		)
+		//	) AS struct_array_field
+		//FROM sl`, jsonlFilePath),
+		//			wantData: "StringValue1",
+		//		},
 		{
-			name: "array of simple structs",
+			name: "array of simple structs plus other fields",
 			args: args{
 				schema: &schema.RowSchema{
 					Columns: []*schema.ColumnSchema{
@@ -244,9 +283,36 @@ func Test_buildViewQuery(t *testing.T) {
 								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
 							},
 						},
+						{SourceName: "IntField", ColumnName: "int_field", Type: "INTEGER"},
+						{SourceName: "StringField", ColumnName: "string_field", Type: "VARCHAR"},
+						{SourceName: "FloatField", ColumnName: "float_field", Type: "FLOAT"},
+						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
+						{
+							SourceName: "IntArrayField",
+							ColumnName: "int_array_field",
+							Type:       "INTEGER[]",
+						},
+						{
+							SourceName: "StringArrayField",
+							ColumnName: "string_array_field",
+							Type:       "VARCHAR[]",
+						},
+						{
+							SourceName: "FloatArrayField",
+							ColumnName: "float_array_field",
+							Type:       "FLOAT[]",
+						},
+						{
+							SourceName: "BooleanArrayField",
+							ColumnName: "boolean_array_field",
+							Type:       "BOOLEAN[]",
+						},
 					},
 				},
-				json:      `{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}`,
+
+				json: `{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}], "IntField": 10, "StringField": "SampleString", "FloatField": 10.5, "BooleanField": true, "IntArrayField": [1, 2, 3], "StringArrayField": ["String1", "String2"], "FloatArrayField": [1.1, 2.2, 3.3], "BooleanArrayField": [true, false, true]}
+{"StructArrayField": [{"StructStringField": "AnotherString1", "StructIntField": 3}, {"StructStringField": "AnotherString2", "StructIntField": 4}], "IntField": 20, "StringField": "AnotherSampleString", "FloatField": 20.5, "BooleanField": false, "IntArrayField": [4, 5, 6], "StringArrayField": ["String3", "String4"], "FloatArrayField": [4.4, 5.5, 6.6], "BooleanArrayField": [false, true, false]}
+`,
 				sqlColumn: "struct_array_field[0].struct_string_field",
 			},
 			wantQuery: fmt.Sprintf(`WITH sl AS (
@@ -266,7 +332,7 @@ SELECT
 			struct_int_field := StructArrayField_StructIntField::INTEGER
 		)
 	) AS struct_array_field
-FROM sl, json_data;`, jsonlFilePath),
+FROM sl`, jsonlFilePath),
 			wantData: "StringValue1",
 		},
 		// TODO doesn't work
