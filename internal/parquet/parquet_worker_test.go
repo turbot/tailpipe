@@ -87,7 +87,7 @@ func Test_buildViewQuery(t *testing.T) {
 							SourceName: "StructField",
 							ColumnName: "struct_field",
 							Type:       "STRUCT",
-							ChildFields: []*schema.ColumnSchema{
+							StructFields: []*schema.ColumnSchema{
 								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
 								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "BIGINT"},
 							},
@@ -115,12 +115,12 @@ FROM
 							SourceName: "StructField",
 							ColumnName: "struct_field",
 							Type:       "STRUCT",
-							ChildFields: []*schema.ColumnSchema{
+							StructFields: []*schema.ColumnSchema{
 								{
 									SourceName: "NestedStruct",
 									ColumnName: "nested_struct",
 									Type:       "STRUCT",
-									ChildFields: []*schema.ColumnSchema{
+									StructFields: []*schema.ColumnSchema{
 										{
 											SourceName: "NestedStructStringField",
 											ColumnName: "nested_struct_string_field",
@@ -242,7 +242,7 @@ FROM
 							SourceName: "StructArrayField",
 							ColumnName: "struct_array_field",
 							Type:       "STRUCT[]",
-							ChildFields: []*schema.ColumnSchema{
+							StructFields: []*schema.ColumnSchema{
 								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
 								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
 							},
@@ -255,7 +255,7 @@ FROM
 			wantQuery: fmt.Sprintf(`WITH sl AS (
 	SELECT
 		row_number() OVER () AS rowid,
-		UNNEST(StructArrayField) AS StructArrayField
+		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
 	FROM
 		read_json_auto('%s', format='newline_delimited')
 ), json_data AS (
@@ -289,7 +289,7 @@ GROUP BY
 							SourceName: "StructArrayField",
 							ColumnName: "struct_array_field",
 							Type:       "STRUCT[]",
-							ChildFields: []*schema.ColumnSchema{
+							StructFields: []*schema.ColumnSchema{
 								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
 								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
 							},
@@ -327,7 +327,7 @@ GROUP BY
 			wantQuery: fmt.Sprintf(`WITH sl AS (
 	SELECT
 		row_number() OVER () AS rowid,
-		UNNEST(StructArrayField) AS StructArrayField,
+		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField,
 		IntField::INTEGER AS int_field,
 		StringField::VARCHAR AS string_field,
 		FloatField::FLOAT AS float_field,
@@ -367,7 +367,54 @@ GROUP BY
 	sl.rowid, sl.int_field, sl.string_field, sl.float_field, sl.boolean_field, sl.int_array_field, sl.string_array_field, sl.float_array_field, sl.boolean_array_field`, jsonlFilePath),
 			wantData: "StringValue2",
 		},
-		// TODO doesn't work
+		{
+			name: "array of simple structs with null value",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{
+							SourceName: "StructArrayField",
+							ColumnName: "struct_array_field",
+							Type:       "STRUCT[]",
+							StructFields: []*schema.ColumnSchema{
+								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
+								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
+							},
+						},
+					},
+				},
+				json:      `{"StructArrayField": null}`,
+				sqlColumn: "struct_array_field[1].struct_string_field",
+			},
+			wantQuery: fmt.Sprintf(`WITH sl AS (
+	SELECT
+		row_number() OVER () AS rowid,
+		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
+	FROM
+		read_json_auto('%s', format='newline_delimited')
+), json_data AS (
+	SELECT
+		rowid,
+		StructArrayField->>'StructStringField' AS StructArrayField_StructStringField,
+		StructArrayField->>'StructIntField' AS StructArrayField_StructIntField
+	FROM
+		sl
+)
+SELECT
+	array_agg(struct_pack(
+		struct_string_field := StructArrayField_StructStringField::VARCHAR,
+		struct_int_field := StructArrayField_StructIntField::INTEGER
+	)) AS struct_array_field
+FROM
+	json_data
+JOIN
+	sl ON json_data.rowid = sl.rowid
+GROUP BY
+	sl.rowid`, jsonlFilePath),
+			wantData: nil,
+		},
+
+		//TODO doesn't work
 		//		{
 		//			name: "map types",
 		//			args: args{
@@ -440,7 +487,7 @@ func executeQuery(t *testing.T, query, json, sqlColumn string) (any, error) {
 	// get the data
 	var data any
 	err = row.Scan(&data)
-	if err != nil {
+	if err != nil && err.Error() != "sql: no rows in result set" {
 		return nil, fmt.Errorf("error scanning data: %w", err)
 	}
 	return data, nil
