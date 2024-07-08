@@ -174,23 +174,88 @@ FROM
 				json:      `{"BooleanField": true, "TinyIntField": 1, "SmallIntField": 2, "IntegerField": 3, "BigIntField": 4, "UTinyIntField": 5, "USmallIntField": 6, "UIntegerField": 7, "UBigIntField": 8, "FloatField": 1.23, "DoubleField": 4.56, "VarcharField": "StringValue", "TimestampField": "2024-01-01T00:00:00Z"}`,
 				sqlColumn: "varchar_field",
 			},
-			wantQuery: fmt.Sprintf(`SELECT
-	BooleanField::BOOLEAN AS boolean_field,
-	TinyIntField::TINYINT AS tinyint_field,
-	SmallIntField::SMALLINT AS smallint_field,
-	IntegerField::INTEGER AS integer_field,
-	BigIntField::BIGINT AS bigint_field,
-	UTinyIntField::UTINYINT AS utinyint_field,
-	USmallIntField::USMALLINT AS usmallint_field,
-	UIntegerField::UINTEGER AS uinteger_field,
-	UBigIntField::UBIGINT AS ubigint_field,
-	FloatField::FLOAT AS float_field,
-	DoubleField::DOUBLE AS double_field,
-	VarcharField::VARCHAR AS varchar_field,
-	TimestampField::TIMESTAMP AS timestamp_field
+			wantQuery: fmt.Sprintf(`WITH json_data AS (
+	SELECT
+		json_extract(json, ['BooleanField', 'TinyIntField', 'SmallIntField', 'IntegerField', 'BigIntField', 'UTinyIntField', 'USmallIntField', 'UIntegerField', 'UBigIntField', 'FloatField', 'DoubleField', 'VarcharField', 'TimestampField']) AS extracted_list
+	FROM
+		read_json_auto('%s', format='newline_delimited')
+),
+parsed_data AS (
+	SELECT
+		COALESCE(CAST(extracted_list[1] AS BOOLEAN), NULL) AS boolean_field,
+		COALESCE(CAST(extracted_list[2] AS TINYINT), NULL) AS tinyint_field,
+		COALESCE(CAST(extracted_list[3] AS SMALLINT), NULL) AS smallint_field,
+		COALESCE(CAST(extracted_list[4] AS INTEGER), NULL) AS integer_field,
+		COALESCE(CAST(extracted_list[5] AS BIGINT), NULL) AS bigint_field,
+		COALESCE(CAST(extracted_list[6] AS UTINYINT), NULL) AS utinyint_field,
+		COALESCE(CAST(extracted_list[7] AS USMALLINT), NULL) AS usmallint_field,
+		COALESCE(CAST(extracted_list[8] AS UINTEGER), NULL) AS uinteger_field,
+		COALESCE(CAST(extracted_list[9] AS UBIGINT), NULL) AS ubigint_field,
+		COALESCE(CAST(extracted_list[10] AS FLOAT), NULL) AS float_field,
+		COALESCE(CAST(extracted_list[11] AS DOUBLE), NULL) AS double_field,
+		COALESCE(CAST(extracted_list[12] AS VARCHAR), NULL) AS varchar_field,
+		COALESCE(CAST(extracted_list[13] AS TIMESTAMP), NULL) AS timestamp_field	
+	FROM
+		json_data
+)
+SELECT
+	* 
 FROM
-	read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
+	parsed_data`, jsonlFilePath),
 			wantData: "StringValue",
+		},
+		{
+			name: "scalar types, missing data",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
+						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
+						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "SMALLINT"},
+						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "INTEGER"},
+						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "BIGINT"},
+						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "UTINYINT"},
+						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "USMALLINT"},
+						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "UINTEGER"},
+						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "UBIGINT"},
+						{SourceName: "FloatField", ColumnName: "float_field", Type: "FLOAT"},
+						{SourceName: "DoubleField", ColumnName: "double_field", Type: "DOUBLE"},
+						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "VARCHAR"},
+						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "TIMESTAMP"},
+					},
+				},
+				json:      `{}`,
+				sqlColumn: "varchar_field",
+			},
+			wantQuery: fmt.Sprintf(`WITH json_data AS (
+	SELECT
+		json_extract(json, ['BooleanField', 'TinyIntField', 'SmallIntField', 'IntegerField', 'BigIntField', 'UTinyIntField', 'USmallIntField', 'UIntegerField', 'UBigIntField', 'FloatField', 'DoubleField', 'VarcharField', 'TimestampField']) AS extracted_list
+	FROM
+		read_json_auto('%s', format='newline_delimited')
+),
+parsed_data AS (
+	SELECT
+		COALESCE(CAST(extracted_list[1] AS BOOLEAN), NULL) AS boolean_field,
+		COALESCE(CAST(extracted_list[2] AS TINYINT), NULL) AS tinyint_field,
+		COALESCE(CAST(extracted_list[3] AS SMALLINT), NULL) AS smallint_field,
+		COALESCE(CAST(extracted_list[4] AS INTEGER), NULL) AS integer_field,
+		COALESCE(CAST(extracted_list[5] AS BIGINT), NULL) AS bigint_field,
+		COALESCE(CAST(extracted_list[6] AS UTINYINT), NULL) AS utinyint_field,
+		COALESCE(CAST(extracted_list[7] AS USMALLINT), NULL) AS usmallint_field,
+		COALESCE(CAST(extracted_list[8] AS UINTEGER), NULL) AS uinteger_field,
+		COALESCE(CAST(extracted_list[9] AS UBIGINT), NULL) AS ubigint_field,
+		COALESCE(CAST(extracted_list[10] AS FLOAT), NULL) AS float_field,
+		COALESCE(CAST(extracted_list[11] AS DOUBLE), NULL) AS double_field,
+		COALESCE(CAST(extracted_list[12] AS VARCHAR), NULL) AS varchar_field,
+		COALESCE(CAST(extracted_list[13] AS TIMESTAMP), NULL) AS timestamp_field	
+	FROM
+		json_data
+)
+SELECT
+	* 
+FROM
+	parsed_data`, jsonlFilePath),
+			wantData: nil,
 		},
 		{
 			name: "array types",

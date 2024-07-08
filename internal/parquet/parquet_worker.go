@@ -3,14 +3,40 @@ package parquet
 import (
 	"fmt"
 	"github.com/turbot/go-kit/helpers"
+	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
+
+/*
+https://duckdb.org/docs/extensions/json.html
+If multiple values need to be extracted from the same JSON, it is more efficient to extract a list of paths:
+
+The following will cause the JSON to be parsed twice,:
+
+Resulting in a slower query that uses more memory:
+
+SELECT
+    json_extract(j, 'family') AS family,
+    json_extract(j, 'species') AS species
+FROM example;
+
+family	species
+"anatidae"	["duck","goose","swan",null]
+The following produces the same result but is faster and more memory-efficient:
+
+WITH extracted AS (
+    SELECT json_extract(j, ['family', 'species']) AS extracted_list
+    FROM example
+)
+SELECT
+    extracted_list[1] AS family,
+    extracted_list[2] AS species
+*/
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
 type parquetConversionWorker struct {
@@ -104,22 +130,70 @@ func (w *parquetConversionWorker) getParquetFileRoot(collectionType string) stri
 func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
 	var structSliceColumns []*schema.ColumnSchema
 
+	/* this is out goal:
+
+	-- scalar data
+
+	WITH json_data AS (
+	    SELECT
+	        json_extract(json, ['BooleanField', 'TinyIntField', 'SmallIntField', 'IntegerField', 'BigIntField', 'UTinyIntField', 'USmallIntField', 'UIntegerField', 'UBigIntField', 'FloatField', 'DoubleField', 'VarcharField', 'TimestampField']) AS extracted_list
+	    FROM
+	        read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
+	)
+	  SELECT
+	      COALESCE(CAST(extracted_list[1] AS BOOLEAN), NULL) AS boolean_field,
+	      COALESCE(CAST(extracted_list[2] AS TINYINT), NULL) AS tinyint_field,
+	      COALESCE(CAST(extracted_list[3] AS SMALLINT), NULL) AS smallint_field,
+	      COALESCE(CAST(extracted_list[4] AS INTEGER), NULL) AS integer_field,
+	      COALESCE(CAST(extracted_list[5] AS BIGINT), NULL) AS bigint_field,
+	      COALESCE(CAST(extracted_list[6] AS TINYINT), NULL) AS utinyint_field,
+	      COALESCE(CAST(extracted_list[7] AS SMALLINT), NULL) AS usmallint_field,
+	      COALESCE(CAST(extracted_list[8] AS INTEGER), NULL) AS uinteger_field,
+	      COALESCE(CAST(extracted_list[9] AS BIGINT), NULL) AS ubigint_field,
+	      COALESCE(CAST(extracted_list[10] AS FLOAT), NULL) AS float_field,
+	      COALESCE(CAST(extracted_list[11] AS DOUBLE), NULL) AS double_field,
+	      COALESCE(CAST(extracted_list[12] AS VARCHAR), NULL) AS varchar_field,
+	      COALESCE(CAST(extracted_list[13] AS TIMESTAMP), NULL) AS timestamp_field
+	  FROM
+	      json_data;
+
+	*/
+
 	// first build the columns to select from the jsonl file
 	var columnStrings strings.Builder
+
+	columnStrings.WriteString(fmt.Sprintf(`WITH json_data AS (
+	SELECT
+		json_extract(json, ['%s']) AS extracted_list
+	FROM
+		read_json_auto('%s', format='newline_delimited')
+),
+parsed_data AS (
+	SELECT
+`, strings.Join(rowSchema.ColumnSourceNames(), "', '"), jsonlFilePath))
+
 	for i, column := range rowSchema.Columns {
 		if i > 0 {
 			columnStrings.WriteString(",\n")
 		}
-		columnStrings.WriteString(fmt.Sprintf("%s", getSqlForField(column, 1)))
+		columnStrings.WriteString(fmt.Sprintf("%s", getSqlForField(column, 2, i+1)))
 		if column.Type == "STRUCT[]" {
 			structSliceColumns = append(structSliceColumns, column)
 		}
 	}
-	columnStrings.WriteString(fmt.Sprintf("\nFROM\n\tread_json_auto('%s', format='newline_delimited')", jsonlFilePath))
+	columnStrings.WriteString(fmt.Sprintf(`	
+	FROM
+		json_data
+)`))
 
 	// if there are no struct[] fields, we are done - just add the select at the start
 	if len(structSliceColumns) == 0 {
-		return fmt.Sprintf("SELECT\n%s", columnStrings.String())
+		columnStrings.WriteString(`
+SELECT
+	* 
+FROM
+	parsed_data`)
+		return columnStrings.String()
 	}
 
 	// if there are struct[] fields, we need to build a more complex query
@@ -266,7 +340,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 }
 
 // return the sql line to select the given field
-func getSqlForField(column *schema.ColumnSchema, tabs int) string {
+func getSqlForField(column *schema.ColumnSchema, tabs int, fieldNum int) string {
 
 	/* for scalar fields this wll be
 	    <SourceName>::<Type> AS <ColumnName>
@@ -322,9 +396,8 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 		str.WriteString(fmt.Sprintf("\n%s) AS %s", tab, column.ColumnName))
 		return str.String()
 	default:
-		// TODO COALESCE
-		//<SourceName>::<Type> AS <ColumnName>
-		return fmt.Sprintf("%s%s::%s AS %s", tab, column.SourceName, column.Type, column.ColumnName)
+		//			 COALESCE(CAST(extracted_list[<fieldnum>] AS <TYPE>), NULL) AS <ColumnName>,
+		return fmt.Sprintf("%sCOALESCE(CAST(extracted_list[%d] AS %s), NULL) AS %s", tab, fieldNum, column.Type, column.ColumnName)
 	}
 
 }
