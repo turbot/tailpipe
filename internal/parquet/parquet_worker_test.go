@@ -103,8 +103,13 @@ func Test_buildViewQuery(t *testing.T) {
 		struct_int_field := StructField.StructIntField::BIGINT
 	) AS struct_field
 FROM
-	read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
-			wantData: "StructStringVal",
+	read_ndjson(
+		'%s',
+		columns = {
+			StructField: 'STRUCT(StructStringField VARCHAR, StructIntField BIGINT)'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{"StructStringVal"},
 		},
 		{
 			name: "nested struct",
@@ -148,8 +153,13 @@ FROM
 		struct_string_field := StructField.StructStringField::VARCHAR
 	) AS struct_field
 FROM
-	read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
-			wantData: "NestedStructStringVal",
+	read_ndjson(
+		'%s',
+		columns = {
+			StructField: 'STRUCT(NestedStruct STRUCT(NestedStructStringField VARCHAR), StructStringField VARCHAR)'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{"NestedStructStringVal"},
 		},
 		{
 			name: "scalar types",
@@ -174,38 +184,161 @@ FROM
 				json:      `{"BooleanField": true, "TinyIntField": 1, "SmallIntField": 2, "IntegerField": 3, "BigIntField": 4, "UTinyIntField": 5, "USmallIntField": 6, "UIntegerField": 7, "UBigIntField": 8, "FloatField": 1.23, "DoubleField": 4.56, "VarcharField": "StringValue", "TimestampField": "2024-01-01T00:00:00Z"}`,
 				sqlColumn: "varchar_field",
 			},
-			wantQuery: fmt.Sprintf(`WITH json_data AS (
-	SELECT
-		json_extract(json, ['BooleanField', 'TinyIntField', 'SmallIntField', 'IntegerField', 'BigIntField', 'UTinyIntField', 'USmallIntField', 'UIntegerField', 'UBigIntField', 'FloatField', 'DoubleField', 'VarcharField', 'TimestampField']) AS extracted_list
-	FROM
-		read_json_auto('%s', format='newline_delimited')
-),
-parsed_data AS (
-	SELECT
-		COALESCE(CAST(extracted_list[1] AS BOOLEAN), NULL) AS boolean_field,
-		COALESCE(CAST(extracted_list[2] AS TINYINT), NULL) AS tinyint_field,
-		COALESCE(CAST(extracted_list[3] AS SMALLINT), NULL) AS smallint_field,
-		COALESCE(CAST(extracted_list[4] AS INTEGER), NULL) AS integer_field,
-		COALESCE(CAST(extracted_list[5] AS BIGINT), NULL) AS bigint_field,
-		COALESCE(CAST(extracted_list[6] AS UTINYINT), NULL) AS utinyint_field,
-		COALESCE(CAST(extracted_list[7] AS USMALLINT), NULL) AS usmallint_field,
-		COALESCE(CAST(extracted_list[8] AS UINTEGER), NULL) AS uinteger_field,
-		COALESCE(CAST(extracted_list[9] AS UBIGINT), NULL) AS ubigint_field,
-		COALESCE(CAST(extracted_list[10] AS FLOAT), NULL) AS float_field,
-		COALESCE(CAST(extracted_list[11] AS DOUBLE), NULL) AS double_field,
-		COALESCE(CAST(extracted_list[12] AS VARCHAR), NULL) AS varchar_field,
-		COALESCE(CAST(extracted_list[13] AS TIMESTAMP), NULL) AS timestamp_field	
-	FROM
-		json_data
-)
-SELECT
-	* 
+			wantQuery: fmt.Sprintf(`SELECT
+	BooleanField AS boolean_field,
+	TinyIntField AS tinyint_field,
+	SmallIntField AS smallint_field,
+	IntegerField AS integer_field,
+	BigIntField AS bigint_field,
+	UTinyIntField AS utinyint_field,
+	USmallIntField AS usmallint_field,
+	UIntegerField AS uinteger_field,
+	UBigIntField AS ubigint_field,
+	FloatField AS float_field,
+	DoubleField AS double_field,
+	VarcharField AS varchar_field,
+	TimestampField AS timestamp_field
 FROM
-	parsed_data`, jsonlFilePath),
-			wantData: "StringValue",
+	read_ndjson(
+		'%s',
+		columns = {
+			BooleanField: 'BOOLEAN', 
+			TinyIntField: 'TINYINT', 
+			SmallIntField: 'SMALLINT', 
+			IntegerField: 'INTEGER', 
+			BigIntField: 'BIGINT', 
+			UTinyIntField: 'UTINYINT', 
+			USmallIntField: 'USMALLINT', 
+			UIntegerField: 'UINTEGER', 
+			UBigIntField: 'UBIGINT', 
+			FloatField: 'FLOAT', 
+			DoubleField: 'DOUBLE', 
+			VarcharField: 'VARCHAR', 
+			TimestampField: 'TIMESTAMP'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{"StringValue"},
 		},
 		{
-			name: "scalar types, missing data",
+			name: "scalar types - missing some data",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
+						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
+						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "SMALLINT"},
+						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "INTEGER"},
+						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "BIGINT"},
+						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "UTINYINT"},
+						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "USMALLINT"},
+						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "UINTEGER"},
+						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "UBIGINT"},
+						{SourceName: "FloatField", ColumnName: "float_field", Type: "FLOAT"},
+						{SourceName: "DoubleField", ColumnName: "double_field", Type: "DOUBLE"},
+						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "VARCHAR"},
+						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "TIMESTAMP"},
+					},
+				},
+				json:      `{"BooleanField": true}`,
+				sqlColumn: "boolean_field",
+			},
+			wantQuery: fmt.Sprintf(`SELECT
+	BooleanField AS boolean_field,
+	TinyIntField AS tinyint_field,
+	SmallIntField AS smallint_field,
+	IntegerField AS integer_field,
+	BigIntField AS bigint_field,
+	UTinyIntField AS utinyint_field,
+	USmallIntField AS usmallint_field,
+	UIntegerField AS uinteger_field,
+	UBigIntField AS ubigint_field,
+	FloatField AS float_field,
+	DoubleField AS double_field,
+	VarcharField AS varchar_field,
+	TimestampField AS timestamp_field
+FROM
+	read_ndjson(
+		'%s',
+		columns = {
+			BooleanField: 'BOOLEAN', 
+			TinyIntField: 'TINYINT', 
+			SmallIntField: 'SMALLINT', 
+			IntegerField: 'INTEGER', 
+			BigIntField: 'BIGINT', 
+			UTinyIntField: 'UTINYINT', 
+			USmallIntField: 'USMALLINT', 
+			UIntegerField: 'UINTEGER', 
+			UBigIntField: 'UBIGINT', 
+			FloatField: 'FLOAT', 
+			DoubleField: 'DOUBLE', 
+			VarcharField: 'VARCHAR', 
+			TimestampField: 'TIMESTAMP'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{true},
+		},
+		{
+			name: "scalar types - some rows missing some data",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
+						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
+						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "SMALLINT"},
+						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "INTEGER"},
+						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "BIGINT"},
+						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "UTINYINT"},
+						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "USMALLINT"},
+						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "UINTEGER"},
+						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "UBIGINT"},
+						{SourceName: "FloatField", ColumnName: "float_field", Type: "FLOAT"},
+						{SourceName: "DoubleField", ColumnName: "double_field", Type: "DOUBLE"},
+						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "VARCHAR"},
+						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "TIMESTAMP"},
+					},
+				},
+				json: `{"BooleanField": true}
+{"TinyIntField": 1}
+{"TinyIntField": 1, "BooleanField": true}`,
+				sqlColumn: "boolean_field",
+			},
+			wantQuery: fmt.Sprintf(`SELECT
+	BooleanField AS boolean_field,
+	TinyIntField AS tinyint_field,
+	SmallIntField AS smallint_field,
+	IntegerField AS integer_field,
+	BigIntField AS bigint_field,
+	UTinyIntField AS utinyint_field,
+	USmallIntField AS usmallint_field,
+	UIntegerField AS uinteger_field,
+	UBigIntField AS ubigint_field,
+	FloatField AS float_field,
+	DoubleField AS double_field,
+	VarcharField AS varchar_field,
+	TimestampField AS timestamp_field
+FROM
+	read_ndjson(
+		'%s',
+		columns = {
+			BooleanField: 'BOOLEAN', 
+			TinyIntField: 'TINYINT', 
+			SmallIntField: 'SMALLINT', 
+			IntegerField: 'INTEGER', 
+			BigIntField: 'BIGINT', 
+			UTinyIntField: 'UTINYINT', 
+			USmallIntField: 'USMALLINT', 
+			UIntegerField: 'UINTEGER', 
+			UBigIntField: 'UBIGINT', 
+			FloatField: 'FLOAT', 
+			DoubleField: 'DOUBLE', 
+			VarcharField: 'VARCHAR', 
+			TimestampField: 'TIMESTAMP'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{true, nil, true},
+		},
+		{
+			name: "scalar types, missing all data",
 			args: args{
 				schema: &schema.RowSchema{
 					Columns: []*schema.ColumnSchema{
@@ -227,35 +360,40 @@ FROM
 				json:      `{}`,
 				sqlColumn: "varchar_field",
 			},
-			wantQuery: fmt.Sprintf(`WITH json_data AS (
-	SELECT
-		json_extract(json, ['BooleanField', 'TinyIntField', 'SmallIntField', 'IntegerField', 'BigIntField', 'UTinyIntField', 'USmallIntField', 'UIntegerField', 'UBigIntField', 'FloatField', 'DoubleField', 'VarcharField', 'TimestampField']) AS extracted_list
-	FROM
-		read_json_auto('%s', format='newline_delimited')
-),
-parsed_data AS (
-	SELECT
-		COALESCE(CAST(extracted_list[1] AS BOOLEAN), NULL) AS boolean_field,
-		COALESCE(CAST(extracted_list[2] AS TINYINT), NULL) AS tinyint_field,
-		COALESCE(CAST(extracted_list[3] AS SMALLINT), NULL) AS smallint_field,
-		COALESCE(CAST(extracted_list[4] AS INTEGER), NULL) AS integer_field,
-		COALESCE(CAST(extracted_list[5] AS BIGINT), NULL) AS bigint_field,
-		COALESCE(CAST(extracted_list[6] AS UTINYINT), NULL) AS utinyint_field,
-		COALESCE(CAST(extracted_list[7] AS USMALLINT), NULL) AS usmallint_field,
-		COALESCE(CAST(extracted_list[8] AS UINTEGER), NULL) AS uinteger_field,
-		COALESCE(CAST(extracted_list[9] AS UBIGINT), NULL) AS ubigint_field,
-		COALESCE(CAST(extracted_list[10] AS FLOAT), NULL) AS float_field,
-		COALESCE(CAST(extracted_list[11] AS DOUBLE), NULL) AS double_field,
-		COALESCE(CAST(extracted_list[12] AS VARCHAR), NULL) AS varchar_field,
-		COALESCE(CAST(extracted_list[13] AS TIMESTAMP), NULL) AS timestamp_field	
-	FROM
-		json_data
-)
-SELECT
-	* 
+			wantQuery: fmt.Sprintf(`SELECT
+	BooleanField AS boolean_field,
+	TinyIntField AS tinyint_field,
+	SmallIntField AS smallint_field,
+	IntegerField AS integer_field,
+	BigIntField AS bigint_field,
+	UTinyIntField AS utinyint_field,
+	USmallIntField AS usmallint_field,
+	UIntegerField AS uinteger_field,
+	UBigIntField AS ubigint_field,
+	FloatField AS float_field,
+	DoubleField AS double_field,
+	VarcharField AS varchar_field,
+	TimestampField AS timestamp_field
 FROM
-	parsed_data`, jsonlFilePath),
-			wantData: nil,
+	read_ndjson(
+		'%s',
+		columns = {
+			BooleanField: 'BOOLEAN', 
+			TinyIntField: 'TINYINT', 
+			SmallIntField: 'SMALLINT', 
+			IntegerField: 'INTEGER', 
+			BigIntField: 'BIGINT', 
+			UTinyIntField: 'UTINYINT', 
+			USmallIntField: 'USMALLINT', 
+			UIntegerField: 'UINTEGER', 
+			UBigIntField: 'UBIGINT', 
+			FloatField: 'FLOAT', 
+			DoubleField: 'DOUBLE', 
+			VarcharField: 'VARCHAR', 
+			TimestampField: 'TIMESTAMP'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{nil},
 		},
 		{
 			name: "array types",
@@ -281,22 +419,39 @@ FROM
 				sqlColumn: "boolean_array_field",
 			},
 			wantQuery: fmt.Sprintf(`SELECT
-	BooleanArrayField::BOOLEAN[] AS boolean_array_field,
-	TinyIntArrayField::TINYINT[] AS tinyint_array_field,
-	SmallIntArrayField::SMALLINT[] AS smallint_array_field,
-	IntegerArrayField::INTEGER[] AS integer_array_field,
-	BigIntArrayField::BIGINT[] AS bigint_array_field,
-	UTinyIntArrayField::UTINYINT[] AS utinyint_array_field,
-	USmallIntArrayField::USMALLINT[] AS usmallint_array_field,
-	UIntegerArrayField::UINTEGER[] AS uinteger_array_field,
-	UBigIntArrayField::UBIGINT[] AS ubigint_array_field,
-	FloatArrayField::FLOAT[] AS float_array_field,
-	DoubleArrayField::DOUBLE[] AS double_array_field,
-	VarcharArrayField::VARCHAR[] AS varchar_array_field,
-	TimestampArrayField::TIMESTAMP[] AS timestamp_array_field
+	BooleanArrayField AS boolean_array_field,
+	TinyIntArrayField AS tinyint_array_field,
+	SmallIntArrayField AS smallint_array_field,
+	IntegerArrayField AS integer_array_field,
+	BigIntArrayField AS bigint_array_field,
+	UTinyIntArrayField AS utinyint_array_field,
+	USmallIntArrayField AS usmallint_array_field,
+	UIntegerArrayField AS uinteger_array_field,
+	UBigIntArrayField AS ubigint_array_field,
+	FloatArrayField AS float_array_field,
+	DoubleArrayField AS double_array_field,
+	VarcharArrayField AS varchar_array_field,
+	TimestampArrayField AS timestamp_array_field
 FROM
-	read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
-			wantData: []any{true, false},
+	read_ndjson(
+		'%s',
+		columns = {
+			BooleanArrayField: 'BOOLEAN[]', 
+			TinyIntArrayField: 'TINYINT[]', 
+			SmallIntArrayField: 'SMALLINT[]', 
+			IntegerArrayField: 'INTEGER[]', 
+			BigIntArrayField: 'BIGINT[]', 
+			UTinyIntArrayField: 'UTINYINT[]', 
+			USmallIntArrayField: 'USMALLINT[]', 
+			UIntegerArrayField: 'UINTEGER[]', 
+			UBigIntArrayField: 'UBIGINT[]', 
+			FloatArrayField: 'FLOAT[]', 
+			DoubleArrayField: 'DOUBLE[]', 
+			VarcharArrayField: 'VARCHAR[]', 
+			TimestampArrayField: 'TIMESTAMP[]'
+		}
+	)`, jsonlFilePath),
+			wantData: []any{[]any{true, false}},
 		},
 		{
 			name: "array of simple structs",
@@ -322,7 +477,12 @@ FROM
 		row_number() OVER () AS rowid,
 		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
 	FROM
-		read_json_auto('%s', format='newline_delimited')
+		read_ndjson(
+			'%s',
+			columns = {
+				StructArrayField: 'STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]'
+			}
+		)
 ), json_data AS (
 	SELECT
 		rowid,
@@ -342,9 +502,8 @@ JOIN
 	sl ON json_data.rowid = sl.rowid
 GROUP BY
 	sl.rowid`, jsonlFilePath),
-			wantData: "StringValue2",
+			wantData: []any{"StringValue2"},
 		},
-
 		{
 			name: "array of simple structs plus other fields",
 			args: args{
@@ -393,16 +552,29 @@ GROUP BY
 	SELECT
 		row_number() OVER () AS rowid,
 		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField,
-		IntField::INTEGER AS int_field,
-		StringField::VARCHAR AS string_field,
-		FloatField::FLOAT AS float_field,
-		BooleanField::BOOLEAN AS boolean_field,
-		IntArrayField::INTEGER[] AS int_array_field,
-		StringArrayField::VARCHAR[] AS string_array_field,
-		FloatArrayField::FLOAT[] AS float_array_field,
-		BooleanArrayField::BOOLEAN[] AS boolean_array_field
+		IntField AS int_field,
+		StringField AS string_field,
+		FloatField AS float_field,
+		BooleanField AS boolean_field,
+		IntArrayField AS int_array_field,
+		StringArrayField AS string_array_field,
+		FloatArrayField AS float_array_field,
+		BooleanArrayField AS boolean_array_field
 	FROM
-		read_json_auto('%s', format='newline_delimited')
+		read_ndjson(
+			'%s',
+			columns = {
+				StructArrayField: 'STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]', 
+				IntField: 'INTEGER', 
+				StringField: 'VARCHAR', 
+				FloatField: 'FLOAT', 
+				BooleanField: 'BOOLEAN', 
+				IntArrayField: 'INTEGER[]', 
+				StringArrayField: 'VARCHAR[]', 
+				FloatArrayField: 'FLOAT[]', 
+				BooleanArrayField: 'BOOLEAN[]'
+			}
+		)
 ), json_data AS (
 	SELECT
 		rowid,
@@ -430,7 +602,7 @@ JOIN
 	sl ON json_data.rowid = sl.rowid
 GROUP BY
 	sl.rowid, sl.int_field, sl.string_field, sl.float_field, sl.boolean_field, sl.int_array_field, sl.string_array_field, sl.float_array_field, sl.boolean_array_field`, jsonlFilePath),
-			wantData: "StringValue2",
+			wantData: []any{"StringValue2"},
 		},
 		{
 			name: "array of simple structs with null value",
@@ -456,7 +628,12 @@ GROUP BY
 		row_number() OVER () AS rowid,
 		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
 	FROM
-		read_json_auto('%s', format='newline_delimited')
+		read_ndjson(
+			'%s',
+			columns = {
+				StructArrayField: 'STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]'
+			}
+		)
 ), json_data AS (
 	SELECT
 		rowid,
@@ -476,7 +653,59 @@ JOIN
 	sl ON json_data.rowid = sl.rowid
 GROUP BY
 	sl.rowid`, jsonlFilePath),
-			wantData: nil,
+			wantData: []any{},
+		},
+		{
+			name: "array of simple structs with null value and non null value",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{
+							SourceName: "StructArrayField",
+							ColumnName: "struct_array_field",
+							Type:       "STRUCT[]",
+							StructFields: []*schema.ColumnSchema{
+								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
+								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
+							},
+						},
+					},
+				},
+				json: `{"StructArrayField": null}
+{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}`,
+				sqlColumn: "struct_array_field[1].struct_string_field",
+			},
+			wantQuery: fmt.Sprintf(`WITH sl AS (
+	SELECT
+		row_number() OVER () AS rowid,
+		UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
+	FROM
+		read_ndjson(
+			'%s',
+			columns = {
+				StructArrayField: 'STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]'
+			}
+		)
+), json_data AS (
+	SELECT
+		rowid,
+		StructArrayField->>'StructStringField' AS StructArrayField_StructStringField,
+		StructArrayField->>'StructIntField' AS StructArrayField_StructIntField
+	FROM
+		sl
+)
+SELECT
+	array_agg(struct_pack(
+		struct_string_field := StructArrayField_StructStringField::VARCHAR,
+		struct_int_field := StructArrayField_StructIntField::INTEGER
+	)) AS struct_array_field
+FROM
+	json_data
+JOIN
+	sl ON json_data.rowid = sl.rowid
+GROUP BY
+	sl.rowid`, jsonlFilePath),
+			wantData: []any{"StringValue2"},
 		},
 
 		//TODO doesn't work
@@ -544,19 +773,28 @@ func executeQuery(t *testing.T, query, json, sqlColumn string) (any, error) {
 	}
 	defer os.Remove(jsonlFilePath)
 
+	// get the data
+	var data []any
+
 	// execute in duckdb
 	// build select query
 	testQuery := fmt.Sprintf("SELECT %s from (%s)", sqlColumn, query)
-	row := db.QueryRow(testQuery)
+	rows, err := db.Query(testQuery)
 
-	// get the data
-	var data any
-	err = row.Scan(&data)
-	if err != nil && err.Error() != "sql: no rows in result set" {
-		return nil, fmt.Errorf("error scanning data: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("error executing query: %w", err)
 	}
-	return data, nil
+	// Iterate over the results
+	for rows.Next() {
+		var d any
 
+		if err := rows.Scan(&d); err != nil {
+			return nil, fmt.Errorf("error scanning data: %w", err)
+		}
+		data = append(data, d)
+	}
+
+	return data, nil
 }
 
 func createJSONLFile(json string) error {
