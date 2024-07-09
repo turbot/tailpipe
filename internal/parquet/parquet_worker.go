@@ -15,6 +15,9 @@ import (
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
 type parquetConversionWorker struct {
 	fileWorkerBase[ParquetJobPayload]
+	// cache collection schemas - key by colleciton type
+	viewQueries map[string]string
+
 	db *duckDb
 }
 
@@ -22,6 +25,7 @@ type parquetConversionWorker struct {
 func newParquetConversionWorker(jobChan chan fileJob[ParquetJobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
 	w := &parquetConversionWorker{
 		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
+		viewQueries:    make(map[string]string),
 	}
 
 	// create a new DuckDB instance
@@ -81,7 +85,11 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType stri
 		return fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
-	selectQuery := buildViewQuery(schema, jsonlFilePath)
+	// get the query format - from cache if possible
+	selectQueryFormat := w.getViewQuery(collectionType, schema)
+	// render query
+	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
+
 	// Create a query to write to partitioned parquet files
 	partitionColumns := []string{"tp_collection", "tp_connection", "tp_year", "tp_month", "tp_day"}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
@@ -101,7 +109,16 @@ func (w *parquetConversionWorker) getParquetFileRoot(collectionType string) stri
 	return filepath.Join(w.destDir, collectionType)
 }
 
-func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
+func (w *parquetConversionWorker) getViewQuery(collectionType string, rowSchema *schema.RowSchema) interface{} {
+	query, ok := w.viewQueries[collectionType]
+	if !ok {
+		query = buildViewQuery(rowSchema)
+		w.viewQueries[collectionType] = query
+	}
+	return query
+}
+
+func buildViewQuery(rowSchema *schema.RowSchema) string {
 	var structSliceColumns []*schema.ColumnSchema
 
 	// first build the columns to select from the jsonl file
@@ -123,9 +140,9 @@ func buildViewQuery(rowSchema *schema.RowSchema, jsonlFilePath string) string {
 	columnStrings.WriteString(fmt.Sprintf(`
 FROM
 	read_ndjson(
-		'%s',
+		'%%s',
 %s
-	)`, jsonlFilePath, helpers.Tabify(columnDefinitions, "\t\t")))
+	)`, helpers.Tabify(columnDefinitions, "\t\t")))
 
 	// if there are no struct[] fields, we are done - just add the select at the start
 	if len(structSliceColumns) == 0 {
@@ -154,7 +171,8 @@ func getReadJSONColumnDefinitions(rowSchema *schema.RowSchema) string {
 		if i > 0 {
 			str.WriteString(", ")
 		}
-		str.WriteString(fmt.Sprintf("\n\t%s: '%s'", column.SourceName, column.FullType()))
+		str.WriteString(fmt.Sprintf(`
+	"%s": '%s'`, column.SourceName, column.FullType()))
 	}
 	str.WriteString("\n}")
 	return str.String()
@@ -319,7 +337,7 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 
 	case "MAP":
 		//	// TODO
-		return fmt.Sprintf("%s%s AS %s", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
 
 	case "STRUCT[]":
 		// //UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
@@ -327,8 +345,9 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 		//STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]
 		structTypeDef := column.FullType()
 
+		// TODO LOOK AT QUOTING NAME
 		// just unnest - we will add a clause to extract the fields
-		return fmt.Sprintf("%sUNNEST(COALESCE(%s, ARRAY[]::%s)::%s) AS %s", tab, column.SourceName, structTypeDef, structTypeDef, column.SourceName)
+		return fmt.Sprintf(`%sUNNEST(COALESCE("%s", ARRAY[]::%s)::%s) AS %s`, tab, column.SourceName, structTypeDef, structTypeDef, column.SourceName)
 
 	case "STRUCT":
 		//  struct_pack(
@@ -341,13 +360,15 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 			if j > 0 {
 				str.WriteString(",\n")
 			}
-			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, column.SourceName, tabs+1)))
+			parentName := fmt.Sprintf(`"%s"`, column.SourceName)
+			str.WriteString(fmt.Sprintf(`%s`, getTypeSqlForStructField(nestedColumn, parentName, tabs+1)))
 		}
-		str.WriteString(fmt.Sprintf("\n%s) AS %s", tab, column.ColumnName))
+		str.WriteString(fmt.Sprintf(`
+%s) AS "%s"`, tab, column.ColumnName))
 		return str.String()
 	default:
 		//<SourceName> AS <ColumnName>
-		return fmt.Sprintf("%s%s AS %s", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
 	}
 
 }
@@ -362,18 +383,19 @@ func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, ta
 
 	case "STRUCT":
 		var str strings.Builder
-		str.WriteString(fmt.Sprintf("%s%s := struct_pack(\n", tab, column.ColumnName))
+		str.WriteString(fmt.Sprintf(`%s"%s" := struct_pack(`, tab, column.ColumnName))
+		str.WriteString("\n")
 		for j, nestedColumn := range column.StructFields {
 			if j > 0 {
 				str.WriteString(",\n")
 			}
 			// newParent is the parentName for the nested column
-			newParent := fmt.Sprintf("%s.%s", parentName, column.SourceName)
+			newParent := fmt.Sprintf(`%s."%s"`, parentName, column.SourceName)
 			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, newParent, tabs+1)))
 		}
 		str.WriteString(fmt.Sprintf("\n%s)", tab))
 		return str.String()
 	default:
-		return fmt.Sprintf("%s%s := %s.%s::%s", tab, column.ColumnName, parentName, column.SourceName, column.Type)
+		return fmt.Sprintf(`%s"%s" := %s."%s"::%s`, tab, column.ColumnName, parentName, column.SourceName, column.Type)
 	}
 }

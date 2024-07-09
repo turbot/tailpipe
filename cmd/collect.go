@@ -65,6 +65,10 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 			Plugin: "aws",
 		},
 		//{
+		//	Type:   "aws_flow_log",
+		//	Plugin: "aws",
+		//},
+		//{
 		//	Type:   "pipes_audit_log",
 		//	Plugin: "pipes",
 		//},
