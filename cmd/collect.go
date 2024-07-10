@@ -60,14 +60,14 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 
 	fmt.Println()
 	collections := []*config.Collection{
-		{
-			Type:   "aws_cloudtrail_log",
-			Plugin: "aws",
-		},
 		//{
-		//	Type:   "aws_flow_log",
+		//	Type:   "aws_cloudtrail_log",
 		//	Plugin: "aws",
 		//},
+		{
+			Type:   "aws_flow_log",
+			Plugin: "aws",
+		},
 		//{
 		//	Type:   "pipes_audit_log",
 		//	Plugin: "pipes",

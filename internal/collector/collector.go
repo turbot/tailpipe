@@ -59,13 +59,6 @@ func New(ctx context.Context) (*Collector, error) {
 		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 
-	// create a file watcher
-	//fileWatcher, err := file_watcher.NewSourceFileWatcher(inboxPath, c.handleFileWatcherEvent)
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to create file watcher: %w", err)
-	//}
-	//c.fileWatcher = fileWatcher
-
 	// start listening to plugin event
 	c.listenToEventsAsync(ctx)
 	return c, nil
@@ -138,31 +131,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 	}
 }
-
-//// handleFileWatcherEvent handles an event from the file watcher - i.e. the creation of a new file
-//func (c *Collector) handleFileWatcherEvent(events []fsnotify.Event) {
-//	slog.Debug("handleFileWatcherEvent")
-//	var errors []error
-//	for _, event := range events {
-//		slog.Debug("file event", "event", event)
-//		// if this is a create event, write a parquet file
-//		if event.Op&fsnotify.Create == fsnotify.Create {
-//			// extract the execution id from the filename
-//			executionId, chunkNumber, err := plugin.FileNameToExecutionId(event.Name)
-//			if err != nil {
-//				errors = append(errors, err)
-//				continue
-//			}
-//
-//			// add chunk to the parquet writer
-//			err = c.parquetWriter.AddChunk(executionId, chunkNumber)
-//
-//		}
-//	}
-//	slog.Debug("handleFileWatcherEvent", "errors", errors)
-//
-//	slog.Debug("handleFileWatcherEvent done")
-//}
 
 // Close cleans up the collector - closes the file watcher
 func (c *Collector) Close() {

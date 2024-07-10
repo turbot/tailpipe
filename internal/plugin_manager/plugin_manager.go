@@ -70,9 +70,21 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 	executionID := getExecutionId()
 
 	// tell the plugin to start the collection
-	err = plugin.Collect(&proto.CollectRequest{
-		ExecutionId: executionID,
-		OutputPath:  p.inboxPath})
+	req := &proto.CollectRequest{
+		ExecutionId:    executionID,
+		OutputPath:     p.inboxPath,
+		CollectionName: collection.Type,
+	}
+
+	// TODO TEMP - hard coded paths
+	switch collection.Type {
+	case "aws_cloudtrail_log":
+		req.Paths = []string{"/Users/kai/tailpipe_data/flaws_cloudtrail_logs"}
+	case "aws_flow_log":
+		req.Paths = []string{"/Users/kai/tailpipe_data/flowlog"}
+	}
+
+	err = plugin.Collect(req)
 	if err != nil {
 		return nil, fmt.Errorf("error starting collection for plugin %s: %w", plugin.Name, err)
 	}
