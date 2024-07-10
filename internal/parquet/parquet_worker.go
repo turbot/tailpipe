@@ -182,129 +182,233 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 	var str strings.Builder
 
 	/* this is the what we want
-	WITH sl AS (
-		SELECT
-			row_number() OVER () AS rowid,
-			UNNEST(StructArrayField) AS StructArrayField,
-			IntField::INTEGER AS int_field,
-		FROM
-			read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
-	), json_data AS (
-		SELECT
-			rowid,
-			StructArrayField->>'StructStringField' AS StructArrayField_StructStringField,
-			StructArrayField->>'StructIntField' AS StructArrayField_StructIntField
-		FROM
-			sl
+
+	WITH raw AS (
+	    SELECT
+	        row_number() OVER () AS rowid,
+	        "StructArrayField" AS "struct_array_field",
+	        "IntField" AS "int_field",
+	        "StringField" AS "string_field",
+	        "FloatField" AS "float_field",
+	        "BooleanField" AS "boolean_field",
+	        "IntArrayField" AS "int_array_field",
+	        "StringArrayArrayField" AS "string_array_field",
+	        "FloatArrayField" AS "float_array_field",
+	        "BooleanArrayField" AS "boolean_array_field"
+	    FROM
+	        read_ndjson(
+	            '/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/1.jsonl',
+	            columns = {
+	                "StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]',
+	                "IntField": 'INTEGER',
+	                "StringField": 'VARCHAR',
+	                "FloatField": 'FLOAT',
+	                "BooleanField": 'BOOLEAN',
+	                "IntArrayField": 'INTEGER[]',
+	                "StringArrayArrayField": 'VARCHAR[]',
+	                "FloatArrayField": 'FLOAT[]',
+	                "BooleanArrayField": 'BOOLEAN[]'
+	            }
+	        )
+	), unnest_struct_array_field AS (
+	    SELECT
+	        rowid,
+	        UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
+	    FROM
+	        raw
+	), rebuild_unnest_struct_array_field AS (
+	    SELECT
+	        rowid,
+	        struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
+	        struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
+	    FROM
+	        unnest_struct_array_field
+	), grouped_unnest_struct_array_field AS (
+	    SELECT
+	        rowid,
+	        array_agg(struct_pack(
+	            struct_string_field := StructArrayField_StructStringField::VARCHAR,
+	            struct_int_field := StructArrayField_StructIntField::INTEGER
+	        )) AS struct_array_field
+	    FROM
+	        rebuild_unnest_struct_array_field
+	    GROUP BY
+	        rowid
 	)
 	SELECT
-		array_agg(struct_pack(
-			struct_string_field := StructArrayField_StructStringField::VARCHAR,
-			struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field,
-		sl.int_field
+	    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+	    raw.int_field,
+	    raw.string_field,
+	    raw.float_field,
+	    raw.boolean_field,
+	    raw.int_array_field,
+	    raw.string_array_field,
+	    raw.float_array_field,
+	    raw.boolean_array_field
 	FROM
-		json_data
-	JOIN
-		sl ON json_data.rowid = sl.rowid
-	GROUP BY
-		sl.rowid, sl.int_field
-
+	    raw
+	LEFT JOIN
+	    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
 	*/
 
-	/* 	WITH sl AS (
-	SELECT
-		row_number() OVER () AS rowid,
-		UNNEST(StructArrayField) AS StructArrayField,
-		IntField::INTEGER AS int_field,
-	FROM
-		read_json_auto('/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/test.jsonl', format='newline_delimited')
+	/* 	WITH raw AS (
 
-	*/
-	str.WriteString("WITH sl AS (\n")
+	 */
+	str.WriteString("WITH raw AS (\n")
 	str.WriteString(helpers.Tabify(q, "\t"))
+	str.WriteString("\n)")
 
-	/*
-		), json_data AS (
-					SELECT
-						rowid,
-	*/
-
-	str.WriteString("\n), json_data AS (\n")
-	str.WriteString("\tSELECT\n")
-	str.WriteString("\t\trowid")
-
-	/*
-				  StructArrayField->>'StructStringField' AS StructArrayField_StructStringField,
-				  StructArrayField->>'StructIntField' AS StructArrayField_StructIntField
-			  FROM sl
-		)
-	*/
+	// for every struct[] field, we need to add various CTEs
 	for _, structSliceCol := range structSliceColumns {
-		// iterate over struct fields
-		for _, col := range structSliceCol.StructFields {
 
+		/*
+			, unnest_struct_array_field AS (
+			    SELECT
+			        rowid,
+		*/
+		unnestName := fmt.Sprintf(`unnest_%s`, structSliceCol.ColumnName)
+
+		str.WriteString(fmt.Sprintf(`, %s AS (
+    SELECT
+        rowid,`, unnestName))
+
+		/*
+			UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
+		*/
+
+		str.WriteString(fmt.Sprintf(`
+		UNNEST(COALESCE("%s", ARRAY[]::%s)::%s) AS %s`, structSliceCol.ColumnName, structSliceCol.FullType(), structSliceCol.FullType(), structSliceCol.ColumnName))
+
+		/*
+		   	FROM
+		   		raw
+		   )
+		*/
+
+		str.WriteString(`
+	FROM
+		raw
+)`)
+
+		/*
+		   , rebuild_unnest_struct_array_field AS (
+		      SELECT
+		   	   rowid,
+		*/
+		rebuildName := fmt.Sprintf(`rebuild_%s`, unnestName)
+
+		str.WriteString(fmt.Sprintf(`, %s AS (
+	SELECT
+		rowid`, rebuildName))
+
+		// loop over fields in the struct
+		/*
+			        struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
+			)
+		*/
+		for _, structField := range structSliceCol.StructFields {
 			str.WriteString(",\n")
-			// json_extract(<ParentStructSourceName>, '$.<SourceName>') AS <ParentStructSourceName>_<SourceName>
-			str.WriteString(fmt.Sprintf("\t\t%s->>'%s' AS %s_%s", structSliceCol.SourceName, col.SourceName, structSliceCol.SourceName, col.SourceName))
+			str.WriteString(fmt.Sprintf(`		%s->>'%s' AS %s_%s`, structSliceCol.ColumnName, structField.SourceName, structSliceCol.SourceName, structField.SourceName))
 		}
-	}
-	str.WriteString("\n\tFROM\n\t\tsl\n)")
+		/*
+		   	FROM
+		   		unnest_struct_array_field
+		   )
+		*/
 
-	/*
+		str.WriteString(fmt.Sprintf(`
+	FROM
+		%s
+)`, unnestName))
 
-		)
-		SELECT
-			array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-			)) AS struct_array_field,
-			sl.int_field
-	*/
+		/*
+		      , grouped_unnest_struct_array_field AS (
+		      	    SELECT
+		      	        rowid,
+		      	        array_agg(struct_pack(
+		   				struct_string_field := StructArrayField_StructStringField::VARCHAR,
+		      	            struct_int_field := StructArrayField_StructIntField::INTEGER
+		      	        )) AS struct_array_field
+		      	    FROM
+		      	        rebuild_unnest_struct_array_field
+		      	    GROUP BY
+		      	        rowid
+		      	)
 
-	str.WriteString("\nSELECT\n")
-
-	for i, column := range rowSchema.Columns {
-		if i > 0 {
-			str.WriteString(",\n")
-		}
-		if column.Type == "STRUCT[]" {
-			/*
-				array_agg(struct_pack(
-					struct_string_field := json_data.StructArrayField_StructStringField,
-					struct_int_field := json_data.StructArrayField_StructIntField
-				)) AS struct_array_field,
-			*/
-			str.WriteString(fmt.Sprintf("\tarray_agg(struct_pack(\n"))
-			for j, nestedColumn := range column.StructFields {
-				if j > 0 {
-					str.WriteString(",\n")
-				}
-				// <ColumnName> := <StructFieldSourceName>_<StructFieldSourceName>::TYPE,
-				str.WriteString(fmt.Sprintf("\t\t%s := %s_%s::%s", nestedColumn.ColumnName, column.SourceName, nestedColumn.SourceName, nestedColumn.Type))
+		*/
+		groupedName := fmt.Sprintf(`grouped_%s`, unnestName)
+		str.WriteString(fmt.Sprintf(`, %s AS (`, groupedName))
+		str.WriteString(fmt.Sprintf(`
+	SELECT
+		rowid,	
+		array_agg(struct_pack(
+`))
+		// loop over struct
+		for i, structField := range structSliceCol.StructFields {
+			if i > 0 {
+				str.WriteString(",\n")
 			}
-			str.WriteString(fmt.Sprintf("\n\t)) AS %s", column.ColumnName))
-		} else {
-
-			str.WriteString(fmt.Sprintf("\tsl.%s", column.ColumnName))
+			str.WriteString(fmt.Sprintf(`				%s := %s_%s::%s`, structField.ColumnName, structSliceCol.SourceName, structField.SourceName, structField.Type))
 		}
+		str.WriteString(fmt.Sprintf(`
+		)) AS %s	
+	FROM
+		%s	
+	GROUP BY
+		rowid	
+)`, structSliceCol.ColumnName, rebuildName))
+
 	}
+	// build the final select
 	/*
-		FROM
-			json_data
-		JOIN
-			sl ON json_data.rowid = sl.rowid
-		GROUP BY
-			sl.rowid, sl.int_field
+		SELECT
+			    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+			    raw.int_field,
+			    raw.string_field,
+			    raw.float_field,
+			    raw.boolean_field,
+			    raw.int_array_field,
+			    raw.string_array_field,
+			    raw.float_array_field,
+			    raw.boolean_array_field
+			FROM
+			    raw
+			LEFT JOIN
+			    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
 	*/
-	str.WriteString("\nFROM\n\tjson_data")
-	str.WriteString("\nJOIN\n\tsl ON json_data.rowid = sl.rowid")
-	str.WriteString("\nGROUP BY\n\tsl.rowid")
+	// build list of coalesce fields and join fields
+	var coalesceFields strings.Builder
+	var leftJoins strings.Builder
+	for i, column := range structSliceColumns {
+		if i > 0 {
+			coalesceFields.WriteString(",\n")
+			leftJoins.WriteString("\n")
+		}
+		joinedName := fmt.Sprintf(`joined_%s`, column.ColumnName)
+		groupedName := fmt.Sprintf(`grouped_unnest_%s`, column.ColumnName)
+
+		coalesceFields.WriteString(fmt.Sprintf(`	COALESCE(%s.%s, NULL) AS %s`, joinedName, column.ColumnName, column.ColumnName))
+		leftJoins.WriteString(fmt.Sprintf(`LEFT JOIN
+	%s %s ON raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
+
+	}
+
+	// now construct final select
+	str.WriteString(fmt.Sprintf(`
+SELECT
+%s`, coalesceFields.String()))
+
 	for _, column := range rowSchema.Columns {
 		if column.Type != "STRUCT[]" {
-			str.WriteString(fmt.Sprintf(", sl.%s", column.ColumnName))
+			str.WriteString(",\n")
+			str.WriteString(fmt.Sprintf(`	raw.%s`, column.ColumnName))
 		}
 	}
+	str.WriteString(fmt.Sprintf(`
+FROM
+	raw	
+%s`, leftJoins.String()))
+
 	return str.String()
 }
 
@@ -335,19 +439,10 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	tab := strings.Repeat("\t", tabs)
 	switch column.Type {
 
-	case "MAP":
-		//	// TODO
-		return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
-
-	case "STRUCT[]":
-		// //UNNEST(COALESCE(StructArrayField, ARRAY[]::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[])::STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]) AS StructArrayField
-		// build DuckDB struct typedef
-		//STRUCT(StructStringField VARCHAR, StructIntField INTEGER)[]
-		structTypeDef := column.FullType()
-
-		// TODO LOOK AT QUOTING NAME
-		// just unnest - we will add a clause to extract the fields
-		return fmt.Sprintf(`%sUNNEST(COALESCE("%s", ARRAY[]::%s)::%s) AS %s`, tab, column.SourceName, structTypeDef, structTypeDef, column.SourceName)
+	// TODO
+	//case "MAP":
+	//	//	// TODO
+	//	return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
 
 	case "STRUCT":
 		//  struct_pack(
