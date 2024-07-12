@@ -82,6 +82,7 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 		req.Paths = []string{"/Users/kai/tailpipe_data/flaws_cloudtrail_logs"}
 	case "aws_flow_log":
 		req.Paths = []string{"/Users/kai/tailpipe_data/flowlog"}
+		req.Paths = []string{"/Users/kai/tailpipe_data/flowlog_debug"}
 	}
 
 	err = plugin.Collect(req)

@@ -81,7 +81,6 @@ func (w *fileJobPool[T]) Start() error {
 // a job group represents a set of linked jobs, e.g. a set of JSONL files that need to be converted to Parquet for
 // a given collection execution
 func (w *fileJobPool[T]) StartJobGroup(id, collectionType string, payload T) error {
-
 	slog.Debug("fileJobPool[T].StartJobGroup", "execution id", id)
 	// we expect this execution id WIL NOT be in the map already
 	// if it is, we should return an error

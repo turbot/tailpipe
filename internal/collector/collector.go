@@ -122,12 +122,17 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	case *proto.Event_CompleteEvent:
 		slog.Debug("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
 
+		completedEvent := e.GetCompleteEvent()
+		if completedEvent.Error != "" {
+			slog.Error("execution error", "execution", completedEvent.ExecutionId, "error", completedEvent.Error)
+			// TODO #errors what to do with this error?
+		}
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		go c.waitForExecution(ctx, e.GetCompleteEvent())
+		go c.waitForExecution(ctx, completedEvent)
 
 	}
 }
