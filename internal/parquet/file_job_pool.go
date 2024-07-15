@@ -85,7 +85,7 @@ func (w *fileJobPool[T]) StartJobGroup(id, collectionType string, payload T) err
 	// we expect this execution id WIL NOT be in the map already
 	// if it is, we should return an error
 	if _, ok := w.jobGroups[id]; ok {
-		fmt.Errorf("job group id %s already exists", id)
+		return fmt.Errorf("job group id %s already exists", id)
 	}
 
 	jobGroup := newJobGroup(id, collectionType, payload)

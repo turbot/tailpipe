@@ -338,11 +338,11 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSl
 		*/
 		groupedName := fmt.Sprintf(`grouped_%s`, unnestName)
 		str.WriteString(fmt.Sprintf(`, %s AS (`, groupedName))
-		str.WriteString(fmt.Sprintf(`
+		str.WriteString(`
 	SELECT
 		rowid,	
 		array_agg(struct_pack(
-`))
+`)
 		// loop over struct
 		for i, structField := range structSliceCol.StructFields {
 			if i > 0 {
@@ -456,7 +456,7 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 				str.WriteString(",\n")
 			}
 			parentName := fmt.Sprintf(`"%s"`, column.SourceName)
-			str.WriteString(fmt.Sprintf(`%s`, getTypeSqlForStructField(nestedColumn, parentName, tabs+1)))
+			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+1))
 		}
 		str.WriteString(fmt.Sprintf(`
 %s) AS "%s"`, tab, column.ColumnName))
@@ -486,7 +486,7 @@ func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, ta
 			}
 			// newParent is the parentName for the nested column
 			newParent := fmt.Sprintf(`%s."%s"`, parentName, column.SourceName)
-			str.WriteString(fmt.Sprintf("%s", getTypeSqlForStructField(nestedColumn, newParent, tabs+1)))
+			str.WriteString(getTypeSqlForStructField(nestedColumn, newParent, tabs+1))
 		}
 		str.WriteString(fmt.Sprintf("\n%s)", tab))
 		return str.String()

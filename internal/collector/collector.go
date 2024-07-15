@@ -80,8 +80,7 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	}
 
 	// start the parquet writer job
-	c.parquetWriter.StartCollection(executionId, col.Type, collectResponse.CollectionSchema)
-	return nil
+	return c.parquetWriter.StartCollection(executionId, col.Type, collectResponse.CollectionSchema)
 }
 
 // Notify implements observer.Observer
@@ -132,7 +131,14 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		go c.waitForExecution(ctx, completedEvent)
+		// TODO what to do with an error here?
+		go func() {
+			err := c.waitForExecution(ctx, completedEvent)
+			if err != nil {
+				slog.Error("error waiting for execution to complete", "error", err)
+				// TODO #errors what to do with this error?
+			}
+		}()
 
 	}
 }
@@ -198,9 +204,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	// mark execution as complete
 	e.state = ExecutionState_COMPLETE
 	// notify the writer that the collection is complete
-	c.parquetWriter.CollectionComplete(ce.ExecutionId)
-
-	return nil
+	return c.parquetWriter.CollectionComplete(ce.ExecutionId)
 }
 
 func (c *Collector) waitForExecutions() error {

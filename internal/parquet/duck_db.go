@@ -7,7 +7,7 @@ import (
 
 type duckDb struct {
 	// duckDb connection
-	sql.DB
+	*sql.DB
 }
 
 // ctor
@@ -23,6 +23,6 @@ func newDuckDb() (*duckDb, error) {
 	if _, err := db.Exec("LOAD 'json';"); err != nil {
 		return nil, fmt.Errorf("failed to load JSON extension: %w", err)
 	}
-	w.DB = *db
+	w.DB = db
 	return w, nil
 }

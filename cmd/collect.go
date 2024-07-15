@@ -4,16 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
-	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
-	"golang.org/x/exp/maps"
-	"strings"
 )
 
 // TODO #errors have good think about error handling and return codes
@@ -98,30 +94,30 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	fmt.Println("collection complete")
 }
 
-func getTargetCollectionConfig(tailpipeConfig *config.TailpipeConfig) ([]*config.Collection, error) {
-	collectionNames := viper.GetStringSlice(constants.ArgCollection)
-
-	// if no collections specified, return all
-	if len(collectionNames) == 0 {
-		return maps.Values(tailpipeConfig.Collections), nil
-	}
-
-	var collections []*config.Collection
-	var missing []string
-	for _, name := range collectionNames {
-		c := tailpipeConfig.Collections[name]
-		if c == nil {
-			missing = append(missing, name)
-		} else {
-			collections = append(collections, c)
-		}
-	}
-
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("collection", len(missing)), strings.Join(missing, ", "))
-	}
-	return collections, nil
-}
+//func getTargetCollectionConfig(tailpipeConfig *config.TailpipeConfig) ([]*config.Collection, error) {
+//	collectionNames := viper.GetStringSlice(constants.ArgCollection)
+//
+//	// if no collections specified, return all
+//	if len(collectionNames) == 0 {
+//		return maps.Values(tailpipeConfig.Collections), nil
+//	}
+//
+//	var collections []*config.Collection
+//	var missing []string
+//	for _, name := range collectionNames {
+//		c := tailpipeConfig.Collections[name]
+//		if c == nil {
+//			missing = append(missing, name)
+//		} else {
+//			collections = append(collections, c)
+//		}
+//	}
+//
+//	if len(missing) > 0 {
+//		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("collection", len(missing)), strings.Join(missing, ", "))
+//	}
+//	return collections, nil
+//}
 
 func setExitCodeForCollectError(err error) {
 	// if exit code already set, leave as is

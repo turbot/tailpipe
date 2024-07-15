@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
@@ -45,7 +44,7 @@ func NewSource(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	if len(block.Labels) < 2 {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("'source' block requires 2 labels, 'type' and 'name'"),
+			Summary:  "'source' block requires 2 labels, 'type' and 'name'",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}}
 	}

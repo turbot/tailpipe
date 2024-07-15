@@ -21,6 +21,9 @@ var jsonlFilePath string
 func setup() error {
 	var err error
 	db, err = newDuckDb()
+	if err != nil {
+		return fmt.Errorf("error creating duckdb: %w", err)
+	}
 	// make tempdata directory in local folder
 	// Create the directory
 	err = os.MkdirAll(testDir, 0755)
@@ -31,7 +34,7 @@ func setup() error {
 
 	// resolve the jsonl file path
 	jsonlFilePath, err = filepath.Abs(filepath.Join(testDir, "test.jsonl"))
-	return nil
+	return err
 }
 
 func teardown() {
