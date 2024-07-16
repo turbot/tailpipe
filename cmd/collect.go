@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
@@ -54,21 +55,36 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	//collections, err := getTargetCollectionConfig(config)
 	//error_helpers.FailOnError(err)
 
-	fmt.Println()
-	collections := []*config.Collection{
-		//{
-		//	Type:   "aws_cloudtrail_log",
-		//	Plugin: "aws",
-		//},
-		{
+	// todo tactical
+	allCollections := map[string]*config.Collection{
+		"aws_cloudtrail_log": {
+			Type:   "aws_cloudtrail_log",
+			Plugin: "aws",
+		},
+		"aws_flow_log": {
 			Type:   "aws_flow_log",
 			Plugin: "aws",
 		},
-		//{
-		//	Type:   "pipes_audit_log",
-		//	Plugin: "pipes",
-		//},
+		"aws_s3_access_log": {
+			Type:   "pipes_audit_log",
+			Plugin: "pipes",
+		},
 	}
+	var collections []*config.Collection
+
+	for _, c := range viper.GetStringSlice(constants.ArgCollection) {
+		if col, ok := allCollections[c]; !ok {
+			error_helpers.FailOnError(fmt.Errorf("config does not contain %s: %s", "collection", c))
+		} else {
+			collections = append(collections, col)
+		}
+	}
+
+	if len(collections) == 0 {
+		collections = []*config.Collection{allCollections["aws_cloudtrail_log"]}
+	}
+	// tactical
+
 	// now we have the collections, we can start collecting
 
 	// create a collector
