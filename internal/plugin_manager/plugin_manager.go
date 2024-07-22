@@ -74,15 +74,7 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 		ExecutionId:    executionID,
 		OutputPath:     p.inboxPath,
 		CollectionName: collection.Type,
-	}
-
-	// TODO TEMP - hard coded paths
-	switch collection.Type {
-	case "aws_cloudtrail_log":
-		req.Paths = []string{"/Users/kai/tailpipe_data/flaws_cloudtrail_logs"}
-	case "aws_flow_log":
-		req.Paths = []string{"/Users/kai/tailpipe_data/flowlog"}
-		req.Paths = []string{"/Users/kai/tailpipe_data/flowlog_debug"}
+		Config:         collection.Config,
 	}
 
 	err = plugin.Collect(req)

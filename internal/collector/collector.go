@@ -119,6 +119,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			// TODO #errors what to do with this error?
 		}
 	case *proto.Event_CompleteEvent:
+		// TODO if no chunk written event was received, this currently stalls
 		slog.Debug("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
 
 		completedEvent := e.GetCompleteEvent()

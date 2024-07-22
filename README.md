@@ -12,6 +12,81 @@ Tailpipe is a simple, open-source and extensible SIEM tool.
 * Detect issues in real-time during ingestion
 * Query over multiple logs at once
 
+## WIP for Developers at 22-July-2024
+
+This is WIP code.
+
+Currelty the on
+
+Currently, it works with Turbot Pipes, so set your token:
+```
+export PIPES_TOKEN=tpt_example
+```
+
+Make and install the required plugins:
+```
+cd ~/src
+git clone git@github.com:turbot/tailpipe-plugin-aws.git
+git clone git@github.com:turbot/tailpipe-plugin-pipes.git
+git clone git@github.com:turbot/tailpipe-plugin-sdk.git
+
+cd ~/src/tailpipe-plugin-aws
+make
+
+cd ~/src/tailpipe-plugin-pipes
+make
+```
+
+Make and run the program to download audit logs from Pipes and store in Parquet format:
+```
+cd ~/src/tailpipe
+make
+
+```
+
+configure collection config
+``` 
+# tailpipe.hcl
+```
+
+set credentials and execute
+```
+# AWS
+export AWS_ACCESS_KEY_ID="xxxx"
+export AWS_SECRET_ACCESS_KEY="xxxx"
+# optional
+export AWS_SESSION_TOKEN="xxxxx"
+
+# pipes
+export PIPES_TOKEN="xxxx"
+
+# run
+tailpipe collect collection=aws_cloudtrail_log    
+
+```
+
+
+Use DuckDB to query the files:
+
+```
+duckdb
+```
+
+Setup a view and run queries:
+```
+create view pipes_audit_log as select * from '~/Downloads/tailpipe/*/*/*/*/*/*.parquet';
+
+select action_type, count(*) as total from pipes_audit_log group by all order by total desc;
+```
+
+
+
+
+
+
+
+
+
 ## WIP for Developers at 17-Apr-2024
 
 This is WIP code. Currently `main.go` just runs a simple program to load a

@@ -100,6 +100,8 @@ type Collection struct {
 	Format *string `hcl:"format"`
 
 	Credential *Credential `hcl:"credential"`
+
+	Config []byte
 }
 
 func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {

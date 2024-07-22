@@ -42,19 +42,6 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		}
 		setExitCodeForCollectError(err)
 	}()
-
-	//// load config
-	//config, err := localparse.LoadTailpipeConfig(viper.GetString(constants.ArgConfigPath))
-	//error_helpers.FailOnError(err)
-	//slog.Info("config loaded", "config", config)
-	//if len(config.Collections) == 0 {
-	//	error_helpers.FailOnError(fmt.Errorf("loaded config does not contain any collections"))
-	//}
-	//
-	//// validate collection args and retrieve the collection configs
-	//collections, err := getTargetCollectionConfig(config)
-	//error_helpers.FailOnError(err)
-
 	// todo tactical
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
@@ -65,7 +52,7 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 			Type:   "aws_flow_log",
 			Plugin: "aws",
 		},
-		"aws_s3_access_log": {
+		"pipes_audit_log": {
 			Type:   "pipes_audit_log",
 			Plugin: "pipes",
 		},
