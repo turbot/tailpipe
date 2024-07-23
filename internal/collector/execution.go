@@ -12,9 +12,10 @@ const (
 
 // an execution represents the execution of a collection
 type execution struct {
-	plugin string
-	state  ExecutionState
-	id     string
+	id         string
+	collection string
+	plugin     string
+	state      ExecutionState
 	// the chunks written
 	chunkCount int32
 	// total rows returned by the plugin

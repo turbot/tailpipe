@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/sethvargo/go-retry"
+	"github.com/turbot/tailpipe/internal/paging"
 
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe/internal/config"
@@ -29,7 +30,8 @@ type Collector struct {
 	// lock for executions
 	executionsLock sync.RWMutex
 
-	parquetWriter *parquet.Writer
+	parquetWriter    *parquet.Writer
+	pagingRepository *paging.Repository
 }
 
 func New(ctx context.Context) (*Collector, error) {
@@ -59,14 +61,30 @@ func New(ctx context.Context) (*Collector, error) {
 		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 
+	pagingDataPath, err := ensurePagingPath()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create paging path: %w", err)
+	}
+	c.pagingRepository, err = paging.NewRepository(pagingDataPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create paging repository: %w", err)
+	}
+
 	// start listening to plugin event
 	c.listenToEventsAsync(ctx)
 	return c, nil
 }
 
 func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
+	// try to load paging data
+	// TODO #config HACK everything is currently based of collection type
+	pagingData, err := c.pagingRepository.Load(col.Type)
+	if err != nil {
+		return fmt.Errorf("failed to load paging data: %w", err)
+	}
+
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, col)
+	collectResponse, err := c.pluginManager.Collect(ctx, col, pagingData)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
@@ -74,9 +92,11 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
 	c.executions[executionId] = &execution{
-		plugin: col.Plugin,
-		id:     executionId,
-		state:  ExecutionState_PENDING,
+		id: executionId,
+		// TODO #config for now we are just using type
+		collection: col.Type,
+		plugin:     col.Plugin,
+		state:      ExecutionState_PENDING,
 	}
 
 	// start the parquet writer job
@@ -109,6 +129,16 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
 
+		// retrieve the execution
+		c.executionsLock.RLock()
+		execution, ok := c.executions[executionId]
+		c.executionsLock.RUnlock()
+		if !ok {
+			slog.Error("Event_ChunkWrittenEvent - execution not found", "execution", executionId)
+			// TODO #errors what to do with this error?
+			return
+		}
+
 		if ev.ChunkNumber%100 == 0 {
 			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}
@@ -117,6 +147,14 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			// TODO #errors what to do with this error?
+		}
+		// store paging data
+		if len(ev.PagingData) > 0 {
+			err = c.pagingRepository.Save(execution.collection, string(ev.PagingData))
+			if err != nil {
+				slog.Error("failed to save paging data", "error", err)
+				// TODO #errors what to do with this error?
+			}
 		}
 	case *proto.Event_CompleteEvent:
 		// TODO if no chunk written event was received, this currently stalls
@@ -146,6 +184,8 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 // Close cleans up the collector - closes the file watcher
 func (c *Collector) Close() {
+	slog.Info("closing collector - wait for executions to complete")
+
 	// wait for any ongoing collections to complete
 	err := c.waitForExecutions()
 	if err != nil {
@@ -156,7 +196,7 @@ func (c *Collector) Close() {
 	c.parquetWriter.Close()
 	//c.fileWatcher.Close()
 	c.pluginManager.Close()
-
+	c.pagingRepository.Close()
 }
 
 func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplete) error {
@@ -210,10 +250,10 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 
 func (c *Collector) waitForExecutions() error {
 	// TODO #timeouts configure timeout
-	executionTimeout := 5 * time.Minute
+	executionTimeout := 10 * time.Minute
 	retryInterval := 5 * time.Second
 
-	return retry.Do(context.Background(), retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
+	err := retry.Do(context.Background(), retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 
 		c.executionsLock.RLock()
 		defer c.executionsLock.RUnlock()
@@ -227,9 +267,14 @@ func (c *Collector) waitForExecutions() error {
 		// all complete
 		return nil
 	})
+	if err != nil {
+		return fmt.Errorf("not all executions completed after %s", executionTimeout.String())
+	}
+	return nil
 }
 
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
+	// TODO #control_flow do we need to consider end conditions here - check context or nil event?
 	go func() {
 		for event := range c.Events {
 			c.handlePluginEvent(ctx, event)
@@ -239,7 +284,7 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 
 func ensureSourcePath() (string, error) {
 	// TODO #config configure inbox location
-	sourceFilePath, err := filepath.Abs("./source")
+	sourceFilePath, err := filepath.Abs("./data/source")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for source directory: %w", err)
 	}
@@ -256,7 +301,24 @@ func ensureSourcePath() (string, error) {
 
 func ensureDestPath() (string, error) {
 	// TODO #config configure dest location
-	destFilePath, err := filepath.Abs("./dest")
+	destFilePath, err := filepath.Abs("./data/dest")
+	if err != nil {
+		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)
+	}
+	// ensure it exists
+	if _, err := os.Stat(destFilePath); os.IsNotExist(err) {
+		err = os.MkdirAll(destFilePath, 0755)
+		if err != nil {
+			return "", fmt.Errorf("could not create dest directory %s: %w", destFilePath, err)
+		}
+	}
+
+	return destFilePath, nil
+}
+
+func ensurePagingPath() (string, error) {
+	// TODO #config configure paging location
+	destFilePath, err := filepath.Abs("./data/paging")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)
 	}

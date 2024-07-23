@@ -47,7 +47,7 @@ type CollectResponse struct {
 }
 
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given collection.
-func (p *PluginManager) Collect(ctx context.Context, collection *config.Collection) (*CollectResponse, error) {
+func (p *PluginManager) Collect(ctx context.Context, collection *config.Collection, pagingData string) (*CollectResponse, error) {
 	// start plugin if needed
 	plugin, err := p.getPlugin(collection.Plugin)
 	if err != nil {
@@ -75,6 +75,7 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 		OutputPath:     p.inboxPath,
 		CollectionName: collection.Type,
 		Config:         collection.Config,
+		PagingData:     []byte(pagingData),
 	}
 
 	err = plugin.Collect(req)
