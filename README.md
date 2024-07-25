@@ -74,7 +74,7 @@ duckdb
 
 Setup a view and run queries:
 ```
-create view pipes_audit_log as select * from '~/Downloads/tailpipe/*/*/*/*/*/*.parquet';
+create view pipes_audit_log as select * from '/Users/kai/Dev/github/turbot/tailpipe/dest/aws_vpc_flow_log/*/*/*/*/*/*.parquet';
 
 select action_type, count(*) as total from pipes_audit_log group by all order by total desc;
 ```
