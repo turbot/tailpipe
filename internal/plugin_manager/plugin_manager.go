@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,31 +14,30 @@ import (
 	"github.com/hashicorp/go-plugin"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/turbot/go-kit/helpers"
+	"github.com/turbot/pipe-fittings/app_specific"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-// todo configure this
-const pluginLocation = "/Users/kai/.tailpipe/plugins"
-
 type PluginManager struct {
-
 	// map of running plugins, keyed by plugin name
 	Plugins     map[string]*PluginClient
 	pluginMutex sync.RWMutex
-	// TODO should this be a list
-	obs       Observer
-	inboxPath string
+	// TODO should this be a list?
+	obs        Observer
+	inboxPath  string
+	pluginPath string
 }
 
 func New(o Observer, inboxPath string) *PluginManager {
 	return &PluginManager{
 		//observations: make(map[string]*observer.Observable),
-		Plugins:   make(map[string]*PluginClient),
-		obs:       o,
-		inboxPath: inboxPath,
+		Plugins:    make(map[string]*PluginClient),
+		obs:        o,
+		inboxPath:  inboxPath,
+		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
 	}
 }
 
@@ -139,7 +139,7 @@ func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
 func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 	// TODO sort out plugin location/name conventions, i.e. alias vs full name/identifer etc
 	// todo search in dest folder for any .plugin, as steampipe does
-	pluginPath := fmt.Sprintf("%s/tailpipe-plugin-%s.plugin", pluginLocation, pluginName)
+	pluginPath := fmt.Sprintf("%s/tailpipe-plugin-%s.plugin", p.pluginPath, pluginName)
 	// create the plugin map
 	pluginMap := map[string]plugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
