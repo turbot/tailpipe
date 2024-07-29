@@ -4,6 +4,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
 // TODO handle 3 part names
@@ -32,12 +33,18 @@ source "slack" "default" {
 type Source struct {
 	modconfig.HclResourceImpl
 
-	Type       string      `cty:"type"`
-	Bucket     *string     `hcl:"bucket" cty:"bucket"`
-	Path       *string     `hcl:"path" cty:"path"`
-	Prefix     *string     `hcl:"prefix" cty:"prefix"`
-	Region     *string     `hcl:"region" cty:"region"`
-	Credential *Credential `hcl:"credential" cty:"credential"`
+	Type      string `hcl:"type,label"`
+	ShortName string `hcl:"name,label"`
+
+	// any collection specific config data for the collection
+	Config []byte
+}
+
+func (s Source) ToProto() *proto.ConfigData {
+	return &proto.ConfigData{
+		Type:       s.Type,
+		ConfigData: s.Config,
+	}
 }
 
 func NewSource(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {

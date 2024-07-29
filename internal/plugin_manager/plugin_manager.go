@@ -71,11 +71,11 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
-		ExecutionId:      executionID,
-		OutputPath:       p.inboxPath,
-		CollectionType:   collection.Type,
-		CollectionConfig: collection.Config,
-		PagingData:       []byte(pagingData),
+		ExecutionId:    executionID,
+		OutputPath:     p.inboxPath,
+		CollectionData: collection.ToProto(),
+		SourceData:     collection.Source.ToProto(),
+		PagingData:     []byte(pagingData),
 	}
 
 	err = plugin.Collect(req)

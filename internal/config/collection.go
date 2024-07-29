@@ -4,6 +4,7 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
 /*
@@ -70,38 +71,26 @@ collection "custom" "production" {
 type Collection struct {
 	modconfig.HclResourceImpl
 
-	// collection type
-	Type string
+	Type      string `hcl:"type,label"`
+	ShortName string `hcl:"name,label"`
+
 	// Plugin used for this collection
-	// TODO update doc/check
 	Plugin string `hcl:"plugin"`
 
 	// Source of the data for this collection (required)
 	Source Source `hcl:"source"`
-	//Optional destination for the collection. Uses the parquet default by default.
+	// Optional destination for the collection. Uses the parquet default by default.
 	Destination *Destination `hcl:"destination"`
-	// Collections may be enabled or disabled. If disabled, they will not collect
-	// logs but will still be available for querying logs that have already beens collected.
-	Enabled bool `hcl:"enabled"`
-	// Each collection type may have specific attributes. For example, AWS CloudTrail
-	// has a prefix that can be used to be more specific on the source. Optional.
-	Prefix *string `hcl:"prefix"`
-	// Filters are used to limit the logs that are collected. They are optional.
-	// They are run in the order they are defined. A row must pass all filters
-	// to be collected.
-	// For example, this filter will exclude all decrypt events from KMS which are
-	// noisy and rarely useful in log analysis.
-	Filter    *Filter `hcl:"filter"`
-	TableName *string `hcl:"table_name"`
 
-	// Format is a regular expression with named capture groups that map to table columns.
-	// In this case, we demonstrate formatting of combined http log format.
-	// Use a string not double quoted, avoiding many backslashes.
-	Format *string `hcl:"format"`
-
-	Credential *Credential `hcl:"credential"`
-
+	// any collection specific config data for the collection
 	Config []byte
+}
+
+func (c Collection) ToProto() *proto.ConfigData {
+	return &proto.ConfigData{
+		Type:       c.Type,
+		ConfigData: c.Config,
+	}
 }
 
 func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
