@@ -149,12 +149,12 @@ func (w *fileJobPool[T]) JobGroupComplete(id string) error {
 }
 
 func (w *fileJobPool[T]) Close() {
+	slog.Info("closing fileJobPool[T]", "job pool", w)
 	// close the close channel to signal to the job schedulers to exit
 	close(w.closing)
 	// close the error channel to terminate the error reader
 	close(w.errorChan)
-	// close the job channel to terminate the workers
-	close(w.jobChan)
+	// do not close the job channel - the workers will terminate when `closing` is closed
 }
 
 // scheduleJob is schedules a jobGroup to be processed
@@ -182,6 +182,7 @@ func (w *fileJobPool[T]) scheduler(g *jobGroup[T]) {
 			collectionType:  g.collectionType,
 			payload:         g.payload,
 		}
+		// TODO #conversion is this costly to do thousands of times?
 		sendChan := make(chan struct{})
 		go func() {
 			w.jobChan <- j
