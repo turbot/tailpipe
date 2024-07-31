@@ -10,7 +10,6 @@ import (
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/artifact_row_source"
-	"github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 )
@@ -46,18 +45,23 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	}()
 
 	// TODO #config TACTICAL
-	cloudtrail_log_cfg := fmt.Sprintf(`
-	source = "%s"
+	cloudtrail_log_cfg := `
 	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
 	extensions = [".gz"]	
-`, artifact_source.FileSystemSourceIdentifier)
+`
+	//	flow_log_cfg :=`
+	//	source = "cloudwatch_logs_source"
+	//	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
+	//	extensions = [".gz"]
+	//`
 
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
 			Type:   "aws_cloudtrail_log",
 			Plugin: "aws",
 			Source: config.Source{
-				Type:   artifact_row_source.ArtifactRowSourceIdentifier,
+				// NOTE we ae actually passing the artifact source type here
+				Type:   artifact_row_source.FileSystemSourceIdentifier,
 				Config: []byte(cloudtrail_log_cfg),
 			},
 		},
