@@ -3,10 +3,12 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/constants"
 	"math/rand"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"time"
 
@@ -145,6 +147,7 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 		pluginName: &shared.TailpipeGRPCPlugin{},
 	}
 
+	pluginStartTimeout := p.getPluginStartTimeout()
 	c := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		Plugins:          pluginMap,
@@ -153,7 +156,8 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 		// send plugin stderr (logging) to our stderr
 		Stderr: os.Stderr,
 		// suppress GRPC client logging
-		Logger: hclog.New(&hclog.LoggerOptions{Level: hclog.Off}),
+		Logger:       hclog.New(&hclog.LoggerOptions{Level: hclog.Off}),
+		StartTimeout: pluginStartTimeout,
 	})
 
 	client, err := NewPluginClient(c, pluginName)
@@ -174,6 +178,20 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 	p.Plugins[pluginName] = client
 
 	return client, nil
+}
+
+// TODO #config #debug this is currently provided for debug purposes only
+func (p *PluginManager) getPluginStartTimeout() time.Duration {
+	pluginStartTimeout := 1 * time.Minute
+	pluginStartTimeoutStr := os.Getenv(constants.EnvPluginStartTimeout)
+	if pluginStartTimeoutStr != "" {
+
+		t, err := strconv.Atoi(pluginStartTimeoutStr)
+		if err == nil {
+			pluginStartTimeout = time.Duration(t) * time.Second
+		}
+	}
+	return pluginStartTimeout
 }
 
 func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.TailpipePlugin_AddObserverClient) {
