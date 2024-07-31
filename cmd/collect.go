@@ -9,7 +9,7 @@ import (
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
-	"github.com/turbot/tailpipe-plugin-sdk/artifact_row_source"
+	"github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 )
@@ -61,7 +61,7 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 			Plugin: "aws",
 			Source: config.Source{
 				// NOTE we ae actually passing the artifact source type here
-				Type:   artifact_row_source.FileSystemSourceIdentifier,
+				Type:   artifact_source.FileSystemSourceIdentifier,
 				Config: []byte(cloudtrail_log_cfg),
 			},
 		},
