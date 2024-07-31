@@ -10,7 +10,7 @@ import (
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/artifact"
-	"github.com/turbot/tailpipe-plugin-sdk/row_source"
+	"github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 )
@@ -50,14 +50,14 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	source = "%s"
 	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
 	extensions = [".gzip"]	
-`, artifact.FileSystemSourceIdentifier)
+`, artifact_source.FileSystemSourceIdentifier)
 
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
 			Type:   "aws_cloudtrail_log",
 			Plugin: "aws",
 			Source: config.Source{
-				Type:   row_source.ArtifactRowSourceIdentifier,
+				Type:   artifact.ArtifactRowSourceIdentifier,
 				Config: []byte(cloudtrail_log_cfg),
 			},
 		},
