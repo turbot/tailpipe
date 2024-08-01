@@ -61,6 +61,15 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		session_token = "IQoJb3JpZ2luX2VjEI///////////wEaCXVzLWVhc3QtMiJHMEUCIFzmGBMKz+AcgA8Z9htsyHFNwkUhjgSx9QErjUVWhwiGAiEAlMeQrFRTUif60Ve6RPd9DIxzn7Defmy2XGz5F81jOfgqhgMIeBADGgwwOTczNTA4NzY0NTUiDFJxH2F9GRyz5RFlDyrjAtlStUWnqoxs0jIrXeJI0UpmVLEFCsaCR2q2/6RNC3zbt+IrBEdUBEmbjakE8FSShn5LFdmuzr16LJ7mD/LbkRY4ujJ7TQB92m+J/W9rfcjvt4iOf6YqOEg4p/+qh7PnfTUrw/aJ2DvjTDL/EiVMPro+eWAu3cizmAXMDy0seHgqyCiFpbg/S0RXP/AuT58Vw7assNeTrspiNew2zxbvdpif0nq2Nqg6/IOegjn1eRrqpyRXgatwGKtPgKWgOHM+D7p9YjDh5RqiDNl3/TENcCaSyCVygRuOE4RDTVQHo+vwSLezSaikvp6/5fe8NO3nIwSJCwbTkunHJHiTcOK5TOKnYA3obROSjTiStR8s9dHsWpkRIegY4JzGmg4hLIiREnrMkW2XZ+sQd/Yc1iDzU4855mDVTecKMPuuMwm+BF8SCcO8RVLC/4/QaKPvCYzJeJoQJli0XF+zKBjXein5ebxVS2Iw0MSutQY6pgGOEDJMiKcxz83uT5+xWCkik7GsESAli/y3eXD/aKZKYvJyRxHjvfZw8aWdWIoPv+/TD83rbVECDe/OdWMzEIQb+QOYlCSYfdqB/I4DeeyPpdV6+b4Xih+wjSeD7EirpaUIrDznMZ6Qyomituq3vgRhSBUs0ei+KrmW6YxdnaEkppRqDxnEFbIsVffEHThenzfzcHmLMOWV+1g5DdG7Yf7hQFmKlURx"
 `, start_time.Format(time.RFC3339), end_time.Format(time.RFC3339))
 
+	gcp_audit_log_cfg := `
+		credentials = "/Users/graza/gcp/tailpipe-creds.json"
+		project = "parker-aaa"
+		log_types = ["activity", "data_access", "system_event"]
+		`
+	nginx_access_log_cfg := `
+		paths = ["/Users/graza/tailpipe_data/nginx_access_logs"]
+		extensions = [".log"]
+		`
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
 			Type:   "aws_cloudtrail_log",
@@ -83,6 +92,23 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		"pipes_audit_log": {
 			Type:   "pipes_audit_log",
 			Plugin: "pipes",
+		},
+		"gcp_audit_log": {
+			Type:   "gcp_audit_log",
+			Plugin: "gcp",
+			Source: config.Source{
+				Type:   "gcp_audit_log_api",
+				Config: []byte(gcp_audit_log_cfg),
+			},
+		},
+		"nginx_access_log": {
+			Type:   "nginx_access_log",
+			Plugin: "nginx",
+			Config: []byte(`log_format = "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""`),
+			Source: config.Source{
+				Type:   artifact_source.FileSystemSourceIdentifier,
+				Config: []byte(nginx_access_log_cfg),
+			},
 		},
 	}
 	var collections []*config.Collection
