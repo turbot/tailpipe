@@ -12,6 +12,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"time"
 )
 
 // TODO #errors have good think about error handling and return codes
@@ -49,11 +50,16 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
 	extensions = [".gz"]	
 `
-	//	flow_log_cfg :=`
-	//	source = "cloudwatch_logs_source"
-	//	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
-	//	extensions = [".gz"]
-	//`
+	start_time := time.Now().Add(-time.Hour * 24 * 30)
+	end_time := time.Now().UTC()
+	flow_log_cfg := fmt.Sprintf(`
+		log_group_name = "/victor/vpc/flowlog"
+		start_time = "%s"
+		end_time = "%s"
+		access_key = "ASIARNKUQPUTUDLXX5FT"
+		secret_key = "ikekZZgcuL64Tr59jgt0GZiROsTw3GngUMVfNnfa"
+		session_token = "IQoJb3JpZ2luX2VjEI///////////wEaCXVzLWVhc3QtMiJHMEUCIFzmGBMKz+AcgA8Z9htsyHFNwkUhjgSx9QErjUVWhwiGAiEAlMeQrFRTUif60Ve6RPd9DIxzn7Defmy2XGz5F81jOfgqhgMIeBADGgwwOTczNTA4NzY0NTUiDFJxH2F9GRyz5RFlDyrjAtlStUWnqoxs0jIrXeJI0UpmVLEFCsaCR2q2/6RNC3zbt+IrBEdUBEmbjakE8FSShn5LFdmuzr16LJ7mD/LbkRY4ujJ7TQB92m+J/W9rfcjvt4iOf6YqOEg4p/+qh7PnfTUrw/aJ2DvjTDL/EiVMPro+eWAu3cizmAXMDy0seHgqyCiFpbg/S0RXP/AuT58Vw7assNeTrspiNew2zxbvdpif0nq2Nqg6/IOegjn1eRrqpyRXgatwGKtPgKWgOHM+D7p9YjDh5RqiDNl3/TENcCaSyCVygRuOE4RDTVQHo+vwSLezSaikvp6/5fe8NO3nIwSJCwbTkunHJHiTcOK5TOKnYA3obROSjTiStR8s9dHsWpkRIegY4JzGmg4hLIiREnrMkW2XZ+sQd/Yc1iDzU4855mDVTecKMPuuMwm+BF8SCcO8RVLC/4/QaKPvCYzJeJoQJli0XF+zKBjXein5ebxVS2Iw0MSutQY6pgGOEDJMiKcxz83uT5+xWCkik7GsESAli/y3eXD/aKZKYvJyRxHjvfZw8aWdWIoPv+/TD83rbVECDe/OdWMzEIQb+QOYlCSYfdqB/I4DeeyPpdV6+b4Xih+wjSeD7EirpaUIrDznMZ6Qyomituq3vgRhSBUs0ei+KrmW6YxdnaEkppRqDxnEFbIsVffEHThenzfzcHmLMOWV+1g5DdG7Yf7hQFmKlURx"
+`, start_time.Format(time.RFC3339), end_time.Format(time.RFC3339))
 
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
@@ -68,6 +74,11 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		"aws_vpc_flow_log": {
 			Type:   "aws_vpc_flow_log",
 			Plugin: "aws",
+			Source: config.Source{
+				// NOTE we ae actually passing the artifact source type here
+				Type:   artifact_source.AWSCloudwatchSourceIdentifier,
+				Config: []byte(flow_log_cfg),
+			},
 		},
 		"pipes_audit_log": {
 			Type:   "pipes_audit_log",
