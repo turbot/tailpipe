@@ -70,6 +70,26 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		paths = ["/Users/graza/tailpipe_data/nginx_access_logs"]
 		extensions = [".log"]
 		`
+	elb_access_log_cfg := `
+		bucket = "spongebob-097350876455-us-east-1-cffd7fe0"
+		prefix = "spongebob_5_42_21/alb/AWSLogs/097350876455/elasticloadbalancing/"
+		extensions = [".gz"]
+		access_key = "REPLACE"
+		secret_key = "REPLACE"
+		session_token = "REPLACE"
+	`
+	//	elb_access_log_cfg := `
+	//	paths = ["/Users/graza/tailpipe_data/test"]
+	//	extensions = [".gz"]
+	//`
+	s3_server_access_log_cfg := `
+	bucket = "turbot-688720832404-us-east-1"
+	prefix = "AWSLogs/688720832404/S3/elasticbeanstalk-us-east-1-688720832404/"
+	extensions = [] # allow all since these logs have no extension
+	access_key = "REPLACE"
+	secret_key = "REPLACE"
+	session_token = "REPLACE"
+	`
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
 			Type:   "aws_cloudtrail_log",
@@ -108,6 +128,23 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 			Source: config.Source{
 				Type:   artifact_source.FileSystemSourceIdentifier,
 				Config: []byte(nginx_access_log_cfg),
+			},
+		},
+		"aws_elb_access_log": {
+			Type:   "aws_elb_access_log",
+			Plugin: "aws",
+			Source: config.Source{
+				Type: artifact_source.AwsS3BucketSourceIdentifier,
+				//Type:   artifact_source.FileSystemSourceIdentifier,
+				Config: []byte(elb_access_log_cfg),
+			},
+		},
+		"aws_s3_server_access_log": {
+			Type:   "aws_s3_server_access_log",
+			Plugin: "aws",
+			Source: config.Source{
+				Type:   artifact_source.AwsS3BucketSourceIdentifier,
+				Config: []byte(s3_server_access_log_cfg),
 			},
 		},
 	}
