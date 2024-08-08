@@ -66,6 +66,10 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		project = "parker-aaa"
 		log_types = ["activity", "data_access", "system_event"]
 		`
+	github_audit_log_cfg := `
+		paths = ["/Users/cbruno/logs_tailpipe/github"]
+		extensions = [".json"]
+		`
 	nginx_access_log_cfg := `
 		paths = ["/Users/graza/tailpipe_data/nginx_access_logs"]
 		extensions = [".log"]
@@ -130,6 +134,16 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 			Source: config.Source{
 				Type:   "gcp_audit_log_api",
 				Config: []byte(gcp_audit_log_cfg),
+			},
+		},
+		"github_audit_log": {
+			Type:   "github_audit_log",
+			Plugin: "github",
+			// TODO: What should Config be?
+			//Config: []byte(`log_format = "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""`),
+			Source: config.Source{
+				Type:   artifact_source.FileSystemSourceIdentifier,
+				Config: []byte(github_audit_log_cfg),
 			},
 		},
 		"nginx_access_log": {
