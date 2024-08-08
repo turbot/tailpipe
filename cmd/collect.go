@@ -90,6 +90,17 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	secret_key = "REPLACE"
 	session_token = "REPLACE"
 	`
+
+	lambdaStartTime := time.Date(2019, 07, 20, 0, 0, 1, 0, time.UTC)
+	lambdaEndTime := time.Date(2019, 07, 30, 23, 59, 59, 0, time.UTC)
+	lambda_log_cfg := fmt.Sprintf(`
+		log_group_name = "/aws/lambda/sentry_event_proxy"
+		start_time = "%s"
+		end_time = "%s"
+		access_key = "REPLACE"
+		secret_key = "REPLACE"
+		session_token = "REPLACE"
+	`, lambdaStartTime.Format(time.RFC3339), lambdaEndTime.Format(time.RFC3339))
 	allCollections := map[string]*config.Collection{
 		"aws_cloudtrail_log": {
 			Type:   "aws_cloudtrail_log",
@@ -145,6 +156,14 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 			Source: config.Source{
 				Type:   artifact_source.AwsS3BucketSourceIdentifier,
 				Config: []byte(s3_server_access_log_cfg),
+			},
+		},
+		"aws_lambda_log": {
+			Type:   "aws_lambda_log",
+			Plugin: "aws",
+			Source: config.Source{
+				Type:   artifact_source.AWSCloudwatchSourceIdentifier,
+				Config: []byte(lambda_log_cfg),
 			},
 		},
 	}
