@@ -22,7 +22,6 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 	var res = new(config.TailpipeConfig)
 
 	// find files recursively under the path
-	// TODO check flat/recursive
 	configPaths, err := filehelpers.ListFiles(configPath, &filehelpers.ListOptions{
 		Flags:   filehelpers.FilesRecursive,
 		Include: filehelpers.InclusionsFromExtensions([]string{app_specific.ConfigExtension}),

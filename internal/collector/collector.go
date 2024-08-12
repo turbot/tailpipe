@@ -35,12 +35,12 @@ type Collector struct {
 }
 
 func New(ctx context.Context) (*Collector, error) {
-	// todo #config configure inbox folder
+	// todo #config configure inbox folder https://github.com/turbot/tailpipe/issues/1
 	inboxPath, err := ensureSourcePath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create inbox path: %w", err)
 	}
-	// TODO #config configure parquet output folder
+	// TODO #config configure parquet output folder https://github.com/turbot/tailpipe/issues/1
 	parquetPath, err := ensureDestPath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parquet path: %w", err)
@@ -77,7 +77,7 @@ func New(ctx context.Context) (*Collector, error) {
 
 func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	// try to load paging data
-	// TODO #config HACK everything is currently based of collection type
+	// TODO #config HACK everything is currently based of collection type https://github.com/turbot/tailpipe/issues/5
 	pagingData, err := c.pagingRepository.Load(col.Type)
 	if err != nil {
 		return fmt.Errorf("failed to load paging data: %w", err)
@@ -93,7 +93,7 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	// add the execution to the map
 	c.executions[executionId] = &execution{
 		id: executionId,
-		// TODO #config for now we are just using type
+		// TODO #config for now we are just using type https://github.com/turbot/tailpipe/issues/6
 		collection: col.Type,
 		plugin:     col.Plugin,
 		state:      ExecutionState_PENDING,
@@ -157,7 +157,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			}
 		}
 	case *proto.Event_CompleteEvent:
-		// TODO if no chunk written event was received, this currently stalls
+		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
 		slog.Debug("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
 
 		completedEvent := e.GetCompleteEvent()
@@ -170,7 +170,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		// TODO what to do with an error here?
+		// TODO #errors what to do with an error here?
 		go func() {
 			err := c.waitForExecution(ctx, completedEvent)
 			if err != nil {
@@ -249,7 +249,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 }
 
 func (c *Collector) waitForExecutions() error {
-	// TODO #timeouts configure timeout
+	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := 10 * time.Minute
 	retryInterval := 5 * time.Second
 
@@ -274,7 +274,7 @@ func (c *Collector) waitForExecutions() error {
 }
 
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
-	// TODO #control_flow do we need to consider end conditions here - check context or nil event?
+	// TODO #control_flow do we need to consider end conditions here - check context or nil event? https://github.com/turbot/tailpipe/issues/8
 	go func() {
 		for event := range c.Events {
 			c.handlePluginEvent(ctx, event)
@@ -283,7 +283,7 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 }
 
 func ensureSourcePath() (string, error) {
-	// TODO #config configure inbox location
+	// TODO #config configure inbox location https://github.com/turbot/tailpipe/issues/1
 	sourceFilePath, err := filepath.Abs("./data/source")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for source directory: %w", err)
@@ -300,7 +300,7 @@ func ensureSourcePath() (string, error) {
 }
 
 func ensureDestPath() (string, error) {
-	// TODO #config configure dest location
+	// TODO #config configure dest location https://github.com/turbot/tailpipe/issues/1
 	destFilePath, err := filepath.Abs("./data/dest")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)
@@ -317,7 +317,7 @@ func ensureDestPath() (string, error) {
 }
 
 func ensurePagingPath() (string, error) {
-	// TODO #config configure paging location
+	// TODO #config configure paging location https://github.com/turbot/tailpipe/issues/1
 	destFilePath, err := filepath.Abs("./data/paging")
 	if err != nil {
 		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)

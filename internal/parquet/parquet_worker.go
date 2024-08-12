@@ -439,9 +439,9 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	tab := strings.Repeat("\t", tabs)
 	switch column.Type {
 
-	// TODO
+	// TODO #parquet https://github.com/turbot/tailpipe/issues/new
 	//case "MAP":
-	//	//	// TODO
+	//
 	//	return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
 
 	case "STRUCT":
@@ -474,7 +474,7 @@ func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, ta
 	tab := strings.Repeat("\t", tabs)
 	switch column.Type {
 	//case "MAP":
-	//	// TODO
+	// TODO #parquet https://github.com/turbot/tailpipe/issues/new
 
 	case "STRUCT":
 		var str strings.Builder

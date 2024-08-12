@@ -1072,7 +1072,7 @@ LEFT JOIN
 	grouped_unnest_struct_array_field2 joined_struct_array_field2 ON raw.rowid = joined_struct_array_field2.rowid`,
 			wantData: []any{"StringValue100"},
 		},
-		//TODO doesn't work
+		// TODO #parquet https://github.com/turbot/tailpipe/issues/new
 		//		{
 		//			name: "map types",
 		//			args: args{

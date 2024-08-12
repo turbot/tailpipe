@@ -27,7 +27,7 @@ type PluginManager struct {
 	// map of running plugins, keyed by plugin name
 	Plugins     map[string]*PluginClient
 	pluginMutex sync.RWMutex
-	// TODO should this be a list?
+	// TODO #design should this be a list?
 	obs        Observer
 	inboxPath  string
 	pluginPath string
@@ -56,14 +56,14 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 		return nil, fmt.Errorf("error starting plugin %s: %w", collection.Plugin, err)
 	}
 
-	// TODO consider the flow
+	// TODO #design consider the flow
 	// currently we create an observer for each collection, i.e. create an event stream per collection
 	// perhaps instead we should have a single observer for all collections?
 	// if we keep it as it is now, it may be worth merging Colection and AddObserver and just have collect returning a stream
 
 	// call into the plugin to collect log rows
 	// this returns a stream which will send events
-	// TODO maybe we already have an observer - or is a stream only for a single execution and reuse the stream?
+	// TODO #design maybe we already have an observer - or is a stream only for a single execution and reuse the stream?
 	// otherwise be sure to colse the stream
 	eventStream, err := plugin.AddObserver()
 	if err != nil {
@@ -139,8 +139,7 @@ func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
 }
 
 func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
-	// TODO sort out plugin location/name conventions, i.e. alias vs full name/identifer etc
-	// todo search in dest folder for any .plugin, as steampipe does
+	// TODO search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
 	pluginPath := fmt.Sprintf("%s/tailpipe-plugin-%s.plugin", p.pluginPath, pluginName)
 	// create the plugin map
 	pluginMap := map[string]plugin.Plugin{
@@ -217,14 +216,14 @@ func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.Tailpi
 	}()
 
 	// loop until the context is cancelled
-	// TODO think about cancellation/other completion scenarios
+	// TODO think about cancellation/other completion scenarios https://github.com/turbot/tailpipe/issues/8
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case err := <-errChan:
 			if err != nil {
-				// TODO WHAT TO DO HERE? send error to observers
+				// TODO #error WHAT TO DO HERE? send error to observers
 
 				fmt.Printf("Error reading from plugin stream: %v\n", err)
 				return
@@ -233,7 +232,7 @@ func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.Tailpi
 			// convert the protobuff event to an observer event
 			// and send it to the observer
 			if protoEvent == nil {
-				// TODO unexpected - raise an error - send error to observers
+				// TODO #error unexpected - raise an error - send error to observers
 				return
 			}
 			p.obs.Notify(protoEvent)
