@@ -89,10 +89,10 @@ func (c *ConfigParseContext) buildEvalContext() {
 // 2) add dependencies to our tree of dependencies
 // NOTE: this overrides  ParseContext.AddDependencies to allwo us to override ParseResourcePropertyPath
 // to handle resource type labels
-func (r *ConfigParseContext) AddDependencies(block *hcl.Block, name string, dependencies map[string]*modconfig.ResourceDependency) hcl.Diagnostics {
+func (c *ConfigParseContext) AddDependencies(block *hcl.Block, name string, dependencies map[string]*modconfig.ResourceDependency) hcl.Diagnostics {
 	var diags hcl.Diagnostics
 
-	if r.UnresolvedBlocks[name] != nil {
+	if c.UnresolvedBlocks[name] != nil {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  fmt.Sprintf("duplicate unresolved block name '%s'", name),
@@ -103,14 +103,14 @@ func (r *ConfigParseContext) AddDependencies(block *hcl.Block, name string, depe
 	}
 
 	// store unresolved block
-	r.UnresolvedBlocks[name] = parse.NewUnresolvedBlock(block, name, dependencies)
+	c.UnresolvedBlocks[name] = parse.NewUnresolvedBlock(block, name, dependencies)
 
 	// store dependency in tree - d
-	if !r.DependencyGraph.ContainsNode(name) {
-		r.DependencyGraph.AddNode(name)
+	if !c.DependencyGraph.ContainsNode(name) {
+		c.DependencyGraph.AddNode(name)
 	}
 	// add root dependency
-	if err := r.DependencyGraph.AddEdge(parse.RootDependencyNode, name); err != nil {
+	if err := c.DependencyGraph.AddEdge(parse.RootDependencyNode, name); err != nil {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  "failed to add root dependency to graph",
@@ -139,10 +139,10 @@ func (r *ConfigParseContext) AddDependencies(block *hcl.Block, name string, depe
 
 			// 'd' may be a property path - when storing dependencies we only care about the resource names
 			dependencyResourceName := parsedPropertyPath.ToResourceName()
-			if !r.DependencyGraph.ContainsNode(dependencyResourceName) {
-				r.DependencyGraph.AddNode(dependencyResourceName)
+			if !c.DependencyGraph.ContainsNode(dependencyResourceName) {
+				c.DependencyGraph.AddNode(dependencyResourceName)
 			}
-			if err := r.DependencyGraph.AddEdge(name, dependencyResourceName); err != nil {
+			if err := c.DependencyGraph.AddEdge(name, dependencyResourceName); err != nil {
 				diags = append(diags, &hcl.Diagnostic{
 					Severity: hcl.DiagError,
 					Summary:  "failed to add dependency to graph",

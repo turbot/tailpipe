@@ -9,10 +9,8 @@ import (
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
-	"github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 	"github.com/turbot/tailpipe/internal/collector"
-	"github.com/turbot/tailpipe/internal/config"
-	"time"
+	"github.com/turbot/tailpipe/internal/parse"
 )
 
 // TODO #errors have good think about error handling and return codes
@@ -45,157 +43,18 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		setExitCodeForCollectError(err)
 	}()
 
-	// TODO #config TACTICAL
-	cloudtrail_log_cfg := `
-	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
-	extensions = [".gz"]	
-`
-	start_time := time.Now().Add(-time.Hour * 24 * 30)
-	end_time := time.Now().UTC()
-	flow_log_cfg := fmt.Sprintf(`
-		log_group_name = "/victor/vpc/flowlog"
-		start_time = "%s"
-		end_time = "%s"
-		access_key = "ASIARNKUQPUTUDLXX5FT"
-		secret_key = "ikekZZgcuL64Tr59jgt0GZiROsTw3GngUMVfNnfa"
-		session_token = "IQoJb3JpZ2luX2VjEI///////////wEaCXVzLWVhc3QtMiJHMEUCIFzmGBMKz+AcgA8Z9htsyHFNwkUhjgSx9QErjUVWhwiGAiEAlMeQrFRTUif60Ve6RPd9DIxzn7Defmy2XGz5F81jOfgqhgMIeBADGgwwOTczNTA4NzY0NTUiDFJxH2F9GRyz5RFlDyrjAtlStUWnqoxs0jIrXeJI0UpmVLEFCsaCR2q2/6RNC3zbt+IrBEdUBEmbjakE8FSShn5LFdmuzr16LJ7mD/LbkRY4ujJ7TQB92m+J/W9rfcjvt4iOf6YqOEg4p/+qh7PnfTUrw/aJ2DvjTDL/EiVMPro+eWAu3cizmAXMDy0seHgqyCiFpbg/S0RXP/AuT58Vw7assNeTrspiNew2zxbvdpif0nq2Nqg6/IOegjn1eRrqpyRXgatwGKtPgKWgOHM+D7p9YjDh5RqiDNl3/TENcCaSyCVygRuOE4RDTVQHo+vwSLezSaikvp6/5fe8NO3nIwSJCwbTkunHJHiTcOK5TOKnYA3obROSjTiStR8s9dHsWpkRIegY4JzGmg4hLIiREnrMkW2XZ+sQd/Yc1iDzU4855mDVTecKMPuuMwm+BF8SCcO8RVLC/4/QaKPvCYzJeJoQJli0XF+zKBjXein5ebxVS2Iw0MSutQY6pgGOEDJMiKcxz83uT5+xWCkik7GsESAli/y3eXD/aKZKYvJyRxHjvfZw8aWdWIoPv+/TD83rbVECDe/OdWMzEIQb+QOYlCSYfdqB/I4DeeyPpdV6+b4Xih+wjSeD7EirpaUIrDznMZ6Qyomituq3vgRhSBUs0ei+KrmW6YxdnaEkppRqDxnEFbIsVffEHThenzfzcHmLMOWV+1g5DdG7Yf7hQFmKlURx"
-`, start_time.Format(time.RFC3339), end_time.Format(time.RFC3339))
-
-	gcp_audit_log_cfg := `
-		credentials = "/Users/graza/gcp/tailpipe-creds.json"
-		project = "parker-aaa"
-		log_types = ["activity", "data_access", "system_event"]
-		`
-	github_audit_log_cfg := `
-		paths = ["/Users/cbruno/logs_tailpipe/github"]
-		extensions = [".json"]
-		`
-	nginx_access_log_cfg := `
-		paths = ["/Users/graza/tailpipe_data/nginx_access_logs"]
-		extensions = [".log"]
-		`
-	elb_access_log_cfg := `
-		bucket = "spongebob-097350876455-us-east-1-cffd7fe0"
-		prefix = "spongebob_5_42_21/alb/AWSLogs/097350876455/elasticloadbalancing/"
-		extensions = [".gz"]
-		access_key = "REPLACE"
-		secret_key = "REPLACE"
-		session_token = "REPLACE"
-	`
-	//	elb_access_log_cfg := `
-	//	paths = ["/Users/graza/tailpipe_data/test"]
-	//	extensions = [".gz"]
-	//`
-	s3_server_access_log_cfg := `
-	bucket = "turbot-688720832404-us-east-2"
-	prefix = "AWSLogs/688720832404/S3/turbot-assumed-role-based-bucket/"
-	extensions = [] # allow all since these logs have no extension
-	region = "us-east-2"
-	access_key = "REPLACE"
-	secret_key = "REPLACE"
-	session_token = "REPLACE"
-	`
-
-	lambdaStartTime := time.Date(2019, 07, 20, 0, 0, 1, 0, time.UTC)
-	lambdaEndTime := time.Date(2019, 07, 30, 23, 59, 59, 0, time.UTC)
-	lambda_log_cfg := fmt.Sprintf(`
-		log_group_name = "/aws/lambda/sentry_event_proxy"
-		start_time = "%s"
-		end_time = "%s"
-		access_key = "REPLACE"
-		secret_key = "REPLACE"
-		session_token = "REPLACE"
-	`, lambdaStartTime.Format(time.RFC3339), lambdaEndTime.Format(time.RFC3339))
-	allCollections := map[string]*config.Collection{
-		"aws_cloudtrail_log": {
-			Type:   "aws_cloudtrail_log",
-			Plugin: "aws",
-			Source: config.Source{
-				// NOTE we ae actually passing the artifact source type here
-				Type:   artifact_source.FileSystemSourceIdentifier,
-				Config: []byte(cloudtrail_log_cfg),
-			},
-		},
-		"aws_vpc_flow_log": {
-			Type:   "aws_vpc_flow_log",
-			Plugin: "aws",
-			Source: config.Source{
-				// NOTE we ae actually passing the artifact source type here
-				Type:   artifact_source.AWSCloudwatchSourceIdentifier,
-				Config: []byte(flow_log_cfg),
-			},
-		},
-		"pipes_audit_log": {
-			Type:   "pipes_audit_log",
-			Plugin: "pipes",
-		},
-		"gcp_audit_log": {
-			Type:   "gcp_audit_log",
-			Plugin: "gcp",
-			Source: config.Source{
-				Type:   "gcp_audit_log_api",
-				Config: []byte(gcp_audit_log_cfg),
-			},
-		},
-		"github_audit_log": {
-			Type:   "github_audit_log",
-			Plugin: "github",
-			// TODO: What should Config be?
-			//Config: []byte(`log_format = "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""`),
-			Source: config.Source{
-				Type:   artifact_source.FileSystemSourceIdentifier,
-				Config: []byte(github_audit_log_cfg),
-			},
-		},
-		"nginx_access_log": {
-			Type:   "nginx_access_log",
-			Plugin: "nginx",
-			Config: []byte(`log_format = "$remote_addr - $remote_user [$time_local] \"$request\" $status $body_bytes_sent \"$http_referer\" \"$http_user_agent\""`),
-			Source: config.Source{
-				Type:   artifact_source.FileSystemSourceIdentifier,
-				Config: []byte(nginx_access_log_cfg),
-			},
-		},
-		"aws_elb_access_log": {
-			Type:   "aws_elb_access_log",
-			Plugin: "aws",
-			Source: config.Source{
-				Type: artifact_source.AwsS3BucketSourceIdentifier,
-				//Type:   artifact_source.FileSystemSourceIdentifier,
-				Config: []byte(elb_access_log_cfg),
-			},
-		},
-		"aws_s3_server_access_log": {
-			Type:   "aws_s3_server_access_log",
-			Plugin: "aws",
-			Source: config.Source{
-				Type:   artifact_source.AwsS3BucketSourceIdentifier,
-				Config: []byte(s3_server_access_log_cfg),
-			},
-		},
-		"aws_lambda_log": {
-			Type:   "aws_lambda_log",
-			Plugin: "aws",
-			Source: config.Source{
-				Type:   artifact_source.AWSCloudwatchSourceIdentifier,
-				Config: []byte(lambda_log_cfg),
-			},
-		},
-	}
-	var collections []*config.Collection
-
-	for _, c := range viper.GetStringSlice(constants.ArgCollection) {
-		if col, ok := allCollections[c]; !ok {
-			error_helpers.FailOnError(fmt.Errorf("config does not contain %s: %s", "collection", c))
-		} else {
-			collections = append(collections, col)
-		}
+	collectionArgs := viper.GetStringSlice(constants.ArgCollection)
+	if len(collectionArgs) == 0 {
+		// TODO #error think about error codes
+		// TODO think about how to show usage
+		error_helpers.FailOnError(fmt.Errorf("no collections specified"))
 	}
 
-	if len(collections) == 0 {
-		collections = []*config.Collection{allCollections["aws_cloudtrail_log"]}
+	collections, err := parse.GetCollectionConfig(viper.GetStringSlice(constants.ArgCollection), viper.GetString(constants.ArgConfigPath))
+	if err != nil {
+		// TODO #errors - think about error codes
+		error_helpers.FailOnError(fmt.Errorf("failed to get collections: %w", err))
 	}
-	// tactical
 
 	// now we have the collections, we can start collecting
 
@@ -221,31 +80,6 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 
 	fmt.Println("collection complete")
 }
-
-//func getTargetCollectionConfig(tailpipeConfig *config.TailpipeConfig) ([]*config.Collection, error) {
-//	collectionNames := viper.GetStringSlice(constants.ArgCollection)
-//
-//	// if no collections specified, return all
-//	if len(collectionNames) == 0 {
-//		return maps.Values(tailpipeConfig.Collections), nil
-//	}
-//
-//	var collections []*config.Collection
-//	var missing []string
-//	for _, name := range collectionNames {
-//		c := tailpipeConfig.Collections[name]
-//		if c == nil {
-//			missing = append(missing, name)
-//		} else {
-//			collections = append(collections, c)
-//		}
-//	}
-//
-//	if len(missing) > 0 {
-//		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("collection", len(missing)), strings.Join(missing, ", "))
-//	}
-//	return collections, nil
-//}
 
 func setExitCodeForCollectError(err error) {
 	// if exit code already set, leave as is

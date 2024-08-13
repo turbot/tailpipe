@@ -1,96 +1,28 @@
 package config
 
 import (
+	"fmt"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
-/*
-
-// TODO - Is the source typed? Or is it the table? The source should NOT be typed, e.g. one S3 bucket can be used for many different sets of logs since they all have different prefixes.
-// TODO - are there destination / destination table types? e.g. http log which accepts Apache + nginx sources
-// TODO - Should this be collector or collection or table? Parquet calls it a dataset?
-collection "aws_cloudtrail_log" "production" {
-
-    # Source of the data for this collection (required)
-    source = source.aws_s3.logs
-
-    # Optional destination for the collection. Uses the parquet default by default.
-    # destination = destination.parquet.default
-
-    # Collections may be enabled or disabled. If disabled, they will not collect
-    # logs but will still be available for querying logs that have already been
-    # collected.
-    enabled = true
-
-    # Each collection type may have specific attributes. For example, AWS CloudTrail
-    # has a prefix that can be used to be more specific on the source. Optional.
-    prefix = "logs/production/"
-
-    # Filters are used to limit the logs that are collected. They are optional.
-    # They are run in the order they are defined. A row must pass all filters
-    # to be collected.
-    # For example, this filter will exclude all decrypt events from KMS which are
-    # noisy and rarely useful in log analysis.
-    filter {
-        where = "not (event_source = 'kms.amazonaws.com' and event_name = 'Decrypt')"
-    }
-
-}
-
-# A special collection of root events only
-collection "aws_cloudtrail_log" "root_events" {
-    source = source.aws_s3.logs
-    filter {
-        where = "user_identity.type = 'Root'"
-    }
-}
-
-source "file" "nginx" {
-    path = "/var/log/nginx/access.log"
-}
-
-collection "http_log" "production" {
-    source = source.file.nginx
-    format = "combined"
-}
-
-collection "custom" "production" {
-    source = source.file.nginx
-    table_name = "my_custom_table"
-
-    // Format is a regular expression with named capture groups that map to table columns.
-    // In this case, we demonstrate formatting of combined http log format.
-    // Use a string not double quoted, avoiding many backslashes.
-    format = `(?P<remote_addr>\S+) - (?P<remote_user>\S+) \[(?P<time_local>[^\]]+)\] "(?P<request>[^"]+)" (?P<status>\d+) (?P<body_bytes_sent>\d+) "(?P<http_referer>[^"]+)" "(?P<http_user_agent>[^"]+)"`
-}
-*/
-
 type Collection struct {
 	modconfig.HclResourceImpl
 
-	Type      string `hcl:"type,label"`
-	ShortName string `hcl:"name,label"`
+	// Type of the collection
+	Type string `hcl:"type,label"`
 
 	// Plugin used for this collection
 	Plugin string `hcl:"plugin"`
 
-	// Source of the data for this collection (required)
-	Source Source `hcl:"source"`
-	// Optional destination for the collection. Uses the parquet default by default.
-	Destination *Destination `hcl:"destination"`
+	// Source of the data for this collection
+	Source Source `hcl:"source,block"`
 
 	// any collection specific config data for the collection
 	Config []byte
-}
-
-func (c Collection) ToProto() *proto.ConfigData {
-	return &proto.ConfigData{
-		Type:       c.Type,
-		ConfigData: c.Config,
-	}
 }
 
 func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -101,8 +33,42 @@ func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hc
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}}
 	}
-	return &Collection{
+	c := &Collection{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
 		Type:            block.Labels[0],
-	}, nil
+	}
+
+	// NOTE: as tailpipe does not have the concept of mods, the full name is collection.<type>.<name> and
+	// the unqualified name is the <type>.<name>
+	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Type, c.ShortName)
+	return c, nil
+}
+
+func (c *Collection) ToProto() *proto.ConfigData {
+	return &proto.ConfigData{
+		Type:       c.Type,
+		ConfigData: c.Config,
+	}
+}
+
+func (c *Collection) SetUnknownHcl(unknown map[*hclsyntax.Block][]byte) hcl.Diagnostics {
+	var diags hcl.Diagnostics
+	for k, v := range unknown {
+		if k == nil {
+			c.Config = v
+			continue
+		}
+
+		if k.Type == "source" {
+			c.Source.Config = v
+			continue
+		}
+
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "failed to set unknown hcl",
+			Detail:   fmt.Sprintf("unknown hcl for unsupported block: %s", k),
+		})
+	}
+	return diags
 }
