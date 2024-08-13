@@ -6,13 +6,14 @@ import (
 )
 
 const (
-	BlockTypeCollection  = "collection"
-	BlockTypeCredential  = "credential"
-	BlockTypeFilter      = "filter"
-	BlockTypeSource      = "source"
-	BlockTypeDestination = "destination"
+	BlockTypeCollection = "collection"
+	//BlockTypeCredential  = "credential"
+	//BlockTypeFilter      = "filter"
+	BlockTypeSource = "source"
+	//BlockTypeDestination = "destination"
 )
 
+// ConfigBlockSchema is the schema for the supported top level blocks in the config file
 var ConfigBlockSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{},
 	Blocks: []hcl.BlockHeaderSchema{
@@ -20,32 +21,32 @@ var ConfigBlockSchema = &hcl.BodySchema{
 			Type:       BlockTypeCollection,
 			LabelNames: []string{"type", "name"},
 		},
-		{
-			Type:       BlockTypeCredential,
-			LabelNames: []string{"type", "name"},
-		},
-		{
-			Type:       BlockTypeFilter,
-			LabelNames: []string{"name"},
-		},
-
-		{
-			Type:       BlockTypeSource,
-			LabelNames: []string{"type", "name"},
-		},
-		{
-			Type:       BlockTypeDestination,
-			LabelNames: []string{"type", "name"},
-		},
+		//{
+		//	Type:       BlockTypeCredential,
+		//	LabelNames: []string{"type", "name"},
+		//},
+		//{
+		//	Type:       BlockTypeFilter,
+		//	LabelNames: []string{"name"},
+		//},
+		//
+		//{
+		//	Type:       BlockTypeSource,
+		//	LabelNames: []string{"type", "name"},
+		//},
+		//{
+		//	Type:       BlockTypeDestination,
+		//	LabelNames: []string{"type", "name"},
+		//},
 	},
 }
 
 var validResourceItemTypes = []string{
 	BlockTypeCollection,
-	BlockTypeCredential,
-	BlockTypeFilter,
+	//BlockTypeCredential,
+	//BlockTypeFilter,
 	BlockTypeSource,
-	BlockTypeDestination,
+	//BlockTypeDestination,
 }
 
 func IsValidResourceItemType(blockType string) bool {

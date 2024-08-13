@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"path/filepath"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/cmdconfig"
@@ -31,9 +33,13 @@ func rootCommand() *cobra.Command {
 
 	rootCmd.SetVersionTemplate("Tailpipe v{{.Version}}\n")
 
+	// TODO #config think about default config path
+	defaultConfigPath, err := filepath.Abs("")
+	error_helpers.FailOnError(err)
+
 	cmdconfig.
 		OnCmd(rootCmd).
-		AddPersistentStringFlag(constants.ArgConfigPath, "", "Colon separated list of paths to search for workspace files, in order of decreasing precedence")
+		AddPersistentStringFlag(constants.ArgConfigPath, defaultConfigPath, "The location to search for config files")
 
 	rootCmd.AddCommand(
 		collectCmd(),

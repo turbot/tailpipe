@@ -2,13 +2,16 @@ package parse
 
 import (
 	"fmt"
+	"golang.org/x/exp/maps"
 	"log/slog"
+	"strings"
 
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/parse"
+	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -19,7 +22,7 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 		}
 	}()
 
-	var res = new(config.TailpipeConfig)
+	var res = config.NewTailpipeConfig()
 
 	// find files recursively under the path
 	configPaths, err := filehelpers.ListFiles(configPath, &filehelpers.ListOptions{
@@ -82,4 +85,33 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 	return config, nil
 
+}
+
+func GetCollectionConfig(collectionNames []string, configPath string) ([]*config.Collection, error) {
+	tailpipeConfig, err := LoadTailpipeConfig(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// if no collections specified, return all
+	// TODO #errors should this be an error
+	if len(collectionNames) == 0 {
+		return maps.Values(tailpipeConfig.Collections), nil
+	}
+
+	var collections []*config.Collection
+	var missing []string
+	for _, name := range collectionNames {
+		c := tailpipeConfig.Collections[name]
+		if c == nil {
+			missing = append(missing, name)
+		} else {
+			collections = append(collections, c)
+		}
+	}
+
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("collection", len(missing)), strings.Join(missing, ", "))
+	}
+	return collections, nil
 }

@@ -72,22 +72,25 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	}
 
 	diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
+	// if this resource supports unknown hcl, handle it
+	diags = handleUnknownHcl(block, parseCtx, resource, diags)
+
 	res.HandleDecodeDiags(diags)
 	return resource, res
 }
 
 // return a shell resource for the given block
 func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics) {
-	// all blocks must have 2 labels - subtype and name - this is enforced by schame
+	// all blocks must have 2 labels - subtype and name - this is enforced by schema
 	subType := block.Labels[0]
 	blockName := block.Labels[1]
 	fullName := config.BuildResourceName(block.Type, subType, blockName)
 	factoryFuncs := map[string]func(*hcl.Block, string) (modconfig.HclResource, hcl.Diagnostics){
-		config.BlockTypeCollection:  config.NewCollection,
-		config.BlockTypeSource:      config.NewSource,
-		config.BlockTypeCredential:  config.NewCredential,
-		config.BlockTypeFilter:      config.NewFilter,
-		config.BlockTypeDestination: config.NewDestination,
+		config.BlockTypeCollection: config.NewCollection,
+		//config.BlockTypeSource:      config.NewSource,
+		//config.BlockTypeCredential:  config.NewCredential,
+		//config.BlockTypeFilter:      config.NewFilter,
+		//config.BlockTypeDestination: config.NewDestination,
 	}
 
 	factoryFunc, ok := factoryFuncs[block.Type]
