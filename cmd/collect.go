@@ -13,6 +13,9 @@ import (
 	"github.com/turbot/tailpipe/internal/parse"
 )
 
+// NOTE: the hard coded config that was previously defined here has been moved to hcl in the file  /Users/kai/Dev/github/turbot/tailpipe/internal/parse/test_data/configs/resources.tpc
+// to reference this use: collect --config-path <path to tailpipe>/internal/parse/test_data/configs --collection aws_cloudtrail_log.cloudtrail_logs
+
 // TODO #errors have good think about error handling and return codes
 
 func collectCmd() *cobra.Command {
