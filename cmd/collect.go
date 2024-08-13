@@ -87,9 +87,10 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	//	extensions = [".gz"]
 	//`
 	s3_server_access_log_cfg := `
-	bucket = "turbot-688720832404-us-east-1"
-	prefix = "AWSLogs/688720832404/S3/elasticbeanstalk-us-east-1-688720832404/"
+	bucket = "turbot-688720832404-us-east-2"
+	prefix = "AWSLogs/688720832404/S3/turbot-assumed-role-based-bucket/"
 	extensions = [] # allow all since these logs have no extension
+	region = "us-east-2"
 	access_key = "REPLACE"
 	secret_key = "REPLACE"
 	session_token = "REPLACE"
