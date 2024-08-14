@@ -3,18 +3,19 @@ package collector
 import (
 	"context"
 	"fmt"
-	"github.com/sethvargo/go-retry"
-	"github.com/turbot/tailpipe/internal/paging"
-
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/parquet"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/briandowns/spinner"
+	"github.com/sethvargo/go-retry"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/paging"
+	"github.com/turbot/tailpipe/internal/parquet"
+	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 const eventBufferSize = 100
@@ -24,7 +25,6 @@ type Collector struct {
 	Events chan *proto.Event
 
 	pluginManager *plugin_manager.PluginManager
-	//fileWatcher   *file_watcher.SourceFileWatcher
 	// map of executions
 	executions map[string]*execution
 	// lock for executions
@@ -32,6 +32,7 @@ type Collector struct {
 
 	parquetWriter    *parquet.Writer
 	pagingRepository *paging.Repository
+	spinner          *spinner.Spinner
 }
 
 func New(ctx context.Context) (*Collector, error) {
@@ -70,12 +71,24 @@ func New(ctx context.Context) (*Collector, error) {
 		return nil, fmt.Errorf("failed to create paging repository: %w", err)
 	}
 
+	// TODO #temp
+	c.spinner = spinner.New(
+		spinner.CharSets[14],
+		100*time.Millisecond,
+		spinner.WithHiddenCursor(true),
+		spinner.WithWriter(os.Stdout),
+	)
+
 	// start listening to plugin event
 	c.listenToEventsAsync(ctx)
 	return c, nil
 }
 
 func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
+	// TODO #temp
+	c.spinner.Start()
+	c.spinner.Suffix = " Collecting logs"
+
 	// try to load paging data
 	// TODO #config HACK everything is currently based of collection type https://github.com/turbot/tailpipe/issues/5
 	pagingData, err := c.pagingRepository.Load(col.Type)
@@ -122,7 +135,8 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			e.state = ExecutionState_STARTED
 		}
 		c.executionsLock.Unlock()
-
+	case *proto.Event_StatusEvent:
+		c.setStatusMessage(e.GetStatusEvent())
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
@@ -194,9 +208,10 @@ func (c *Collector) Close() {
 	}
 
 	c.parquetWriter.Close()
-	//c.fileWatcher.Close()
 	c.pluginManager.Close()
 	c.pagingRepository.Close()
+	// TODO #temp
+	c.spinner.Stop()
 }
 
 func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplete) error {
@@ -280,6 +295,12 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 			c.handlePluginEvent(ctx, event)
 		}
 	}()
+}
+
+func (c *Collector) setStatusMessage(ev *proto.EventStatus) {
+	//format status message
+	msg := fmt.Sprintf(" artifacts discovered: %d, artifacts downloaded: %d, artifacts extracted: %d, rows enriched: %d, errors: %d", ev.ArtifactsDiscovered, ev.ArtifactsDownloaded, ev.ArtifactsExtracted, ev.RowsEnriched, ev.Errors)
+	c.spinner.Suffix = msg
 }
 
 func ensureSourcePath() (string, error) {
