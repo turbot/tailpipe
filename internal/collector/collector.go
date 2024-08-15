@@ -332,11 +332,11 @@ func (c *Collector) setStatusMessage() {
 	c.spinner.Suffix = " " + c.status.String()
 }
 
-func (c *Collector) setPluginTiming(executionId string, timing map[string]*proto.Timing) {
+func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {
 	c.executionsLock.Lock()
 	defer c.executionsLock.Unlock()
 	if e, ok := c.executions[executionId]; ok {
-		e.timing = proto.TimingMapFromProto(timing)
+		e.timing = proto.TimingCollectionFromProto(timing)
 	}
 }
 

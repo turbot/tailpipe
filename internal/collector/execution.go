@@ -24,5 +24,5 @@ type execution struct {
 	chunkCount int32
 	// total rows returned by the plugin
 	totalRows int64
-	timing    types.TimingMap
+	timing    types.TimingCollection
 }
