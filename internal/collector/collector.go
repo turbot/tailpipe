@@ -11,6 +11,7 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/sethvargo/go-retry"
+	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/paging"
@@ -92,8 +93,7 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	c.spinner.Suffix = " Collecting logs"
 
 	// try to load paging data
-	// TODO #config HACK everything is currently based of collection type https://github.com/turbot/tailpipe/issues/5
-	pagingData, err := c.pagingRepository.Load(col.Type)
+	pagingData, err := c.pagingRepository.Load(col.UnqualifiedName)
 	if err != nil {
 		return fmt.Errorf("failed to load paging data: %w", err)
 	}
@@ -106,15 +106,10 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
-	c.executions[executionId] = &execution{
-		id: executionId,
-		// TODO #config for now we are just using type https://github.com/turbot/tailpipe/issues/6
-		collection: col.Type,
-		plugin:     col.Plugin,
-		state:      ExecutionState_PENDING,
-	}
+	c.executions[executionId] = newExecution(executionId, col)
 
-	// TODO tactical push this from writer???
+	// update the status with the chunks written
+	// TODO #design tactical push this from writer???
 	go func() {
 		for {
 			select {
@@ -169,6 +164,9 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			// TODO #errors what to do with this error?
 			return
 		}
+
+		// set the conversion start time if it hasn't been set
+		execution.conversionTiming.TryStart(constants.TimingConvert)
 
 		if ev.ChunkNumber%100 == 0 {
 			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
@@ -233,9 +231,9 @@ func (c *Collector) Close(ctx context.Context) {
 
 	fmt.Println("Collection complete")
 	fmt.Println(c.status.String())
-	// print out the timing
+	// print out the pluginTiming
 	for _, e := range c.executions {
-		fmt.Println(e.timing.String())
+		fmt.Println(e.getTiming().String())
 	}
 }
 
@@ -245,7 +243,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
 
-	// store the plugin timing for this execution
+	// store the plugin pluginTiming for this execution
 	c.setPluginTiming(ce.ExecutionId, ce.Timing)
 
 	executionTimeout := 5 * time.Minute
@@ -287,8 +285,9 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 
 	slog.Debug("waitForExecution - all chunks written", "execution", e.id)
 
-	// mark execution as complete
-	e.state = ExecutionState_COMPLETE
+	// mark execution as complete and record the end time
+	e.done()
+
 	// notify the writer that the collection is complete
 	return c.parquetWriter.CollectionComplete(ce.ExecutionId)
 }
@@ -336,7 +335,7 @@ func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) 
 	c.executionsLock.Lock()
 	defer c.executionsLock.Unlock()
 	if e, ok := c.executions[executionId]; ok {
-		e.timing = proto.TimingCollectionFromProto(timing)
+		e.pluginTiming = proto.TimingCollectionFromProto(timing)
 	}
 }
 
