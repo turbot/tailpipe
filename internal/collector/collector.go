@@ -233,6 +233,10 @@ func (c *Collector) Close(ctx context.Context) {
 
 	fmt.Println("Collection complete")
 	fmt.Println(c.status.String())
+	// print out the timing
+	for _, e := range c.executions {
+		fmt.Println(e.timing.String())
+	}
 }
 
 // waitForExecution waits for the parquet writer to complete the conversion of the JSONL files to parquet
@@ -240,6 +244,9 @@ func (c *Collector) Close(ctx context.Context) {
 func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplete) error {
 
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
+
+	// store the plugin timing for this execution
+	c.setPluginTiming(ce.ExecutionId, ce.Timing)
 
 	executionTimeout := 5 * time.Minute
 	retryInterval := 5 * time.Second
@@ -323,6 +330,14 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 
 func (c *Collector) setStatusMessage() {
 	c.spinner.Suffix = " " + c.status.String()
+}
+
+func (c *Collector) setPluginTiming(executionId string, timing map[string]*proto.Timing) {
+	c.executionsLock.Lock()
+	defer c.executionsLock.Unlock()
+	if e, ok := c.executions[executionId]; ok {
+		e.timing = proto.TimingMapFromProto(timing)
+	}
 }
 
 func ensureSourcePath() (string, error) {
