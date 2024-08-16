@@ -259,7 +259,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	c.setPluginTiming(ce.ExecutionId, ce.Timing)
 
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
-	executionTimeout := 5 * time.Minute
+	executionTimeout := executionMaxDuration
 	retryInterval := 5 * time.Second
 	c.executionsLock.Lock()
 	e, ok := c.executions[ce.ExecutionId]
