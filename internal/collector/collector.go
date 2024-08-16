@@ -21,6 +21,7 @@ import (
 
 const eventBufferSize = 100
 const parquetWorkerCount = 5
+const executionMaxDuration = 2 * time.Hour
 
 type Collector struct {
 	Events chan *proto.Event
@@ -307,7 +308,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 // waitForExecutions waits for ALL executions to have state ExecutionState_COMPLETE
 func (c *Collector) waitForExecutions(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
-	executionTimeout := 2 * time.Hour
+	executionTimeout := executionMaxDuration
 	retryInterval := 5 * time.Second
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
