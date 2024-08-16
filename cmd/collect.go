@@ -79,9 +79,7 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	}
 
 	// now wait for all collections to complete and close the collector
-	c.Close()
-
-	fmt.Println("collection complete")
+	c.Close(ctx)
 }
 
 func setExitCodeForCollectError(err error) {

@@ -80,7 +80,7 @@ func (w *fileJobPool[T]) Start() error {
 // StartJobGroup schedules a jobGroup to be processed
 // a job group represents a set of linked jobs, e.g. a set of JSONL files that need to be converted to Parquet for
 // a given collection execution
-func (w *fileJobPool[T]) StartJobGroup(id, collectionType string, payload T) error {
+func (w *fileJobPool[T]) StartJobGroup(id string, payload T) error {
 	slog.Debug("fileJobPool[T].StartJobGroup", "execution id", id)
 	// we expect this execution id WIL NOT be in the map already
 	// if it is, we should return an error
@@ -88,7 +88,7 @@ func (w *fileJobPool[T]) StartJobGroup(id, collectionType string, payload T) err
 		return fmt.Errorf("job group id %s already exists", id)
 	}
 
-	jobGroup := newJobGroup(id, collectionType, payload)
+	jobGroup := newJobGroup(id, payload)
 	w.jobGroupLock.Lock()
 	// add the jobGroup to the map
 	w.jobGroups[id] = jobGroup
@@ -179,7 +179,6 @@ func (w *fileJobPool[T]) scheduler(g *jobGroup[T]) {
 			groupId:         g.id,
 			chunkNumber:     nextChunk,
 			completionCount: &g.completionCount,
-			collectionType:  g.collectionType,
 			payload:         g.payload,
 		}
 		// TODO #conversion is this costly to do thousands of times?

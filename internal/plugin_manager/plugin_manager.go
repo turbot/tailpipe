@@ -197,7 +197,7 @@ func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.Tailpi
 	pluginEventChan := make(chan *proto.Event)
 	errChan := make(chan error)
 
-	// goroutine to read the plugin event stream
+	// goroutine to read the plugin event stream and send the events down the event channel
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -236,12 +236,12 @@ func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.Tailpi
 				return
 			}
 			p.obs.Notify(protoEvent)
+			// TODO #error should we quit if we get an error event?
 			// if this is a completion event (or other error event???), stop polling
 			if protoEvent.GetCompleteEvent() != nil {
 				close(pluginEventChan)
 				return
 			}
-
 		}
 	}
 
