@@ -2,12 +2,13 @@ package parquet
 
 import (
 	"fmt"
-	"github.com/turbot/go-kit/helpers"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
@@ -15,7 +16,7 @@ import (
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
 type parquetConversionWorker struct {
 	fileWorkerBase[ParquetJobPayload]
-	// cache collection schemas - key by colleciton type
+	// cache collection schemas - key by collection name
 	viewQueries map[string]string
 
 	db *duckDb
@@ -46,12 +47,14 @@ func (w *parquetConversionWorker) close() {
 }
 
 func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJobPayload]) error {
+	startTime := time.Now()
+
 	// build the source filename
 	jsonFileName := plugin.ExecutionIdToFileName(job.groupId, job.chunkNumber)
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// process the jobGroup
-	err := w.convertFile(jsonFilePath, job.collectionType, job.payload.Schema)
+	err := w.convertFile(jsonFilePath, job.payload.CollectionName, job.payload.Schema)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
@@ -61,12 +64,14 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJ
 	if err := os.Remove(jsonFilePath); err != nil {
 		return fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
 	}
+
+	job.payload.UpdateActiveDuration(time.Since(startTime))
 	return nil
 }
 
 // convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType string, schema *schema.RowSchema) (err error) {
-	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "collectionType", collectionType)
+func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionName string, schema *schema.RowSchema) (err error) {
+	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "collectionName", collectionName)
 	//defer slog.Debug("worker.convertFile - done", "error", err)
 
 	// TODO should this also handle CSV - configure the worker?
@@ -79,14 +84,14 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType stri
 		return fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
-	// determine the root based on the collection type
-	fileRoot := w.getParquetFileRoot(collectionType)
+	// determine the root based on the collection
+	fileRoot := w.getParquetFileRoot(collectionName)
 	if err := os.MkdirAll(filepath.Dir(fileRoot), 0755); err != nil {
 		return fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
 	// get the query format - from cache if possible
-	selectQueryFormat := w.getViewQuery(collectionType, schema)
+	selectQueryFormat := w.getViewQuery(collectionName, schema)
 	// render query
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
@@ -105,15 +110,16 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionType stri
 }
 
 // getParquetFileRoot generates the file root for the parquet file based on the naming convention
-func (w *parquetConversionWorker) getParquetFileRoot(collectionType string) string {
-	return filepath.Join(w.destDir, collectionType)
+func (w *parquetConversionWorker) getParquetFileRoot(collectionName string) string {
+	// TODO #parquet should this be collection_type/collection_name ot what?
+	return filepath.Join(w.destDir, collectionName)
 }
 
-func (w *parquetConversionWorker) getViewQuery(collectionType string, rowSchema *schema.RowSchema) interface{} {
-	query, ok := w.viewQueries[collectionType]
+func (w *parquetConversionWorker) getViewQuery(collectionName string, rowSchema *schema.RowSchema) interface{} {
+	query, ok := w.viewQueries[collectionName]
 	if !ok {
 		query = buildViewQuery(rowSchema)
-		w.viewQueries[collectionType] = query
+		w.viewQueries[collectionName] = query
 	}
 	return query
 }

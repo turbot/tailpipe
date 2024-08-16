@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"fmt"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"log/slog"
 )
 
@@ -42,20 +41,16 @@ func (w *Writer) Start() error {
 
 // StartCollection schedules a jobGroup to be processed
 // it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
-func (w *Writer) StartCollection(executionId, collectionType string, schema *schema.RowSchema) error {
-	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "collectionType", collectionType)
+func (w *Writer) StartCollection(executionId string, payload ParquetJobPayload) error {
+	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "collectionName", payload.CollectionName)
 
-	// create jobPayload
-	payload := ParquetJobPayload{
-		Schema: schema,
-	}
-	return w.jobPool.StartJobGroup(executionId, collectionType, payload)
+	return w.jobPool.StartJobGroup(executionId, payload)
 }
 
-// AddChunk adds available chunks to a jobGroup
+// AddJob adds available jobs to a jobGroup
 // this is making the assumption that all files for a jobGroup are have a filename of format <execution_id>_<chunkNumber>.jsonl
 // therefore we only need to pass the chunkNumber number
-func (w *Writer) AddChunk(executionID string, chunks ...int) error {
+func (w *Writer) AddJob(executionID string, chunks ...int) error {
 	return w.jobPool.AddChunk(executionID, chunks...)
 
 }

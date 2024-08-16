@@ -106,7 +106,11 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
-	c.executions[executionId] = newExecution(executionId, col)
+	e := newExecution(executionId, col)
+
+	c.executionsLock.Lock()
+	c.executions[executionId] = e
+	c.executionsLock.Unlock()
 
 	// update the status with the chunks written
 	// TODO #design tactical push this from writer???
@@ -123,8 +127,15 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 		}
 	}()
 
+	// create jobPayload
+	payload := parquet.ParquetJobPayload{
+		CollectionName:       col.UnqualifiedName,
+		Schema:               collectResponse.CollectionSchema,
+		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
+	}
+
 	// start the parquet writer job
-	return c.parquetWriter.StartCollection(executionId, col.Type, collectResponse.CollectionSchema)
+	return c.parquetWriter.StartCollection(executionId, payload)
 }
 
 // Notify implements observer.Observer
@@ -172,7 +183,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}
 
-		err := c.parquetWriter.AddChunk(executionId, chunkNumber)
+		err := c.parquetWriter.AddJob(executionId, chunkNumber)
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			// TODO #errors what to do with this error?
@@ -246,6 +257,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	// store the plugin pluginTiming for this execution
 	c.setPluginTiming(ce.ExecutionId, ce.Timing)
 
+	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := 5 * time.Minute
 	retryInterval := 5 * time.Second
 	c.executionsLock.Lock()
