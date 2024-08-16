@@ -307,7 +307,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 // waitForExecutions waits for ALL executions to have state ExecutionState_COMPLETE
 func (c *Collector) waitForExecutions(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
-	executionTimeout := 10 * time.Minute
+	executionTimeout := 2 * time.Hour
 	retryInterval := 5 * time.Second
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
