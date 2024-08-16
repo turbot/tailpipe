@@ -64,8 +64,9 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJ
 	if err := os.Remove(jsonFilePath); err != nil {
 		return fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
 	}
-
-	job.payload.UpdateActiveDuration(time.Since(startTime))
+	activeDuration := time.Since(startTime)
+	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
+	job.payload.UpdateActiveDuration(activeDuration)
 	return nil
 }
 
