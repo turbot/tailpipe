@@ -17,12 +17,12 @@ const (
 	ExecutionState_ERROR
 )
 
-// an execution represents the execution of a collection
+// an execution represents the execution of a partition
 type execution struct {
-	id         string
-	collection string
-	plugin     string
-	state      ExecutionState
+	id        string
+	partition string
+	plugin    string
+	state     ExecutionState
 	// if the execution state is in error, this is the error
 	error error
 	// the chunks written
@@ -36,12 +36,12 @@ type execution struct {
 	conversionTiming types.Timing
 }
 
-func newExecution(executionId string, col *config.Collection) *execution {
+func newExecution(executionId string, part *config.Partition) *execution {
 	e := &execution{
-		id:         executionId,
-		collection: col.UnqualifiedName,
-		plugin:     col.Plugin,
-		state:      ExecutionState_PENDING,
+		id:        executionId,
+		partition: part.UnqualifiedName,
+		plugin:    part.Plugin,
+		state:     ExecutionState_PENDING,
 	}
 	e.executionTiming.TryStart("total time")
 	return e

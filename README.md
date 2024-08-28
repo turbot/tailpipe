@@ -61,7 +61,7 @@ export AWS_SESSION_TOKEN="xxxxx"
 export PIPES_TOKEN="xxxx"
 
 # run
-tailpipe collect collection=aws_cloudtrail_log    
+tailpipe collect partition=aws_cloudtrail_log    
 
 ```
 
@@ -159,19 +159,19 @@ tailpipe view - View information.
 
 Hive structure:
 ```
-{table_type}/tp_collection={collection}/tp_connection={partition}/tp_year={year}/tp_month={month}/tp_day={day}/{uuid}.parquet
+{table_type}/tp_partition={collection}/tp_index={partition}/tp_year={year}/tp_month={month}/tp_day={day}/{uuid}.parquet
 ```
 
 (Q - would {collection}/{table} be more efficient and common than {table}/{collection}? I don't think so, more likely to query by table than across multiple types in one collection I think?)
 
 For example, AWS CloudTrail:
 ```
-aws_cloudtrail_log/tp_collection=all_accounts/tp_connection=123456789012/tp_year=2024/tp_month=02/tp_day=07/abc1234.parquet
+aws_cloudtrail_log/tp_partition=all_accounts/tp_index=123456789012/tp_year=2024/tp_month=02/tp_day=07/abc1234.parquet
 ```
 
 For example, Slack:
 ```
-slack_audit_log/tp_collection=my_collection/tp_connection={tenant_id}/tp_year=2024/tp_month=02/tp_day=07/abc1234.parquet
+slack_audit_log/tp_partition=my_partition/tp_index={tenant_id}/tp_year=2024/tp_month=02/tp_day=07/abc1234.parquet
 ```
 
 Tailpipe will collect and then compact logs - these are deliberately different
@@ -192,12 +192,12 @@ create view aws_cloudtrail_log as select * from read_parquet('aws_cloudtrail_log
 create view slack_audit_log as select * from read_parquet('slack_audit_log/*/*/*/*/*/*.parquet');
 
 -- view across one collection
-create schema my_collection;
-create view my_collection.aws_connection_log as select * from read_parquet('*/tp_collection=my_collection/*/*/*/*/*.parquet');
+create schema my_partition;
+create view my_partition.aws_connection_log as select * from read_parquet('*/tp_partition=my_partition/*/*/*/*/*.parquet');
 
 -- view all logs of all types for one AWS account
 create schema my_conn;
-create view my_conn.aws_connection_log as select * from read_parquet('*/*/tp_connection=my_conn/*/*/*/*.parquet');
+create view my_conn.aws_connection_log as select * from read_parquet('*/*/tp_index=my_conn/*/*/*/*.parquet');
 
 -- create a datatank style accelerated table
 create schema datatank;

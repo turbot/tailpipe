@@ -46,8 +46,8 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		setExitCodeForCollectError(err)
 	}()
 
-	collectionArgs := viper.GetStringSlice(constants.ArgPartition)
-	if len(collectionArgs) == 0 {
+	partitionArgs := viper.GetStringSlice(constants.ArgPartition)
+	if len(partitionArgs) == 0 {
 		// TODO #error think about error codes
 		// TODO think about how to show usage
 		error_helpers.FailOnError(fmt.Errorf("no partitions specified"))

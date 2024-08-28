@@ -87,31 +87,31 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 }
 
-func GetPartitionConfig(partitionNames []string, configPath string) ([]*config.Collection, error) {
+func GetPartitionConfig(partitionNames []string, configPath string) ([]*config.Partition, error) {
 	tailpipeConfig, err := LoadTailpipeConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// if no collections specified, return all
+	// if no partitions specified, return all
 	// TODO #errors should this be an error
 	if len(partitionNames) == 0 {
-		return maps.Values(tailpipeConfig.Collections), nil
+		return maps.Values(tailpipeConfig.Partitions), nil
 	}
 
-	var collections []*config.Collection
+	var partitions []*config.Partition
 	var missing []string
 	for _, name := range partitionNames {
-		c := tailpipeConfig.Collections[name]
+		c := tailpipeConfig.Partitions[name]
 		if c == nil {
 			missing = append(missing, name)
 		} else {
-			collections = append(collections, c)
+			partitions = append(partitions, c)
 		}
 	}
 
 	if len(missing) > 0 {
-		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("collection", len(missing)), strings.Join(missing, ", "))
+		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("partition", len(missing)), strings.Join(missing, ", "))
 	}
-	return collections, nil
+	return partitions, nil
 }

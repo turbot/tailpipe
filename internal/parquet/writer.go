@@ -6,9 +6,9 @@ import (
 )
 
 /*
-Writer is a parquet writer that converts json files to parquet files, following a specific hiv structure:
+Writer is a parquet writer that converts json files to parquet files, following a specific hive structure:
 
-{tp_collection_type}#div#tp_collection={tp_collection}#div#tp_connection={tp_connection}#div#tp_year={tp_year}#div#tp_month={tp_month}#div#tp_day={tp_day}#div#{execution_id}.parquet
+{tp_partition_type}#div#tp_partition={tp_partition}#div#tp_index={tp_index}#div#tp_year={tp_year}#div#tp_month={tp_month}#div#tp_day={tp_day}#div#{execution_id}.parquet
 
 Tailpipe will collect and then compact logs - these are deliberately different phases.
 Collection creates a series of smaller parquet files added to the specific day directory.
@@ -18,7 +18,7 @@ File changes will be done as temp files with instant (almost transactional) rena
 */
 type Writer struct {
 	// the job pool
-	jobPool *fileJobPool[ParquetJobPayload]
+	jobPool *fileJobPool[JobPayload]
 }
 
 func NewWriter(sourceDir, destDir string, workers int) (*Writer, error) {
@@ -39,10 +39,10 @@ func (w *Writer) Start() error {
 
 }
 
-// StartCollection schedules a jobGroup to be processed
+// StartJobGroup schedules a jobGroup to be processed
 // it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
-func (w *Writer) StartCollection(executionId string, payload ParquetJobPayload) error {
-	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "partitionName", payload.PartitionName)
+func (w *Writer) StartJobGroup(executionId string, payload JobPayload) error {
+	slog.Info("parquet.Writer.StartJobGroup", "jobGroupId", executionId, "partitionName", payload.PartitionName)
 
 	return w.jobPool.StartJobGroup(executionId, payload)
 }
@@ -59,7 +59,7 @@ func (w *Writer) GetChunksWritten(id string) (int32, error) {
 	return w.jobPool.GetChunksWritten(id)
 }
 
-func (w *Writer) CollectionComplete(executionId string) error {
+func (w *Writer) JobGroupComplete(executionId string) error {
 	return w.jobPool.JobGroupComplete(executionId)
 }
 

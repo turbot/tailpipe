@@ -15,15 +15,15 @@ import (
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
 type parquetConversionWorker struct {
-	fileWorkerBase[ParquetJobPayload]
-	// cache collection schemas - key by collection name
+	fileWorkerBase[JobPayload]
+	// cache partition schemas - key by partition name
 	viewQueries map[string]string
 
 	db *duckDb
 }
 
 // ctor
-func newParquetConversionWorker(jobChan chan fileJob[ParquetJobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
+func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
 	w := &parquetConversionWorker{
 		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
 		viewQueries:    make(map[string]string),
@@ -46,7 +46,7 @@ func (w *parquetConversionWorker) close() {
 	w.db.Close()
 }
 
-func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJobPayload]) error {
+func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPayload]) error {
 	startTime := time.Now()
 
 	// build the source filename
@@ -85,7 +85,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName strin
 		return fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
-	// determine the root based on the collection
+	// determine the root based on the partition
 	fileRoot := w.getParquetFileRoot(partitionName)
 	if err := os.MkdirAll(filepath.Dir(fileRoot), 0755); err != nil {
 		return fmt.Errorf("failed to create parquet folder: %w", err)
@@ -97,7 +97,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName strin
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// Create a query to write to partitioned parquet files
-	partitionColumns := []string{"tp_collection", "tp_connection", "tp_year", "tp_month", "tp_day"}
+	partitionColumns := []string{"tp_partition", "tp_index", "tp_year", "tp_month", "tp_day"}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
 
 	_, err = w.db.Exec(exportQuery)
@@ -112,7 +112,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName strin
 
 // getParquetFileRoot generates the file root for the parquet file based on the naming convention
 func (w *parquetConversionWorker) getParquetFileRoot(partitionName string) string {
-	// TODO #parquet should this be collection_type/collection_name ot what?
+	// TODO #parquet should this be partition_type/partition_name ot what?
 	return filepath.Join(w.destDir, partitionName)
 }
 

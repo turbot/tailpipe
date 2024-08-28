@@ -5,11 +5,8 @@ import (
 	"time"
 )
 
-type ParquetJobPayload struct {
-	// collection name
-	PartitionName string
-	// collection schema
-	Schema *schema.RowSchema
-	// function to update the active duration
+type JobPayload struct {
+	PartitionName        string
+	Schema               *schema.RowSchema
 	UpdateActiveDuration func(duration time.Duration)
 }

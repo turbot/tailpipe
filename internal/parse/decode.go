@@ -74,8 +74,8 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	}
 
 	switch block.Type {
-	case config.BlockTypeCollection:
-		return decodeCollection(block, parseCtx, resource)
+	case config.BlockTypePartition:
+		return decodePartition(block, parseCtx, resource)
 	}
 
 	diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
@@ -86,10 +86,10 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	return resource, res
 }
 
-func decodeCollection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
+func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
 	res := parse.NewDecodeResult()
 
-	target := resource.(*config.Collection)
+	target := resource.(*config.Partition)
 	syntaxBody := block.Body.(*hclsyntax.Body)
 
 	attrs := syntaxBody.Attributes
@@ -187,7 +187,7 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 	blockName := block.Labels[1]
 	fullName := config.BuildResourceName(block.Type, subType, blockName)
 	factoryFuncs := map[string]func(*hcl.Block, string) (modconfig.HclResource, hcl.Diagnostics){
-		config.BlockTypeCollection: config.NewCollection,
+		config.BlockTypePartition: config.NewPartition,
 		//config.BlockTypeSource:      config.NewSource,
 		//config.BlockTypeCredential:  config.NewCredential,
 		//config.BlockTypeFilter:      config.NewFilter,

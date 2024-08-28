@@ -8,44 +8,44 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
-type Collection struct {
+type Partition struct {
 	modconfig.HclResourceImpl
 
-	// Type of the collection
+	// Type of the partition
 	Type string `hcl:"type,label"`
 
-	// Plugin used for this collection
+	// Plugin used for this partition
 	Plugin string `hcl:"plugin"`
 
-	// Source of the data for this collection
+	// Source of the data for this partition
 	Source Source `hcl:"source,block"`
 
-	// any collection specific config data for the collection
+	// any partition-type specific config data for the partition
 	Config []byte
 	// the config location
 	ConfigRange hcl.Range
 }
 
-func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
+func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
 	if len(block.Labels) < 2 {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "'collection' block requires 2 labels, 'type' and 'name'",
+			Summary:  "'partition' block requires 2 labels, 'type' and 'name'",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}}
 	}
-	c := &Collection{
+	c := &Partition{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
 		Type:            block.Labels[0],
 	}
 
-	// NOTE: as tailpipe does not have the concept of mods, the full name is collection.<type>.<name> and
+	// NOTE: as tailpipe does not have the concept of mods, the full name is partition.<type>.<name> and
 	// the unqualified name is the <type>.<name>
 	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Type, c.ShortName)
 	return c, nil
 }
 
-func (c *Collection) ToProto() *proto.ConfigData {
+func (c *Partition) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
 		Type:  c.Type,
 		Hcl:   c.Config,
@@ -53,7 +53,7 @@ func (c *Collection) ToProto() *proto.ConfigData {
 	}
 }
 
-func (c *Collection) SetUnknownHcl(u *UnknownHcl) {
+func (c *Partition) SetUnknownHcl(u *UnknownHcl) {
 	if u == nil {
 		return
 	}

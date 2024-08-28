@@ -67,16 +67,16 @@ func New(ctx context.Context) (*Collector, error) {
 		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 
-	pagingDataPath, err := ensurePagingPath()
+	collectionStatePath, err := ensureCollectionStatePath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create paging path: %w", err)
+		return nil, fmt.Errorf("failed to create colleciton state path: %w", err)
 	}
-	c.collectionStateRepository, err = collection_state.NewRepository(pagingDataPath)
+	c.collectionStateRepository, err = collection_state.NewRepository(collectionStatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create paging repository: %w", err)
 	}
 
-	// TODO #temp
+	// TODO #ui temp
 	c.spinner = spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -89,19 +89,19 @@ func New(ctx context.Context) (*Collector, error) {
 	return c, nil
 }
 
-func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
+func (c *Collector) Collect(ctx context.Context, col *config.Partition) error {
 	// TODO #temp
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
 
 	// try to load paging data
-	pagingData, err := c.collectionStateRepository.Load(col.UnqualifiedName)
+	collectionState, err := c.collectionStateRepository.Load(col.UnqualifiedName)
 	if err != nil {
 		return fmt.Errorf("failed to load paging data: %w", err)
 	}
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, col, pagingData)
+	collectResponse, err := c.pluginManager.Collect(ctx, col, collectionState)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
@@ -130,14 +130,14 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	}()
 
 	// create jobPayload
-	payload := parquet.ParquetJobPayload{
+	payload := parquet.JobPayload{
 		PartitionName:        col.UnqualifiedName,
-		Schema:               collectResponse.CollectionSchema,
+		Schema:               collectResponse.PartitionSchema,
 		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
 	}
 
 	// start the parquet writer job
-	return c.parquetWriter.StartCollection(executionId, payload)
+	return c.parquetWriter.StartJobGroup(executionId, payload)
 }
 
 // Notify implements observer.Observer
@@ -192,9 +192,9 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		}
 		// store paging data
 		if len(ev.CollectionState) > 0 {
-			err = c.collectionStateRepository.Save(execution.collection, string(ev.CollectionState))
+			err = c.collectionStateRepository.Save(execution.partition, string(ev.CollectionState))
 			if err != nil {
-				slog.Error("failed to save paging data", "error", err)
+				slog.Error("failed to save collection state data", "error", err)
 				// TODO #errors what to do with this error?
 			}
 		}
@@ -241,7 +241,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 func (c *Collector) Close(ctx context.Context) {
 	slog.Info("closing collector - wait for executions to complete")
 
-	// wait for any ongoing collections to complete
+	// wait for any ongoing partitions to complete
 	err := c.waitForExecutions(ctx)
 	if err != nil {
 		// TODO #errors
@@ -322,7 +322,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	e.done()
 
 	// notify the writer that the collection is complete
-	return c.parquetWriter.CollectionComplete(ce.ExecutionId)
+	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
 }
 
 // waitForExecutions waits for ALL executions to have state ExecutionState_COMPLETE
@@ -415,7 +415,7 @@ func ensureDestPath() (string, error) {
 	return destFilePath, nil
 }
 
-func ensurePagingPath() (string, error) {
+func ensureCollectionStatePath() (string, error) {
 	// TODO #config configure paging location https://github.com/turbot/tailpipe/issues/1
 	destFilePath, err := filepath.Abs("./data/paging")
 	if err != nil {

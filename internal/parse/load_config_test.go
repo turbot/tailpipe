@@ -7,17 +7,17 @@ import (
 
 // result is a struct to hold the expected result of the test - designed to be easily compared with the actual result
 type result struct {
-	plugin           string
-	collectionType   string
-	collectionConfig string
-	sourceType       string
-	sourceConfig     string
+	plugin          string
+	partitionType   string
+	partitionConfig string
+	sourceType      string
+	sourceConfig    string
 }
 
-func TestGetCollectionConfig(t *testing.T) {
+func TestGetPartitionConfig(t *testing.T) {
 	type args struct {
 		configPath string
-		collection string
+		partition  string
 	}
 	tests := []struct {
 		name    string
@@ -30,12 +30,12 @@ func TestGetCollectionConfig(t *testing.T) {
 			name: "1",
 			args: args{
 				configPath: "test_data/configs",
-				collection: "collection.aws_cloudtrail_log.cloudtrail_logs",
+				partition:  "partition.aws_cloudtrail_log.cloudtrail_logs",
 			},
 			want: result{
-				plugin:         "aws",
-				collectionType: "aws_cloudtrail_log",
-				sourceType:     "file_system",
+				plugin:        "aws",
+				partitionType: "aws_cloudtrail_log",
+				sourceType:    "file_system",
 				sourceConfig: `paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
 extensions = [".gz"]`,
 			},
@@ -51,19 +51,19 @@ extensions = [".gz"]`,
 				t.Errorf("LoadTailpipeConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			col, ok := config.Collections[tt.args.collection]
+			col, ok := config.Partitions[tt.args.partition]
 			if !ok {
-				t.Errorf("LoadTailpipeConfig() collection not found")
+				t.Errorf("LoadTailpipeConfig() partition not found")
 				return
 			}
 
 			// build the result
 			var got = result{
-				plugin:           col.Plugin,
-				collectionType:   col.Type,
-				collectionConfig: string(col.Config),
-				sourceType:       col.Source.Type,
-				sourceConfig:     string(col.Source.Config),
+				plugin:          col.Plugin,
+				partitionType:   col.Type,
+				partitionConfig: string(col.Config),
+				sourceType:      col.Source.Type,
+				sourceConfig:    string(col.Source.Config),
 			}
 
 			if !reflect.DeepEqual(got, tt.want) {
