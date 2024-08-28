@@ -73,11 +73,11 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
-		ExecutionId:    executionID,
-		OutputPath:     p.inboxPath,
-		CollectionData: collection.ToProto(),
-		SourceData:     collection.Source.ToProto(),
-		PagingData:     []byte(pagingData),
+		ExecutionId:     executionID,
+		OutputPath:      p.inboxPath,
+		CollectionData:  collection.ToProto(),
+		SourceData:      collection.Source.ToProto(),
+		CollectionState: []byte(pagingData),
 	}
 
 	err = plugin.Collect(req)
@@ -89,7 +89,7 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 	// this will loop until it hits an error or the stream is closed
 	go p.doCollect(ctx, eventStream)
 
-	// get the schema for the collection (we will have fetched this when starting the plugin
+	// get the schema for the collection type (we will have fetched this when starting the plugin
 	collectionSchema := plugin.schemaMap[collection.Type]
 
 	// just return - the observer is responsible for waiting for completion

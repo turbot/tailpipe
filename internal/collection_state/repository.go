@@ -1,4 +1,4 @@
-package paging
+package collection_state
 
 import (
 	"database/sql"

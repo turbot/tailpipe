@@ -39,17 +39,17 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 	// load the file data
 	fileData, diags := parse.LoadFileData(configPaths...)
 	if diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to load workspace profiles", diags)
+		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 
 	// parse the files
 	body, diags := parse.ParseHclFiles(fileData)
 	if diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to load workspace profiles", diags)
+		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 	content, diags := body.Content(config.ConfigBlockSchema)
 	if diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to load workspace profiles", diags)
+		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 
 	// create parse context for the decode
@@ -65,7 +65,7 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 	for attempts := 0; ; attempts++ {
 		config, diags = decode(parseCtx)
 		if diags.HasErrors() {
-			return nil, error_helpers.HclDiagsToError("Failed to decode all workspace profile files", diags)
+			return nil, error_helpers.HclDiagsToError("Failed to decode all config files", diags)
 		}
 
 		// if there are no unresolved blocks, we are done

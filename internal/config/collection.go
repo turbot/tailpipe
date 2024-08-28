@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"github.com/hashicorp/hcl/v2"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
@@ -23,6 +22,8 @@ type Collection struct {
 
 	// any collection specific config data for the collection
 	Config []byte
+	// the config location
+	ConfigRange hcl.Range
 }
 
 func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -46,29 +47,16 @@ func NewCollection(block *hcl.Block, fullName string) (modconfig.HclResource, hc
 
 func (c *Collection) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		Type:       c.Type,
-		ConfigData: c.Config,
+		Type:  c.Type,
+		Hcl:   c.Config,
+		Range: proto.RangeToProto(c.DeclRange),
 	}
 }
 
-func (c *Collection) SetUnknownHcl(unknown map[*hclsyntax.Block][]byte) hcl.Diagnostics {
-	var diags hcl.Diagnostics
-	for k, v := range unknown {
-		if k == nil {
-			c.Config = v
-			continue
-		}
-
-		if k.Type == "source" {
-			c.Source.Config = v
-			continue
-		}
-
-		diags = append(diags, &hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  "failed to set unknown hcl",
-			Detail:   fmt.Sprintf("unknown hcl for unsupported block: %s", k),
-		})
+func (c *Collection) SetUnknownHcl(u *UnknownHcl) {
+	if u == nil {
+		return
 	}
-	return diags
+	c.Config = u.Hcl
+	c.ConfigRange = u.Range
 }

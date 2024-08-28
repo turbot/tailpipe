@@ -3,11 +3,13 @@ package parse
 import (
 	"fmt"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/config"
+	"golang.org/x/exp/maps"
 )
 
 func decode(parseCtx *ConfigParseContext) (*config.TailpipeConfig, hcl.Diagnostics) {
@@ -71,12 +73,111 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 		return nil, res
 	}
 
+	switch block.Type {
+	case config.BlockTypeCollection:
+		return decodeCollection(block, parseCtx, resource)
+	}
+
 	diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
-	// if this resource supports unknown hcl, handle it
-	diags = handleUnknownHcl(block, parseCtx, resource, diags)
+	//// if this resource supports unknown hcl, handle it
+	//diags = handleUnknownHcl(block, parseCtx, resource, diags)
 
 	res.HandleDecodeDiags(diags)
 	return resource, res
+}
+
+func decodeCollection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
+	res := parse.NewDecodeResult()
+
+	target := resource.(*config.Collection)
+	syntaxBody := block.Body.(*hclsyntax.Body)
+
+	attrs := syntaxBody.Attributes
+
+	var propertyNames = map[string]struct{}{"plugin": {}, "source": {}}
+
+	var unknownAttrs []*hcl.Attribute
+	for name, attr := range attrs {
+
+		if _, ok := propertyNames[name]; ok {
+			// try to evaluate expression
+			val, diags := attr.Expr.Value(parseCtx.EvalCtx)
+			if diags.HasErrors() {
+				continue
+			}
+			switch name {
+			case "plugin":
+				target.Plugin = val.AsString()
+			}
+		} else {
+			unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
+		}
+	}
+
+	unknown, diags := handleUnknownAttributes(block, parseCtx, unknownAttrs)
+	// now set unknown hcl
+	target.SetUnknownHcl(unknown)
+
+	blocks := syntaxBody.Blocks
+	for _, block := range blocks {
+		switch block.Type {
+		case "source":
+			// decode source block
+			source, diags := decodeSource(block, parseCtx)
+			res.HandleDecodeDiags(diags)
+			if !diags.HasErrors() {
+				target.Source = *source
+			}
+		default:
+			diagnostics := hcl.Diagnostics{&hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  fmt.Sprintf("unexpected block type %s", block.Type),
+				Subject:  hclhelpers.BlockRangePointer(block.AsHCLBlock()),
+			},
+			}
+			res.HandleDecodeDiags(diagnostics)
+		}
+	}
+
+	res.HandleDecodeDiags(diags)
+	return target, res
+}
+
+func handleUnknownAttributes(block *hcl.Block, parseCtx *ConfigParseContext, unknownAttrs []*hcl.Attribute) (*config.UnknownHcl, hcl.Diagnostics) {
+	var diags hcl.Diagnostics
+	unknown := &config.UnknownHcl{}
+	for _, attr := range unknownAttrs {
+		// call sdk handleUnsupportedArgDiags to extract unknown hcl
+		hclBytes := parseCtx.FileData[block.DefRange.Filename]
+
+		// extract the unknown hcl
+		u := extractUnknownHcl(hclBytes, attr)
+		// if we succeded in extracting the unknown hcl, add it to the list
+		unknown.Merge(u)
+
+	}
+	return unknown, diags
+}
+
+func decodeSource(block *hclsyntax.Block, ctx *ConfigParseContext) (*config.Source, hcl.Diagnostics) {
+	source := &config.Source{}
+	source.Type = block.Labels[0]
+
+	attrs, diags := block.Body.JustAttributes()
+	if len(attrs) == 0 {
+		return source, diags
+	}
+
+	unknown, diags := handleUnknownAttributes(block.AsHCLBlock(), ctx, maps.Values(attrs))
+	if diags.HasErrors() {
+		return source, diags
+	}
+
+	// set the unknown hcl on the source
+	source.SetUnknownHcl(unknown)
+
+	return source, diags
+
 }
 
 // return a shell resource for the given block

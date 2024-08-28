@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -13,8 +14,8 @@ import (
 	"github.com/sethvargo/go-retry"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/tailpipe/internal/collection_state"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/paging"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
@@ -32,9 +33,9 @@ type Collector struct {
 	// lock for executions
 	executionsLock sync.RWMutex
 
-	parquetWriter    *parquet.Writer
-	pagingRepository *paging.Repository
-	spinner          *spinner.Spinner
+	parquetWriter             *parquet.Writer
+	collectionStateRepository *collection_state.Repository
+	spinner                   *spinner.Spinner
 	// the current plugin status - used to update the spinner
 	status status
 }
@@ -70,7 +71,7 @@ func New(ctx context.Context) (*Collector, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create paging path: %w", err)
 	}
-	c.pagingRepository, err = paging.NewRepository(pagingDataPath)
+	c.collectionStateRepository, err = collection_state.NewRepository(pagingDataPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create paging repository: %w", err)
 	}
@@ -94,7 +95,7 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 	c.spinner.Suffix = " Collecting logs"
 
 	// try to load paging data
-	pagingData, err := c.pagingRepository.Load(col.UnqualifiedName)
+	pagingData, err := c.collectionStateRepository.Load(col.UnqualifiedName)
 	if err != nil {
 		return fmt.Errorf("failed to load paging data: %w", err)
 	}
@@ -190,8 +191,8 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			// TODO #errors what to do with this error?
 		}
 		// store paging data
-		if len(ev.PagingData) > 0 {
-			err = c.pagingRepository.Save(execution.collection, string(ev.PagingData))
+		if len(ev.CollectionState) > 0 {
+			err = c.collectionStateRepository.Save(execution.collection, string(ev.CollectionState))
 			if err != nil {
 				slog.Error("failed to save paging data", "error", err)
 				// TODO #errors what to do with this error?
@@ -199,13 +200,25 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		}
 
 	case *proto.Event_CompleteEvent:
+		ev := e.GetCompleteEvent()
 		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
 		slog.Debug("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
 
 		completedEvent := e.GetCompleteEvent()
+
+		// was there an error?
 		if completedEvent.Error != "" {
 			slog.Error("execution error", "execution", completedEvent.ExecutionId, "error", completedEvent.Error)
-			// TODO #errors what to do with this error?
+			// retrieve the execution
+			c.executionsLock.RLock()
+			execution, ok := c.executions[ev.ExecutionId]
+			c.executionsLock.RUnlock()
+			if !ok {
+				slog.Error("Event_CompleteEvent - execution not found", "execution", ev.ExecutionId)
+				return
+			}
+			execution.state = ExecutionState_ERROR
+			execution.error = fmt.Errorf("plugin error: %s", completedEvent.Error)
 		}
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file
@@ -237,14 +250,21 @@ func (c *Collector) Close(ctx context.Context) {
 
 	c.parquetWriter.Close()
 	c.pluginManager.Close()
-	c.pagingRepository.Close()
+	c.collectionStateRepository.Close()
 	// TODO #temp
 	c.spinner.Stop()
 
 	fmt.Println("Collection complete")
 	fmt.Println(c.status.String())
-	// print out the pluginTiming
+	// print out the execution status
 	for _, e := range c.executions {
+		switch e.state {
+		case ExecutionState_ERROR:
+			fmt.Printf("Execution %s failed: %s\n", e.id, e.error)
+		case ExecutionState_COMPLETE:
+			fmt.Printf("Execution %s complete\n", e.id)
+		}
+
 		fmt.Println(e.getTiming().String())
 	}
 }
@@ -316,9 +336,15 @@ func (c *Collector) waitForExecutions(ctx context.Context) error {
 		c.executionsLock.RLock()
 		defer c.executionsLock.RUnlock()
 		for _, e := range c.executions {
-			if e.state != ExecutionState_COMPLETE {
+			switch e.state {
+			case ExecutionState_ERROR:
+				return NewExecutionError(errors.New("execution in error state"), e.id)
+			case ExecutionState_COMPLETE:
+
+				return nil
+			default:
 				//slog.Debug("waiting for executions to complete", "execution", e.id, "state", e.state)
-				return retry.RetryableError(fmt.Errorf("execution %s not complete", e.id))
+				return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), e.id))
 			}
 		}
 
@@ -326,7 +352,10 @@ func (c *Collector) waitForExecutions(ctx context.Context) error {
 		return nil
 	})
 	if err != nil {
-		return fmt.Errorf("not all executions completed after %s", executionTimeout.String())
+		if err.Error() == "execution not complete" {
+			return fmt.Errorf("not all executions completed after %s", executionTimeout.String())
+		}
+		return err
 	}
 	return nil
 }
