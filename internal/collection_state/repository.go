@@ -161,31 +161,31 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	return db, nil
 }
 
-func (r *Repository) Load(collectionName string) (string, error) {
+func (r *Repository) Load(partitionName string) (string, error) {
 	if r.db == nil {
 		return "", fmt.Errorf("repository is not open")
 	}
 
 	var pagingData string
-	err := r.db.QueryRow(fmt.Sprintf("SELECT paging_data FROM %s WHERE collection_name = ?", pagingTableName), collectionName).Scan(&pagingData)
+	err := r.db.QueryRow(fmt.Sprintf("SELECT paging_data FROM %s WHERE collection_name = ?", pagingTableName), partitionName).Scan(&pagingData)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
-		return "", fmt.Errorf("could not load paging data for collection %s: %w", collectionName, err)
+		return "", fmt.Errorf("could not load paging data for collection %s: %w", partitionName, err)
 	}
 
 	return pagingData, nil
 }
 
-func (r *Repository) Save(collectionName, pagingData string) error {
+func (r *Repository) Save(partitionName, pagingData string) error {
 	if r.db == nil {
 		return fmt.Errorf("repository is not open")
 	}
 
-	_, err := r.db.Exec(fmt.Sprintf("INSERT OR REPLACE INTO %s (collection_name, paging_data) VALUES (?, ?)", pagingTableName), collectionName, pagingData)
+	_, err := r.db.Exec(fmt.Sprintf("INSERT OR REPLACE INTO %s (collection_name, paging_data) VALUES (?, ?)", pagingTableName), partitionName, pagingData)
 	if err != nil {
-		return fmt.Errorf("could not save paging data for collection %s: %w", collectionName, err)
+		return fmt.Errorf("could not save paging data for collection %s: %w", partitionName, err)
 	}
 	return nil
 }

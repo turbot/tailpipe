@@ -14,7 +14,7 @@ import (
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
-// to reference this use: collect --config-path <path to tailpipe>/internal/parse/test_data/configs --collection aws_cloudtrail_log.cloudtrail_logs
+// to reference this use: collect --config-path <path to tailpipe>/internal/parse/test_data/configs --partition aws_cloudtrail_log.cloudtrail_logs
 
 // TODO #errors have good think about error handling and return codes
 
@@ -29,7 +29,7 @@ func collectCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddStringFlag(constants.ArgConfigPath, ".", "Path to search for config files").
-		AddStringSliceFlag(constants.ArgCollection, nil, "Collection(s) to collect (default is all)")
+		AddStringSliceFlag(constants.ArgPartition, nil, "Partition(s) to collect (default is all)")
 
 	return cmd
 }
@@ -46,20 +46,20 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		setExitCodeForCollectError(err)
 	}()
 
-	collectionArgs := viper.GetStringSlice(constants.ArgCollection)
+	collectionArgs := viper.GetStringSlice(constants.ArgPartition)
 	if len(collectionArgs) == 0 {
 		// TODO #error think about error codes
 		// TODO think about how to show usage
-		error_helpers.FailOnError(fmt.Errorf("no collections specified"))
+		error_helpers.FailOnError(fmt.Errorf("no partitions specified"))
 	}
 
-	collections, err := parse.GetCollectionConfig(viper.GetStringSlice(constants.ArgCollection), viper.GetString(constants.ArgConfigPath))
+	partitions, err := parse.GetPartitionConfig(viper.GetStringSlice(constants.ArgPartition), viper.GetString(constants.ArgConfigPath))
 	if err != nil {
 		// TODO #errors - think about error codes
-		error_helpers.FailOnError(fmt.Errorf("failed to get collections: %w", err))
+		error_helpers.FailOnError(fmt.Errorf("failed to get partition config: %w", err))
 	}
 
-	// now we have the collections, we can start collecting
+	// now we have the partitions, we can start collecting
 
 	// create a collector
 	c, err := collector.New(ctx)
@@ -68,7 +68,7 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 	}
 
 	var errList []error
-	for _, col := range collections {
+	for _, col := range partitions {
 		if err := c.Collect(ctx, col); err != nil {
 			errList = append(errList, err)
 		}
@@ -78,7 +78,7 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		error_helpers.FailOnError(fmt.Errorf("collection error: %w", err))
 	}
 
-	// now wait for all collections to complete and close the collector
+	// now wait for all partitions to complete and close the collector
 	c.Close(ctx)
 }
 

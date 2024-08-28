@@ -131,7 +131,7 @@ func (c *Collector) Collect(ctx context.Context, col *config.Collection) error {
 
 	// create jobPayload
 	payload := parquet.ParquetJobPayload{
-		CollectionName:       col.UnqualifiedName,
+		PartitionName:        col.UnqualifiedName,
 		Schema:               collectResponse.CollectionSchema,
 		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
 	}

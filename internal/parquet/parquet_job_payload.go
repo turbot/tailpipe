@@ -7,7 +7,7 @@ import (
 
 type ParquetJobPayload struct {
 	// collection name
-	CollectionName string
+	PartitionName string
 	// collection schema
 	Schema *schema.RowSchema
 	// function to update the active duration

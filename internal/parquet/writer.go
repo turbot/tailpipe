@@ -42,7 +42,7 @@ func (w *Writer) Start() error {
 // StartCollection schedules a jobGroup to be processed
 // it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
 func (w *Writer) StartCollection(executionId string, payload ParquetJobPayload) error {
-	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "collectionName", payload.CollectionName)
+	slog.Info("parquet.Writer.StartCollection", "jobGroupId", executionId, "partitionName", payload.PartitionName)
 
 	return w.jobPool.StartJobGroup(executionId, payload)
 }

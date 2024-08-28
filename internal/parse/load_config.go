@@ -87,7 +87,7 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 }
 
-func GetCollectionConfig(collectionNames []string, configPath string) ([]*config.Collection, error) {
+func GetPartitionConfig(partitionNames []string, configPath string) ([]*config.Collection, error) {
 	tailpipeConfig, err := LoadTailpipeConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -95,13 +95,13 @@ func GetCollectionConfig(collectionNames []string, configPath string) ([]*config
 
 	// if no collections specified, return all
 	// TODO #errors should this be an error
-	if len(collectionNames) == 0 {
+	if len(partitionNames) == 0 {
 		return maps.Values(tailpipeConfig.Collections), nil
 	}
 
 	var collections []*config.Collection
 	var missing []string
-	for _, name := range collectionNames {
+	for _, name := range partitionNames {
 		c := tailpipeConfig.Collections[name]
 		if c == nil {
 			missing = append(missing, name)
