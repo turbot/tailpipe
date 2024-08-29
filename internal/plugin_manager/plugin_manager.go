@@ -35,7 +35,6 @@ type PluginManager struct {
 
 func New(o Observer, inboxPath string) *PluginManager {
 	return &PluginManager{
-		//observations: make(map[string]*observer.Observable),
 		Plugins:    make(map[string]*PluginClient),
 		obs:        o,
 		inboxPath:  inboxPath,
@@ -44,22 +43,22 @@ func New(o Observer, inboxPath string) *PluginManager {
 }
 
 type CollectResponse struct {
-	ExecutionId      string
-	CollectionSchema *schema.RowSchema
+	ExecutionId     string
+	PartitionSchema *schema.RowSchema
 }
 
-// Collect starts the plugin if needed, discovers the artifacts and download them for the given collection.
-func (p *PluginManager) Collect(ctx context.Context, collection *config.Collection, pagingData string) (*CollectResponse, error) {
+// Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
+func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
-	plugin, err := p.getPlugin(collection.Plugin)
+	plugin, err := p.getPlugin(partition.Plugin)
 	if err != nil {
-		return nil, fmt.Errorf("error starting plugin %s: %w", collection.Plugin, err)
+		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin, err)
 	}
 
 	// TODO #design consider the flow
-	// currently we create an observer for each collection, i.e. create an event stream per collection
-	// perhaps instead we should have a single observer for all collections?
-	// if we keep it as it is now, it may be worth merging Colection and AddObserver and just have collect returning a stream
+	// currently we create an observer for each partition, i.e. create an event stream per partition
+	// perhaps instead we should have a single observer for all partitions?
+	// if we keep it as it is now, it may be worth merging Collect and AddObserver and just have collect returning a stream
 
 	// call into the plugin to collect log rows
 	// this returns a stream which will send events
@@ -73,11 +72,11 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
-		ExecutionId:    executionID,
-		OutputPath:     p.inboxPath,
-		CollectionData: collection.ToProto(),
-		SourceData:     collection.Source.ToProto(),
-		PagingData:     []byte(pagingData),
+		ExecutionId:     executionID,
+		OutputPath:      p.inboxPath,
+		PartitionData:   partition.ToProto(),
+		SourceData:      partition.Source.ToProto(),
+		CollectionState: []byte(collectionState),
 	}
 
 	err = plugin.Collect(req)
@@ -89,13 +88,13 @@ func (p *PluginManager) Collect(ctx context.Context, collection *config.Collecti
 	// this will loop until it hits an error or the stream is closed
 	go p.doCollect(ctx, eventStream)
 
-	// get the schema for the collection (we will have fetched this when starting the plugin
-	collectionSchema := plugin.schemaMap[collection.Type]
+	// get the schema for the partition type (we will have fetched this when starting the plugin
+	partitionSchema := plugin.schemaMap[partition.Table]
 
 	// just return - the observer is responsible for waiting for completion
 	return &CollectResponse{
-		ExecutionId:      executionID,
-		CollectionSchema: collectionSchema,
+		ExecutionId:     executionID,
+		PartitionSchema: partitionSchema,
 	}, nil
 }
 
@@ -165,13 +164,13 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 
 	}
 
-	// get the collection schemas for this plugin
-	collectionSchemas, err := client.GetSchema()
+	// get the partition schemas for this plugin
+	partitionSchemas, err := client.GetSchema()
 	if err != nil {
 		return nil, fmt.Errorf("error getting schema for plugin %s: %w", pluginName, err)
 	}
 	// store the schema for this plugin
-	client.schemaMap = schema.SchemaMapFromProto(collectionSchemas.Schemas)
+	client.schemaMap = schema.SchemaMapFromProto(partitionSchemas.Schemas)
 
 	// store the client
 	p.Plugins[pluginName] = client

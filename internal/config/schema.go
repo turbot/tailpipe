@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	BlockTypeCollection = "collection"
+	BlockTypePartition = "partition"
 	//BlockTypeCredential  = "credential"
 	//BlockTypeFilter      = "filter"
 	BlockTypeSource = "source"
@@ -18,7 +18,7 @@ var ConfigBlockSchema = &hcl.BodySchema{
 	Attributes: []hcl.AttributeSchema{},
 	Blocks: []hcl.BlockHeaderSchema{
 		{
-			Type:       BlockTypeCollection,
+			Type:       BlockTypePartition,
 			LabelNames: []string{"type", "name"},
 		},
 		//{
@@ -42,7 +42,7 @@ var ConfigBlockSchema = &hcl.BodySchema{
 }
 
 var validResourceItemTypes = []string{
-	BlockTypeCollection,
+	BlockTypePartition,
 	//BlockTypeCredential,
 	//BlockTypeFilter,
 	BlockTypeSource,

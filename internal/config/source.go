@@ -1,23 +1,29 @@
 package config
 
 import (
+	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
 type Source struct {
-	Type   string `hcl:"type,label"`
+	Type   string `hcl:" type,label"`
 	Config []byte
+	// the config location
+	ConfigRange hcl.Range
 }
 
 func (s *Source) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		Type:       s.Type,
-		ConfigData: s.Config,
+		Type:  s.Type,
+		Hcl:   s.Config,
+		Range: proto.RangeToProto(s.ConfigRange),
 	}
 }
 
-// TODO only needed if source blocks are top level
-//
-//func (s *Source) SetUnknownHcl(unknown map[string][]byte) {
-//	s.Config = unknown
-//}
+func (s *Source) SetUnknownHcl(u *UnknownHcl) {
+	if u == nil {
+		return
+	}
+	s.Config = u.Hcl
+	s.ConfigRange = u.Range
+}

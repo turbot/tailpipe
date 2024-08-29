@@ -1,6 +1,6 @@
 
 
-collection "aws_cloudtrail_log" "cloudtrail_logs" {
+partition "aws_cloudtrail_log" "cloudtrail_logs" {
     plugin = "aws"
     source "file_system"  {
     	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
@@ -8,7 +8,7 @@ collection "aws_cloudtrail_log" "cloudtrail_logs" {
     }
 }
 
-collection "aws_vpc_flow_log" "flow_logs" {
+partition "aws_vpc_flow_log" "flow_logs" {
     plugin = "aws"
     source "aws_cloudwatch"  {
     	log_group_name = "/victor/vpc/flowlog"
@@ -20,7 +20,7 @@ collection "aws_vpc_flow_log" "flow_logs" {
     }
 }
 
-collection "aws_elb_access_log" "elb_logs" {
+partition "aws_elb_access_log" "elb_logs" {
     plugin = "aws"
     source "aws_s3_bucket"  {
 		bucket = "spongebob-097350876455-us-east-1-cffd7fe0"
@@ -32,7 +32,7 @@ collection "aws_elb_access_log" "elb_logs" {
     }
 }
 
-collection "aws_s3_server_access_log" "s3_server_access_logs" {
+partition "aws_s3_server_access_log" "s3_server_access_logs" {
     plugin = "aws"
     source "aws_s3_bucket"  {
         bucket = "turbot-688720832404-us-east-1"
@@ -44,7 +44,7 @@ collection "aws_s3_server_access_log" "s3_server_access_logs" {
     }
 }
 
-collection "aws_lambda_log" "lambda_logs" {
+partition "aws_lambda_log" "lambda_logs" {
     plugin = "aws"
     source "aws_cloudwatch"  {
         log_group_name = "/aws/lambda/sentry_event_proxy"
@@ -56,13 +56,13 @@ collection "aws_lambda_log" "lambda_logs" {
     }
 }
 
-collection "pipes_audit_log" "pipes_logs" {
+partition "pipes_audit_log" "pipes_logs" {
     plugin = "pipes"
     source "pipes_audit_log_api"  {
     }
 }
 
-collection "gcp_audit_log" "gcp_logs" {
+partition "gcp_audit_log" "gcp_logs" {
     plugin = "gcp"
     source "gcp_audit_log_api"  {
     	credentials = "/Users/graza/gcp/tailpipe-creds.json"
@@ -71,7 +71,7 @@ collection "gcp_audit_log" "gcp_logs" {
     }
 }
 
-collection "github_audit_log" "github_logs" {
+partition "github_audit_log" "github_logs" {
     plugin = "github"
     source "file_system"  {
     	paths = ["/Users/cbruno/logs_tailpipe/github"]
@@ -79,7 +79,7 @@ collection "github_audit_log" "github_logs" {
     }
 }
 
-collection "nginx_access_log" "njinx_logs" {
+partition "nginx_access_log" "njinx_logs" {
     plugin = "nginx"
     source "file_system"  {
 		paths = ["/Users/graza/tailpipe_data/nginx_access_logs"]

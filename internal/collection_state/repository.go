@@ -1,4 +1,4 @@
-package paging
+package collection_state
 
 import (
 	"database/sql"
@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	pagingDbName    = "paging.db"
-	pagingTableName = "paging"
+	collectionStateDbName    = "collection_state.db"
+	collectionStateTableName = "collection_state"
 )
 
 type Repository struct {
@@ -29,7 +29,7 @@ func NewRepository(dataDir string) (*Repository, error) {
 			return nil, fmt.Errorf("could not create paging data directory %s: %w", dataDir, err)
 		}
 	}
-	r := &Repository{dbFile: filepath.Join(dataDir, pagingDbName)}
+	r := &Repository{dbFile: filepath.Join(dataDir, collectionStateDbName)}
 
 	// open the repository
 	if err := r.open(); err != nil {
@@ -68,9 +68,9 @@ func (r *Repository) initDb() error {
 	// Create table
 	createTableSQL := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS %s (
-		collection_name VARCHAR PRIMARY KEY,
+		partition_name VARCHAR PRIMARY KEY,
 		paging_data VARCHAR
-	);`, pagingTableName)
+	);`, collectionStateTableName)
 
 	_, err = db.Exec(createTableSQL)
 	if err != nil {
@@ -110,9 +110,9 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 		return nil, fmt.Errorf("could not open paging db file %s: %w", r.dbFile, err)
 	}
 
-	// Check if the collections table exists
+	// Check if the collection state table exists
 	tableExists := false
-	rows, err := db.Query(fmt.Sprintf(`SELECT name FROM sqlite_master WHERE type='table' AND name='%s';`, pagingTableName))
+	rows, err := db.Query(fmt.Sprintf(`SELECT name FROM sqlite_master WHERE type='table' AND name='%s';`, collectionStateTableName))
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if table exists: %w", err)
 	}
@@ -123,11 +123,11 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	}
 
 	if !tableExists {
-		return nil, fmt.Errorf("table '%s' does not exist", pagingTableName)
+		return nil, fmt.Errorf("table '%s' does not exist", collectionStateTableName)
 	}
 
-	// Validate the schema of the collections table
-	rows, err = db.Query(fmt.Sprintf(`PRAGMA table_info('%s');`, pagingTableName))
+	// Validate the schema of the collection state table
+	rows, err = db.Query(fmt.Sprintf(`PRAGMA table_info('%s');`, collectionStateTableName))
 	if err != nil {
 		log.Fatalf("Failed to get table schema: %v", err)
 	}
@@ -136,8 +136,8 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	var colName, colType string
 	correctSchema := true
 	expectedSchema := map[string]string{
-		"collection_name": "VARCHAR",
-		"paging_data":     "VARCHAR",
+		"partition_name": "VARCHAR",
+		"paging_data":    "VARCHAR",
 	}
 
 	for rows.Next() {
@@ -156,36 +156,36 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	}
 
 	if !correctSchema {
-		return nil, fmt.Errorf("table '%s' does not have the correct schema", pagingTableName)
+		return nil, fmt.Errorf("table '%s' does not have the correct schema", collectionStateTableName)
 	}
 	return db, nil
 }
 
-func (r *Repository) Load(collectionName string) (string, error) {
+func (r *Repository) Load(partitionName string) (string, error) {
 	if r.db == nil {
 		return "", fmt.Errorf("repository is not open")
 	}
 
-	var pagingData string
-	err := r.db.QueryRow(fmt.Sprintf("SELECT paging_data FROM %s WHERE collection_name = ?", pagingTableName), collectionName).Scan(&pagingData)
+	var collectionState string
+	err := r.db.QueryRow(fmt.Sprintf("SELECT paging_data FROM %s WHERE partition_name = ?", collectionStateTableName), partitionName).Scan(&collectionState)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
-		return "", fmt.Errorf("could not load paging data for collection %s: %w", collectionName, err)
+		return "", fmt.Errorf("could not load paging data for partition %s: %w", partitionName, err)
 	}
 
-	return pagingData, nil
+	return collectionState, nil
 }
 
-func (r *Repository) Save(collectionName, pagingData string) error {
+func (r *Repository) Save(partitionName, collectionState string) error {
 	if r.db == nil {
 		return fmt.Errorf("repository is not open")
 	}
 
-	_, err := r.db.Exec(fmt.Sprintf("INSERT OR REPLACE INTO %s (collection_name, paging_data) VALUES (?, ?)", pagingTableName), collectionName, pagingData)
+	_, err := r.db.Exec(fmt.Sprintf("INSERT OR REPLACE INTO %s (partition_name, paging_data) VALUES (?, ?)", collectionStateTableName), partitionName, collectionState)
 	if err != nil {
-		return fmt.Errorf("could not save paging data for collection %s: %w", collectionName, err)
+		return fmt.Errorf("could not save collection state data for partition %s: %w", partitionName, err)
 	}
 	return nil
 }

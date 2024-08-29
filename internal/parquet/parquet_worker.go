@@ -15,15 +15,15 @@ import (
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
 type parquetConversionWorker struct {
-	fileWorkerBase[ParquetJobPayload]
-	// cache collection schemas - key by collection name
+	fileWorkerBase[JobPayload]
+	// cache partition schemas - key by partition name
 	viewQueries map[string]string
 
 	db *duckDb
 }
 
 // ctor
-func newParquetConversionWorker(jobChan chan fileJob[ParquetJobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
+func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
 	w := &parquetConversionWorker{
 		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
 		viewQueries:    make(map[string]string),
@@ -46,7 +46,7 @@ func (w *parquetConversionWorker) close() {
 	w.db.Close()
 }
 
-func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJobPayload]) error {
+func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPayload]) error {
 	startTime := time.Now()
 
 	// build the source filename
@@ -54,7 +54,7 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJ
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// process the jobGroup
-	err := w.convertFile(jsonFilePath, job.payload.CollectionName, job.payload.Schema)
+	err := w.convertFile(jsonFilePath, job.payload.PartitionName, job.payload.Schema)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
@@ -71,8 +71,8 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[ParquetJ
 }
 
 // convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionName string, schema *schema.RowSchema) (err error) {
-	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "collectionName", collectionName)
+func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName string, schema *schema.RowSchema) (err error) {
+	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "partitionName", partitionName)
 	//defer slog.Debug("worker.convertFile - done", "error", err)
 
 	// TODO should this also handle CSV - configure the worker?
@@ -85,19 +85,19 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionName stri
 		return fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
-	// determine the root based on the collection
-	fileRoot := w.getParquetFileRoot(collectionName)
+	// determine the root based on the partition
+	fileRoot := w.getParquetFileRoot(partitionName)
 	if err := os.MkdirAll(filepath.Dir(fileRoot), 0755); err != nil {
 		return fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
 	// get the query format - from cache if possible
-	selectQueryFormat := w.getViewQuery(collectionName, schema)
+	selectQueryFormat := w.getViewQuery(partitionName, schema)
 	// render query
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// Create a query to write to partitioned parquet files
-	partitionColumns := []string{"tp_collection", "tp_connection", "tp_year", "tp_month", "tp_day"}
+	partitionColumns := []string{"tp_partition", "tp_index", "tp_year", "tp_month", "tp_day"}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
 
 	_, err = w.db.Exec(exportQuery)
@@ -111,16 +111,16 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, collectionName stri
 }
 
 // getParquetFileRoot generates the file root for the parquet file based on the naming convention
-func (w *parquetConversionWorker) getParquetFileRoot(collectionName string) string {
-	// TODO #parquet should this be collection_type/collection_name ot what?
-	return filepath.Join(w.destDir, collectionName)
+func (w *parquetConversionWorker) getParquetFileRoot(partitionName string) string {
+	// TODO #parquet should this be partition_type/partition_name ot what?
+	return filepath.Join(w.destDir, partitionName)
 }
 
-func (w *parquetConversionWorker) getViewQuery(collectionName string, rowSchema *schema.RowSchema) interface{} {
-	query, ok := w.viewQueries[collectionName]
+func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.RowSchema) interface{} {
+	query, ok := w.viewQueries[partitionName]
 	if !ok {
 		query = buildViewQuery(rowSchema)
-		w.viewQueries[collectionName] = query
+		w.viewQueries[partitionName] = query
 	}
 	return query
 }

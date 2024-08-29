@@ -103,7 +103,7 @@ func (w *fileJobPool[T]) StartJobGroup(id string, payload T) error {
 func (w *fileJobPool[T]) AddChunk(id string, chunks ...int) error {
 	// get the jobGroup
 	w.jobGroupLock.RLock()
-	collection, ok := w.jobGroups[id]
+	job, ok := w.jobGroups[id]
 	w.jobGroupLock.RUnlock()
 
 	if !ok {
@@ -111,14 +111,14 @@ func (w *fileJobPool[T]) AddChunk(id string, chunks ...int) error {
 	}
 
 	// add the chunks to the jobGroup
-	collection.chunkLock.Lock()
-	collection.chunks = append(collection.chunks, chunks...)
-	collection.chunkLock.Unlock()
+	job.chunkLock.Lock()
+	job.chunks = append(job.chunks, chunks...)
+	job.chunkLock.Unlock()
 
 	// signal the scheduler that there are new chunks
-	collection.chunkWrittenSignal.L.Lock()
-	collection.chunkWrittenSignal.Broadcast()
-	collection.chunkWrittenSignal.L.Unlock()
+	job.chunkWrittenSignal.L.Lock()
+	job.chunkWrittenSignal.Broadcast()
+	job.chunkWrittenSignal.L.Unlock()
 
 	return nil
 }

@@ -2,16 +2,13 @@ package parse
 
 import (
 	"fmt"
-	"golang.org/x/exp/maps"
 	"log/slog"
-	"strings"
 
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/parse"
-	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -24,9 +21,9 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 	var res = config.NewTailpipeConfig()
 
-	// find files recursively under the path
+	// find files in target folder only (non-recursive)
 	configPaths, err := filehelpers.ListFiles(configPath, &filehelpers.ListOptions{
-		Flags:   filehelpers.FilesRecursive,
+		Flags:   filehelpers.FilesFlat,
 		Include: filehelpers.InclusionsFromExtensions([]string{app_specific.ConfigExtension}),
 	})
 	if err != nil {
@@ -39,17 +36,17 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 	// load the file data
 	fileData, diags := parse.LoadFileData(configPaths...)
 	if diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to load workspace profiles", diags)
+		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 
 	// parse the files
 	body, diags := parse.ParseHclFiles(fileData)
 	if diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to load workspace profiles", diags)
+		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 	content, diags := body.Content(config.ConfigBlockSchema)
 	if diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to load workspace profiles", diags)
+		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 
 	// create parse context for the decode
@@ -65,7 +62,7 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 	for attempts := 0; ; attempts++ {
 		config, diags = decode(parseCtx)
 		if diags.HasErrors() {
-			return nil, error_helpers.HclDiagsToError("Failed to decode all workspace profile files", diags)
+			return nil, error_helpers.HclDiagsToError("Failed to decode all config files", diags)
 		}
 
 		// if there are no unresolved blocks, we are done
@@ -85,33 +82,4 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 	return config, nil
 
-}
-
-func GetCollectionConfig(collectionNames []string, configPath string) ([]*config.Collection, error) {
-	tailpipeConfig, err := LoadTailpipeConfig(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// if no collections specified, return all
-	// TODO #errors should this be an error
-	if len(collectionNames) == 0 {
-		return maps.Values(tailpipeConfig.Collections), nil
-	}
-
-	var collections []*config.Collection
-	var missing []string
-	for _, name := range collectionNames {
-		c := tailpipeConfig.Collections[name]
-		if c == nil {
-			missing = append(missing, name)
-		} else {
-			collections = append(collections, c)
-		}
-	}
-
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("collection", len(missing)), strings.Join(missing, ", "))
-	}
-	return collections, nil
 }

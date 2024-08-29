@@ -17,12 +17,14 @@ const (
 	ExecutionState_ERROR
 )
 
-// an execution represents the execution of a collection
+// an execution represents the execution of a partition
 type execution struct {
-	id         string
-	collection string
-	plugin     string
-	state      ExecutionState
+	id        string
+	partition string
+	plugin    string
+	state     ExecutionState
+	// if the execution state is in error, this is the error
+	error error
 	// the chunks written
 	chunkCount int32
 	// total rows returned by the plugin
@@ -34,12 +36,12 @@ type execution struct {
 	conversionTiming types.Timing
 }
 
-func newExecution(executionId string, col *config.Collection) *execution {
+func newExecution(executionId string, part *config.Partition) *execution {
 	e := &execution{
-		id:         executionId,
-		collection: col.UnqualifiedName,
-		plugin:     col.Plugin,
-		state:      ExecutionState_PENDING,
+		id:        executionId,
+		partition: part.UnqualifiedName,
+		plugin:    part.Plugin,
+		state:     ExecutionState_PENDING,
 	}
 	e.executionTiming.TryStart("total time")
 	return e
@@ -48,12 +50,20 @@ func newExecution(executionId string, col *config.Collection) *execution {
 // getTiming returns the timing for the execution,
 // adding the conversion and full execution timing to the end of the plugin timing list
 func (e *execution) getTiming() types.TimingCollection {
-	return append(e.pluginTiming, e.conversionTiming, e.executionTiming)
+	// TODO #timing a nice way of doing this
+	res := e.pluginTiming
+	if e.conversionTiming.Operation != "" {
+		res = append(res, e.conversionTiming)
+	}
+	return append(res, e.executionTiming)
 }
 
 // set state to complete and set end time for the execution and the conversion timing
 func (e *execution) done() {
-	e.state = ExecutionState_COMPLETE
+	// if the execution state is NOT already in error, set to complete
+	if e.state != ExecutionState_ERROR {
+		e.state = ExecutionState_COMPLETE
+	}
 	e.executionTiming.End = time.Now()
 	e.conversionTiming.End = time.Now()
 }
