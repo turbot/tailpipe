@@ -12,7 +12,7 @@ type Partition struct {
 	modconfig.HclResourceImpl
 
 	// Type of the partition
-	Type string `hcl:"type,label"`
+	Table string `hcl:"type,label"`
 
 	// Plugin used for this partition
 	Plugin string `hcl:"plugin"`
@@ -36,18 +36,18 @@ func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl
 	}
 	c := &Partition{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
-		Type:            block.Labels[0],
+		Table:           block.Labels[0],
 	}
 
 	// NOTE: as tailpipe does not have the concept of mods, the full name is partition.<type>.<name> and
 	// the unqualified name is the <type>.<name>
-	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Type, c.ShortName)
+	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Table, c.ShortName)
 	return c, nil
 }
 
 func (c *Partition) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		Type:  c.Type,
+		Type:  c.Table,
 		Hcl:   c.Config,
 		Range: proto.RangeToProto(c.DeclRange),
 	}

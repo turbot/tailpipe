@@ -2,16 +2,13 @@ package parse
 
 import (
 	"fmt"
-	"golang.org/x/exp/maps"
 	"log/slog"
-	"strings"
 
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/parse"
-	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -24,9 +21,9 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 	var res = config.NewTailpipeConfig()
 
-	// find files recursively under the path
+	// find files in target folder only (non-recursive)
 	configPaths, err := filehelpers.ListFiles(configPath, &filehelpers.ListOptions{
-		Flags:   filehelpers.FilesRecursive,
+		Flags:   filehelpers.FilesFlat,
 		Include: filehelpers.InclusionsFromExtensions([]string{app_specific.ConfigExtension}),
 	})
 	if err != nil {
@@ -85,33 +82,4 @@ func LoadTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error)
 
 	return config, nil
 
-}
-
-func GetPartitionConfig(partitionNames []string, configPath string) ([]*config.Partition, error) {
-	tailpipeConfig, err := LoadTailpipeConfig(configPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// if no partitions specified, return all
-	// TODO #errors should this be an error
-	if len(partitionNames) == 0 {
-		return maps.Values(tailpipeConfig.Partitions), nil
-	}
-
-	var partitions []*config.Partition
-	var missing []string
-	for _, name := range partitionNames {
-		c := tailpipeConfig.Partitions[name]
-		if c == nil {
-			missing = append(missing, name)
-		} else {
-			partitions = append(partitions, c)
-		}
-	}
-
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("config does not contain %s: %s", utils.Pluralize("partition", len(missing)), strings.Join(missing, ", "))
-	}
-	return partitions, nil
 }

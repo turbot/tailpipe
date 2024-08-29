@@ -60,7 +60,7 @@ extensions = [".gz"]`,
 			// build the result
 			var got = result{
 				plugin:          col.Plugin,
-				partitionType:   col.Type,
+				partitionType:   col.Table,
 				partitionConfig: string(col.Config),
 				sourceType:      col.Source.Type,
 				sourceConfig:    string(col.Source.Config),

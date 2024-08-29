@@ -3,6 +3,10 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/exp/maps"
+	"strings"
+
+	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
@@ -10,6 +14,7 @@ import (
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/parse"
 )
 
@@ -21,6 +26,7 @@ import (
 func collectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:              "collect [flags]",
+		Args:             cobra.ArbitraryArgs,
 		TraverseChildren: true,
 		Run:              runCollectCmd,
 		Short:            "Collect logs from configured sources",
@@ -28,13 +34,12 @@ func collectCmd() *cobra.Command {
 	}
 
 	cmdconfig.OnCmd(cmd).
-		AddStringFlag(constants.ArgConfigPath, ".", "Path to search for config files").
-		AddStringSliceFlag(constants.ArgPartition, nil, "Partition(s) to collect (default is all)")
+		AddStringFlag(constants.ArgConfigPath, ".", "Path to search for config files")
 
 	return cmd
 }
 
-func runCollectCmd(cmd *cobra.Command, _ []string) {
+func runCollectCmd(cmd *cobra.Command, args []string) {
 	ctx := cmd.Context()
 
 	var err error
@@ -46,19 +51,14 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 		setExitCodeForCollectError(err)
 	}()
 
-	partitionArgs := viper.GetStringSlice(constants.ArgPartition)
-	if len(partitionArgs) == 0 {
-		// TODO #error think about error codes
-		// TODO think about how to show usage
-		error_helpers.FailOnError(fmt.Errorf("no partitions specified"))
-	}
-
-	partitions, err := parse.GetPartitionConfig(viper.GetStringSlice(constants.ArgPartition), viper.GetString(constants.ArgConfigPath))
+	partitions, err := getPartitionConfig(args)
 	if err != nil {
 		// TODO #errors - think about error codes
 		error_helpers.FailOnError(fmt.Errorf("failed to get partition config: %w", err))
 	}
-
+	if len(partitions) == 0 {
+		error_helpers.FailOnError(fmt.Errorf("no partitions found matching args %s", strings.Join(args, " ")))
+	}
 	// now we have the partitions, we can start collecting
 
 	// create a collector
@@ -80,6 +80,91 @@ func runCollectCmd(cmd *cobra.Command, _ []string) {
 
 	// now wait for all partitions to complete and close the collector
 	c.Close(ctx)
+}
+
+func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
+	tailpipeConfig, err := parse.LoadTailpipeConfig(viper.GetString(constants.ArgConfigPath))
+	if err != nil {
+		return nil, err
+	}
+
+	// if no partitions specified, return all
+	if len(partitionNames) == 0 {
+		return maps.Values(tailpipeConfig.Partitions), nil
+	}
+
+	var errorList []error
+	var partitions []*config.Partition
+
+	for _, name := range partitionNames {
+		partitionNames, err := getPartition(maps.Keys(tailpipeConfig.Partitions), name)
+		if err != nil {
+			errorList = append(errorList, err)
+		} else {
+			for _, partitionName := range partitionNames {
+				partitions = append(partitions, tailpipeConfig.Partitions[partitionName])
+			}
+		}
+	}
+
+	if len(errorList) > 0 {
+		// TODO errors better formating/error message
+		return nil, errors.Join(errorList...)
+	}
+
+	return partitions, nil
+}
+
+func getPartition(partitions []string, name string) ([]string, error) {
+	var tablePattern, partitionPattern string
+	parts := strings.Split(name, ".")
+	switch len(parts) {
+	case 1:
+		var err error
+		tablePattern, partitionPattern, err = getPartitionMatchPatterns(partitions, name, parts, tablePattern, partitionPattern)
+		if err != nil {
+			return nil, err
+		}
+	case 2:
+		// use the args as provided
+		tablePattern = parts[0]
+		partitionPattern = parts[1]
+	default:
+		return nil, fmt.Errorf("invalid partition name: %s", name)
+	}
+
+	// now match the partition
+	var res []string
+	for _, partition := range partitions {
+		pattern := tablePattern + "." + partitionPattern
+		if fnmatch.Match(pattern, partition, fnmatch.FNM_CASEFOLD) {
+			res = append(res, partition)
+		}
+	}
+	return res, nil
+}
+
+func getPartitionMatchPatterns(partitions []string, name string, parts []string, tablePattern string, partitionPattern string) (string, string, error) {
+	// '*' is not valid for a single part arg
+	if parts[0] == "*" {
+		return "", "", fmt.Errorf("invalid partition name: %s", name)
+	}
+	// check whether there is table with this name
+	// partitions is a list of Unqualified names, i.e. <table>.<partition>
+	for _, partition := range partitions {
+		table := strings.Split(partition, ".")[0]
+
+		// so there IS a table with this name - set partitionPattern to *
+		if table == name {
+			tablePattern = name
+			partitionPattern = "*"
+			return tablePattern, partitionPattern, nil
+		}
+	}
+	// so there IS NOT a table with this name - set table pattern to * and user provided partition name
+	tablePattern = "*"
+	partitionPattern = parts[0]
+	return tablePattern, partitionPattern, nil
 }
 
 func setExitCodeForCollectError(err error) {

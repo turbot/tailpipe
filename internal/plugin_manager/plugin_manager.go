@@ -89,7 +89,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	go p.doCollect(ctx, eventStream)
 
 	// get the schema for the partition type (we will have fetched this when starting the plugin
-	partitionSchema := plugin.schemaMap[partition.Type]
+	partitionSchema := plugin.schemaMap[partition.Table]
 
 	// just return - the observer is responsible for waiting for completion
 	return &CollectResponse{
