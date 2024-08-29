@@ -74,7 +74,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	req := &proto.CollectRequest{
 		ExecutionId:     executionID,
 		OutputPath:      p.inboxPath,
-		PartitionData:   partition.ToProto(),
+		TableData:       partition.ToProto(),
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
 	}
