@@ -8,14 +8,12 @@ import (
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/parse"
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
@@ -83,10 +81,8 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 }
 
 func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
-	tailpipeConfig, err := parse.LoadTailpipeConfig(viper.GetString(constants.ArgConfigPath))
-	if err != nil {
-		return nil, err
-	}
+	// we have loaded tailpipe config by this time
+	tailpipeConfig := config.GlobalConfig
 
 	// if no partitions specified, return all
 	if len(partitionNames) == 0 {

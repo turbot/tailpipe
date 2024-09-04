@@ -2,12 +2,14 @@ package parse
 
 import (
 	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/parse"
+	"github.com/turbot/pipe-fittings/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"golang.org/x/exp/maps"
 )
@@ -74,7 +76,7 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	}
 
 	switch block.Type {
-	case config.BlockTypePartition:
+	case schema.BlockTypePartition:
 		return decodePartition(block, parseCtx, resource)
 	}
 
@@ -187,11 +189,7 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 	blockName := block.Labels[1]
 	fullName := config.BuildResourceName(block.Type, subType, blockName)
 	factoryFuncs := map[string]func(*hcl.Block, string) (modconfig.HclResource, hcl.Diagnostics){
-		config.BlockTypePartition: config.NewPartition,
-		//config.BlockTypeSource:      config.NewSource,
-		//config.BlockTypeCredential:  config.NewCredential,
-		//config.BlockTypeFilter:      config.NewFilter,
-		//config.BlockTypeDestination: config.NewDestination,
+		schema.BlockTypePartition: config.NewPartition,
 	}
 
 	factoryFunc, ok := factoryFuncs[block.Type]

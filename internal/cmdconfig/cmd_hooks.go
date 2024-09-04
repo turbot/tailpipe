@@ -17,7 +17,10 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/task"
 	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/pipe-fittings/workspace_profile"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/logger"
+	"github.com/turbot/tailpipe/internal/parse"
 )
 
 var waitForTasksChannel chan struct{}
@@ -32,9 +35,10 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	viper.Set(constants.ConfigKeyActiveCommandArgs, args)
 	viper.Set(constants.ConfigKeyIsTerminalTTY, isatty.IsTerminal(os.Stdout.Fd()))
 
+	ctx := cmd.Context()
 	// set up the global viper config with default values from
 	// config files and ENV variables
-	ew := initGlobalConfig()
+	ew := initGlobalConfig(ctx)
 	// display any warnings
 	ew.ShowWarnings()
 	// TODO #errors sort exit code
@@ -44,7 +48,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	logger.Initialize()
 
 	// runScheduledTasks skips running tasks if this instance is the plugin manager
-	waitForTasksChannel = runScheduledTasks(cmd.Context(), cmd, args)
+	waitForTasksChannel = runScheduledTasks(ctx, cmd, args)
 
 	// set the max memory if specified
 	setMemoryLimit()
@@ -103,18 +107,31 @@ func runScheduledTasks(ctx context.Context, cmd *cobra.Command, args []string) c
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initGlobalConfig() error_helpers.ErrorAndWarnings {
+func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	utils.LogTime("cmdconfig.initGlobalConfig start")
 	defer utils.LogTime("cmdconfig.initGlobalConfig end")
+
+	// load workspace profile from the configured install dir
+	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TpWorkspaceProfile]()
+	error_helpers.FailOnError(err)
 
 	var cmd = viper.Get(constants.ConfigKeyActiveCommand).(*cobra.Command)
 
 	// set-up viper with defaults from the env and default workspace profile
-	BootstrapViper(cmdconfig.WithConfigDefaults(configDefaults(cmd)), cmdconfig.WithDirectoryEnvMappings(dirEnvMappings()))
+	cmdconfig.BootstrapViper(loader, cmd, cmdconfig.WithConfigDefaults(configDefaults(cmd)), cmdconfig.WithDirectoryEnvMappings(dirEnvMappings()))
 
 	// set the rest of the defaults from ENV
 	// ENV takes precedence over any default configuration
 	cmdconfig.SetDefaultsFromEnv(envMappings())
+
+	// load the connection config and HCL options
+	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(ctx)
+	if loadConfigErrorsAndWarnings.Error != nil {
+		return loadConfigErrorsAndWarnings
+	}
+
+	// store global config
+	config.GlobalConfig = tailpipeConfig
 
 	// now validate all config values have appropriate values
 	return validateConfig()

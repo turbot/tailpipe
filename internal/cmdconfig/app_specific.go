@@ -1,16 +1,17 @@
 package cmdconfig
 
 import (
-	"github.com/Masterminds/semver/v3"
-	"github.com/spf13/viper"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/files"
 	"github.com/turbot/pipe-fittings/app_specific"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 // SetAppSpecificConstants sets app specific constants defined in pipe-fittings
@@ -20,6 +21,7 @@ func SetAppSpecificConstants() {
 	versionString := viper.GetString("main.version")
 	app_specific.AppVersion = semver.MustParse(versionString)
 
+	app_specific.PluginHub = constants.TailpipeHubOCIBase
 	// set all app specific env var keys
 	app_specific.SetAppSpecificEnvVarKeys("TAILPIPE_")
 
@@ -40,6 +42,7 @@ func SetAppSpecificConstants() {
 
 	// set the default config path
 	globalConfigPath := filepath.Join(defaultInstallDir, "config")
+
 	// check whether install-dir env has been set - if so, respect it
 	if envInstallDir, ok := os.LookupEnv(app_specific.EnvInstallDir); ok {
 		globalConfigPath = filepath.Join(envInstallDir, "config")

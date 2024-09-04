@@ -102,9 +102,5 @@ func ParseResourcePropertyPath(propertyPath string) (*ParsedPropertyPath, error)
 		res.PropertyPath = parts[3:]
 	}
 
-	if !IsValidResourceItemType(res.ItemType) {
-		return nil, perr.BadRequestWithMessage("invalid resource item type passed to ParseResourcePropertyPath: " + propertyPath)
-	}
-
 	return res, nil
 }

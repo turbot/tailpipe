@@ -33,10 +33,6 @@ func ParseResourceName(fullName string) (res *ParsedResourceName, err error) {
 	res.ItemSubType = parts[1]
 	res.Name = parts[2]
 
-	if !IsValidResourceItemType(res.ItemType) {
-		return nil, perr.BadRequestWithMessage("invalid resource type passed to ParseResourceName: " + fullName)
-	}
-
 	return res, nil
 }
 
