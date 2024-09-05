@@ -22,7 +22,6 @@ import (
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
 func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeConfig, errorsAndWarnings error_helpers.ErrorAndWarnings) {
-
 	utils.LogTime("TailpipeConfig.loadTailpipeConfig start")
 	defer utils.LogTime("TailpipeConfig.loadTailpipeConfig end")
 
@@ -34,6 +33,9 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 
 	// load the tailpipe config
 	tailpipeConfig, err := parseTailpipeConfig(filepaths.EnsureConfigDir())
+	if err != nil {
+		return nil, error_helpers.NewErrorsAndWarning(err)
+	}
 
 	// load plugin versions
 	v, err := versionfile.LoadPluginVersionFile(ctx)

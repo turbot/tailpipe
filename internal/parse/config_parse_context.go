@@ -6,6 +6,7 @@ import (
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/parse"
+	"github.com/turbot/pipe-fittings/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -32,6 +33,9 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 		resourceValues: make(map[string]map[string]cty.Value),
 		resourceMap:    make(map[string]modconfig.HclResource),
 	}
+
+	// only load partition blocks - we parse connections, and workspoaces separately
+	c.SetBlockTypes(schema.BlockTypePartition)
 
 	//override ResourceNameFromDependencyFunc to use a version
 	// which uses the local ParsedPropertyPath type
