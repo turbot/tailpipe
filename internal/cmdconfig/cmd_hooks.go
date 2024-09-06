@@ -15,6 +15,7 @@ import (
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/filepaths"
 	"github.com/turbot/pipe-fittings/task"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/workspace_profile"
@@ -36,6 +37,11 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	viper.Set(constants.ConfigKeyIsTerminalTTY, isatty.IsTerminal(os.Stdout.Fd()))
 
 	ctx := cmd.Context()
+
+	// ensure required folders exist
+	filepaths.EnsureConfigDir()
+	//filepaths.EnsureDataDir()
+
 	// set up the global viper config with default values from
 	// config files and ENV variables
 	ew := initGlobalConfig(ctx)

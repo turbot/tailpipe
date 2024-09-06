@@ -1,13 +1,12 @@
 package cmd
 
 import (
-	"path/filepath"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/filepaths"
 	"github.com/turbot/pipe-fittings/utils"
 	localconstants "github.com/turbot/tailpipe/internal/constants"
 )
@@ -33,9 +32,8 @@ func rootCommand() *cobra.Command {
 
 	rootCmd.SetVersionTemplate("Tailpipe v{{.Version}}\n")
 
-	// TODO #config think about default config path
-	defaultConfigPath, err := filepath.Abs("")
-	error_helpers.FailOnError(err)
+	// TODO #config this will not reflect changes to install-dir - do we need to default in a different way
+	defaultConfigPath := filepaths.EnsureConfigDir()
 
 	cmdconfig.
 		OnCmd(rootCmd).

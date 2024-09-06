@@ -8,15 +8,15 @@ import (
 	"strings"
 
 	"github.com/gertd/go-pluralize"
-	"github.com/turbot/pipe-fittings/filepaths"
-	"github.com/turbot/pipe-fittings/ociinstaller/versionfile"
-	"github.com/turbot/pipe-fittings/utils"
-
+	"github.com/spf13/viper"
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
+	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/ociinstaller/versionfile"
 	"github.com/turbot/pipe-fittings/parse"
+	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -32,7 +32,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	}()
 
 	// load the tailpipe config
-	tailpipeConfig, err := parseTailpipeConfig(filepaths.EnsureConfigDir())
+	tailpipeConfig, err := parseTailpipeConfig(viper.GetString(constants.ArgConfigPath))
 	if err != nil {
 		return nil, error_helpers.NewErrorsAndWarning(err)
 	}

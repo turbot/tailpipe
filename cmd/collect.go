@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
-	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
@@ -31,8 +30,7 @@ func collectCmd() *cobra.Command {
 		Long:             `Collect logs from configured sources.`,
 	}
 
-	cmdconfig.OnCmd(cmd).
-		AddStringFlag(constants.ArgConfigPath, ".", "Path to search for config files")
+	cmdconfig.OnCmd(cmd)
 
 	return cmd
 }
