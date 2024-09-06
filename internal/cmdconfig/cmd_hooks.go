@@ -42,6 +42,8 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	filepaths.EnsureConfigDir()
 	//filepaths.EnsureDataDir()
 
+	logger.Initialize()
+
 	// set up the global viper config with default values from
 	// config files and ENV variables
 	ew := initGlobalConfig(ctx)
@@ -50,8 +52,6 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// TODO #errors sort exit code
 	// check for error
 	error_helpers.FailOnError(ew.Error)
-
-	logger.Initialize()
 
 	// runScheduledTasks skips running tasks if this instance is the plugin manager
 	waitForTasksChannel = runScheduledTasks(ctx, cmd, args)

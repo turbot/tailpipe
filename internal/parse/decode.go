@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -100,7 +101,6 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 
 	var unknownAttrs []*hcl.Attribute
 	for name, attr := range attrs {
-
 		if _, ok := propertyNames[name]; ok {
 			// try to evaluate expression
 			val, diags := attr.Expr.Value(parseCtx.EvalCtx)
@@ -148,9 +148,10 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 func handleUnknownAttributes(block *hcl.Block, parseCtx *ConfigParseContext, unknownAttrs []*hcl.Attribute) (*config.UnknownHcl, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
 	unknown := &config.UnknownHcl{}
+	// call sdk handleUnsupportedArgDiags to extract unknown hcl
+	hclBytes := parseCtx.FileData[block.DefRange.Filename]
+	slog.Debug("handleUnknownAttributes", "source hcl", string(hclBytes))
 	for _, attr := range unknownAttrs {
-		// call sdk handleUnsupportedArgDiags to extract unknown hcl
-		hclBytes := parseCtx.FileData[block.DefRange.Filename]
 
 		// extract the unknown hcl
 		u := extractUnknownHcl(hclBytes, attr)
