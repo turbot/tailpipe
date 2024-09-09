@@ -149,9 +149,8 @@ func handleUnknownAttributes(block *hcl.Block, parseCtx *ConfigParseContext, unk
 	var diags hcl.Diagnostics
 	unknown := &config.UnknownHcl{}
 	for _, attr := range unknownAttrs {
-		// call sdk handleUnsupportedArgDiags to extract unknown hcl
+		//	get the hcl bytes for the file
 		hclBytes := parseCtx.FileData[block.DefRange.Filename]
-
 		// extract the unknown hcl
 		u := extractUnknownHcl(hclBytes, attr)
 		// if we succeded in extracting the unknown hcl, add it to the list

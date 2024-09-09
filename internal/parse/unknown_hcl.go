@@ -6,9 +6,10 @@ import (
 )
 
 func extractUnknownHcl(hclBytes []byte, attr *hcl.Attribute) (unknownHcl *config.UnknownHcl) {
-	// now get the bytes for the attribute
+	//  get the bytes for the attribute (note: clone the byte buffer)
+	hcl := append([]byte{}, hclBytes[attr.Range.Start.Byte:attr.Range.End.Byte]...)
 	unknownHcl = &config.UnknownHcl{
-		Hcl:   hclBytes[attr.Range.Start.Byte:attr.Range.End.Byte],
+		Hcl:   hcl,
 		Range: attr.Range,
 	}
 
