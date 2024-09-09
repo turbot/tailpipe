@@ -150,7 +150,7 @@ func handleUnknownAttributes(block *hcl.Block, parseCtx *ConfigParseContext, unk
 	unknown := &config.UnknownHcl{}
 	// call sdk handleUnsupportedArgDiags to extract unknown hcl
 	hclBytes := parseCtx.FileData[block.DefRange.Filename]
-	slog.Debug("handleUnknownAttributes", "source hcl", string(hclBytes))
+	slog.Debug(fmt.Sprintf("handleUnknownAttributes (parse ctx %p)", parseCtx), "source hcl", string(hclBytes))
 	for _, attr := range unknownAttrs {
 
 		// extract the unknown hcl

@@ -13,6 +13,6 @@ func extractUnknownHcl(hclBytes []byte, attr *hcl.Attribute) (unknownHcl *config
 		Range: attr.Range,
 	}
 
-	slog.Debug("extracted unknown hcl", "start", attr.Range.Start.Byte, "end", attr.Range.End.Byte, "source", hclBytes, "hcl", string(unknownHcl.Hcl))
+	slog.Debug("extracted unknown hcl", "start", attr.Range.Start.Byte, "end", attr.Range.End.Byte, "source", string(hclBytes), "hcl", string(unknownHcl.Hcl))
 	return unknownHcl
 }
