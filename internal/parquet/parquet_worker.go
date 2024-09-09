@@ -11,6 +11,7 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
@@ -97,7 +98,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName strin
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// Create a query to write to partitioned parquet files
-	partitionColumns := []string{"tp_partition", "tp_index", "tp_year", "tp_month", "tp_day"}
+	partitionColumns := []string{constants.TpPartition, constants.TpIndex, constants.TpDate}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
 
 	_, err = w.db.Exec(exportQuery)
