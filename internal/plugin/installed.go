@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/turbot/pipe-fittings/ociinstaller"
-	"github.com/turbot/pipe-fittings/ociinstaller/versionfile"
 	"github.com/turbot/pipe-fittings/plugin"
+	"github.com/turbot/pipe-fittings/versionfile"
 )
 
 // GetInstalledPlugins returns the list of plugins keyed by the shortname (org/name) and its specific version
