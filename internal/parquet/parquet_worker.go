@@ -11,6 +11,7 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 )
 
@@ -55,7 +56,7 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPaylo
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// process the jobGroup
-	err := w.convertFile(jsonFilePath, job.payload.PartitionName, job.payload.Schema)
+	err := w.convertFile(jsonFilePath, job.payload.Partition, job.payload.Schema)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
@@ -72,7 +73,7 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPaylo
 }
 
 // convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName string, schema *schema.RowSchema) (err error) {
+func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.RowSchema) (err error) {
 	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "partitionName", partitionName)
 	//defer slog.Debug("worker.convertFile - done", "error", err)
 
@@ -87,13 +88,13 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath, partitionName strin
 	}
 
 	// determine the root based on the partition
-	fileRoot := w.getParquetFileRoot(partitionName)
+	fileRoot := w.getParquetFileRoot(partition.Table)
 	if err := os.MkdirAll(filepath.Dir(fileRoot), 0755); err != nil {
 		return fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
 	// get the query format - from cache if possible
-	selectQueryFormat := w.getViewQuery(partitionName, schema)
+	selectQueryFormat := w.getViewQuery(partition.UnqualifiedName, schema)
 	// render query
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 

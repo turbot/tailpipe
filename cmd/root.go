@@ -4,11 +4,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/cmdconfig"
-	"github.com/turbot/pipe-fittings/constants"
+	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/filepaths"
 	"github.com/turbot/pipe-fittings/utils"
-	localconstants "github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 var exitCode int
@@ -18,8 +18,8 @@ func rootCommand() *cobra.Command {
 	// Define our command
 	rootCmd := &cobra.Command{
 		Use:     "tailpipe [--version] [--help] COMMAND [args]",
-		Short:   localconstants.TailpipeShortDescription,
-		Long:    localconstants.TailpipeLongDescription,
+		Short:   constants.TailpipeShortDescription,
+		Long:    constants.TailpipeLongDescription,
 		Version: viper.GetString("main.version"),
 		Run: func(cmd *cobra.Command, args []string) {
 			err := cmd.Help()
@@ -37,9 +37,11 @@ func rootCommand() *cobra.Command {
 
 	cmdconfig.
 		OnCmd(rootCmd).
-		AddPersistentStringFlag(constants.ArgConfigPath, defaultConfigPath, "The location to search for config files")
+		AddPersistentStringFlag(pconstants.ArgConfigPath, defaultConfigPath, "The location to search for config files").
+		AddPersistentStringFlag(pconstants.ArgWorkspaceProfile, "default", "Sets the Tailpipe workspace profile")
 
 	rootCmd.AddCommand(
+		queryCmd(),
 		collectCmd(),
 		pluginCmd(),
 	)

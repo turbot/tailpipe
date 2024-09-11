@@ -34,12 +34,14 @@ type execution struct {
 	pluginTiming types.TimingCollection
 	// pluginTiming for the parquet conversion
 	conversionTiming types.Timing
+	table            string
 }
 
 func newExecution(executionId string, part *config.Partition) *execution {
 	e := &execution{
 		id:        executionId,
 		partition: part.UnqualifiedName,
+		table:     part.Table,
 		plugin:    part.Plugin,
 		state:     ExecutionState_PENDING,
 	}
@@ -59,9 +61,11 @@ func (e *execution) getTiming() types.TimingCollection {
 }
 
 // set state to complete and set end time for the execution and the conversion timing
-func (e *execution) done() {
+func (e *execution) done(err error) {
 	// if the execution state is NOT already in error, set to complete
-	if e.state != ExecutionState_ERROR {
+	if err != nil {
+		e.state = ExecutionState_ERROR
+	} else {
 		e.state = ExecutionState_COMPLETE
 	}
 	e.executionTiming.End = time.Now()

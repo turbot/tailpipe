@@ -5,31 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"github.com/turbot/go-kit/files"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"log"
 	"log/slog"
 	"os"
-	"path/filepath"
 )
 
 const (
-	collectionStateDbName    = "collection_state.db"
 	collectionStateTableName = "collection_state"
 )
 
 type Repository struct {
-	// location of the paging duck db files
+	// location of the collection state duck db files
 	dbFile string
 	db     *sql.DB
 }
 
-func NewRepository(dataDir string) (*Repository, error) {
-	// ensure the directory exists
-	if !files.DirectoryExists(dataDir) {
-		if err := os.MkdirAll(dataDir, 0755); err != nil {
-			return nil, fmt.Errorf("could not create paging data directory %s: %w", dataDir, err)
-		}
-	}
-	r := &Repository{dbFile: filepath.Join(dataDir, collectionStateDbName)}
+func NewRepository() (*Repository, error) {
+	r := &Repository{dbFile: filepaths.CollectionStateDbFilePath()}
 
 	// open the repository
 	if err := r.open(); err != nil {
@@ -47,10 +40,10 @@ func (r *Repository) open() error {
 			return nil
 		}
 
-		slog.Warn("Invalid paging db file, deleting and recreating", "file", r.dbFile)
+		slog.Warn("Invalid collection state db file, deleting and recreating", "file", r.dbFile)
 		// delete db file
 		if err := os.Remove(r.dbFile); err != nil {
-			return fmt.Errorf("could not delete invalid paging db file %s: %w", r.dbFile, err)
+			return fmt.Errorf("could not delete invalid collection state db file %s: %w", r.dbFile, err)
 		}
 		// fall through to recreate
 	}
@@ -62,20 +55,20 @@ func (r *Repository) initDb() error {
 	// Connect to DuckDB
 	db, err := sql.Open("duckdb", r.dbFile)
 	if err != nil {
-		return fmt.Errorf("could not create paging db file %s: %w", r.dbFile, err)
+		return fmt.Errorf("could not create collection state db file %s: %w", r.dbFile, err)
 	}
 
 	// Create table
 	createTableSQL := fmt.Sprintf(`
 	CREATE TABLE IF NOT EXISTS %s (
 		partition_name VARCHAR PRIMARY KEY,
-		paging_data VARCHAR
+		collection_state VARCHAR
 	);`, collectionStateTableName)
 
 	_, err = db.Exec(createTableSQL)
 	if err != nil {
 		db.Close()
-		return fmt.Errorf("could not create paging db table: %w", err)
+		return fmt.Errorf("could not create collection state db table: %w", err)
 	}
 	// sgtore db
 	r.db = db
@@ -107,7 +100,7 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	// Open the DuckDB database file
 	db, err = sql.Open("duckdb", r.dbFile)
 	if err != nil {
-		return nil, fmt.Errorf("could not open paging db file %s: %w", r.dbFile, err)
+		return nil, fmt.Errorf("could not open collection state db file %s: %w", r.dbFile, err)
 	}
 
 	// Check if the collection state table exists
@@ -136,8 +129,8 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	var colName, colType string
 	correctSchema := true
 	expectedSchema := map[string]string{
-		"partition_name": "VARCHAR",
-		"paging_data":    "VARCHAR",
+		"partition_name":   "VARCHAR",
+		"collection_state": "VARCHAR",
 	}
 
 	for rows.Next() {
@@ -167,12 +160,12 @@ func (r *Repository) Load(partitionName string) (string, error) {
 	}
 
 	var collectionState string
-	err := r.db.QueryRow(fmt.Sprintf("SELECT paging_data FROM %s WHERE partition_name = ?", collectionStateTableName), partitionName).Scan(&collectionState)
+	err := r.db.QueryRow(fmt.Sprintf("SELECT collection_state FROM %s WHERE partition_name = ?", collectionStateTableName), partitionName).Scan(&collectionState)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return "", nil
 		}
-		return "", fmt.Errorf("could not load paging data for partition %s: %w", partitionName, err)
+		return "", fmt.Errorf("could not load collection state data for partition %s: %w", partitionName, err)
 	}
 
 	return collectionState, nil
@@ -183,7 +176,7 @@ func (r *Repository) Save(partitionName, collectionState string) error {
 		return fmt.Errorf("repository is not open")
 	}
 
-	_, err := r.db.Exec(fmt.Sprintf("INSERT OR REPLACE INTO %s (partition_name, paging_data) VALUES (?, ?)", collectionStateTableName), partitionName, collectionState)
+	_, err := r.db.Exec(fmt.Sprintf("INSERT OR REPLACE INTO %s (partition_name, collection_state) VALUES (?, ?)", collectionStateTableName), partitionName, collectionState)
 	if err != nil {
 		return fmt.Errorf("could not save collection state data for partition %s: %w", partitionName, err)
 	}

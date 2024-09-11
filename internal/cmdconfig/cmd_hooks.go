@@ -20,6 +20,7 @@ import (
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"
 )
@@ -37,10 +38,6 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	viper.Set(constants.ConfigKeyIsTerminalTTY, isatty.IsTerminal(os.Stdout.Fd()))
 
 	ctx := cmd.Context()
-
-	// ensure required folders exist
-	filepaths.EnsureConfigDir()
-	//filepaths.EnsureDataDir()
 
 	// set up the global viper config with default values from
 	// config files and ENV variables
@@ -117,8 +114,20 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	utils.LogTime("cmdconfig.initGlobalConfig start")
 	defer utils.LogTime("cmdconfig.initGlobalConfig end")
 
+	// ensure config folders exist
+	filepaths.EnsureConfigDir()
+
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TpWorkspaceProfile]()
+	error_helpers.FailOnError(err)
+
+	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
+	// create the required data and internal folder for this workspace if needed
+	err = config.GlobalWorkspaceProfile.EnsureWorkspaceDirs()
+	error_helpers.FailOnError(err)
+
+	// ensure we have a database file for this workspace
+	err = database.EnsureDatabaseFile()
 	error_helpers.FailOnError(err)
 
 	var cmd = viper.Get(constants.ConfigKeyActiveCommand).(*cobra.Command)
@@ -129,6 +138,11 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// set the rest of the defaults from ENV
 	// ENV takes precedence over any default configuration
 	cmdconfig.SetDefaultsFromEnv(envMappings())
+
+	// if an explicit workspace profile was set, add to viper as highest precedence default
+	if loader.ConfiguredProfile != nil {
+		cmdconfig.SetDefaultsFromConfig(loader.ConfiguredProfile.ConfigMap(cmd))
+	}
 
 	// load the connection config and HCL options
 	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(ctx)

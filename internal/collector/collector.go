@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -16,6 +15,8 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe/internal/collection_state"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
@@ -37,43 +38,44 @@ type Collector struct {
 	collectionStateRepository *collection_state.Repository
 	spinner                   *spinner.Spinner
 	// the current plugin status - used to update the spinner
-	status status
+	status     status
+	sourcePath string
 }
 
 func New(ctx context.Context) (*Collector, error) {
-	// todo #config configure inbox folder https://github.com/turbot/tailpipe/issues/1
-	inboxPath, err := ensureSourcePath()
+	sourcePath, err := filepaths.EnsureSourcePath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create inbox path: %w", err)
+		return nil, fmt.Errorf("failed to create source path: %w", err)
 	}
-	// TODO #config configure parquet output folder https://github.com/turbot/tailpipe/issues/1
-	parquetPath, err := ensureDestPath()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create parquet path: %w", err)
-	}
+
+	// get the data dir - this will already have been created by the config loader
+	parquetPath := config.GlobalWorkspaceProfile.GetDataDir()
 
 	c := &Collector{
 		Events:     make(chan *proto.Event, eventBufferSize),
 		executions: make(map[string]*execution),
+		sourcePath: sourcePath,
 	}
 
 	// create a plugin manager
-	c.pluginManager = plugin_manager.New(c, inboxPath)
+	c.pluginManager = plugin_manager.New(c, sourcePath)
 
 	//
 	// create a parquet writer
-	c.parquetWriter, err = parquet.NewWriter(inboxPath, parquetPath, parquetWorkerCount)
+
+	parquetWriter, err := parquet.NewWriter(sourcePath, parquetPath, parquetWorkerCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 
-	collectionStatePath, err := ensureCollectionStatePath()
+	c.parquetWriter = parquetWriter
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create colleciton state path: %w", err)
 	}
-	c.collectionStateRepository, err = collection_state.NewRepository(collectionStatePath)
+	c.collectionStateRepository, err = collection_state.NewRepository()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create paging repository: %w", err)
+		return nil, fmt.Errorf("failed to create collection state repository: %w", err)
 	}
 
 	// TODO #ui temp
@@ -89,26 +91,26 @@ func New(ctx context.Context) (*Collector, error) {
 	return c, nil
 }
 
-func (c *Collector) Collect(ctx context.Context, col *config.Partition) error {
+func (c *Collector) Collect(ctx context.Context, partition *config.Partition) error {
 	// TODO #temp
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
 
-	// try to load paging data
-	collectionState, err := c.collectionStateRepository.Load(col.UnqualifiedName)
+	// try to load collection state data
+	collectionState, err := c.collectionStateRepository.Load(partition.UnqualifiedName)
 	if err != nil {
-		return fmt.Errorf("failed to load paging data: %w", err)
+		return fmt.Errorf("failed to load collection state data: %w", err)
 	}
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, col, collectionState)
+	collectResponse, err := c.pluginManager.Collect(ctx, partition, collectionState)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
-	e := newExecution(executionId, col)
+	e := newExecution(executionId, partition)
 
 	c.executionsLock.Lock()
 	c.executions[executionId] = e
@@ -131,7 +133,7 @@ func (c *Collector) Collect(ctx context.Context, col *config.Partition) error {
 
 	// create jobPayload
 	payload := parquet.JobPayload{
-		PartitionName:        col.UnqualifiedName,
+		Partition:            partition,
 		Schema:               collectResponse.PartitionSchema,
 		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
 	}
@@ -190,7 +192,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			// TODO #errors what to do with this error?
 		}
-		// store paging data
+		// store collection state data
 		if len(ev.CollectionState) > 0 {
 			err = c.collectionStateRepository.Save(execution.partition, string(ev.CollectionState))
 			if err != nil {
@@ -251,6 +253,10 @@ func (c *Collector) Close(ctx context.Context) {
 	c.parquetWriter.Close()
 	c.pluginManager.Close()
 	c.collectionStateRepository.Close()
+
+	// if inbox path is empty, remove it (ignore errors)
+	_ = os.Remove(c.sourcePath)
+
 	// TODO #temp
 	c.spinner.Stop()
 
@@ -308,18 +314,19 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
 		}
 
-		return nil
+		// so we are done writing chunks - now update the db to add a view to this data
+		return database.AddTableView(ctx, e.table)
 	})
-
-	if err != nil {
-		e.state = ExecutionState_ERROR
-		return err
-	}
 
 	slog.Debug("waitForExecution - all chunks written", "execution", e.id)
 
 	// mark execution as complete and record the end time
-	e.done()
+	e.done(err)
+
+	// if there was an error, return it
+	if err != nil {
+		return err
+	}
 
 	// notify the writer that the collection is complete
 	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
@@ -332,7 +339,6 @@ func (c *Collector) waitForExecutions(ctx context.Context) error {
 	retryInterval := 5 * time.Second
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
-
 		c.executionsLock.RLock()
 		defer c.executionsLock.RUnlock()
 		for _, e := range c.executions {
@@ -379,55 +385,4 @@ func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) 
 	if e, ok := c.executions[executionId]; ok {
 		e.pluginTiming = proto.TimingCollectionFromProto(timing)
 	}
-}
-
-func ensureSourcePath() (string, error) {
-	// TODO #config configure inbox location https://github.com/turbot/tailpipe/issues/1
-	sourceFilePath, err := filepath.Abs("./data/source")
-	if err != nil {
-		return "", fmt.Errorf("could not get absolute path for source directory: %w", err)
-	}
-	// ensure it exists
-	if _, err := os.Stat(sourceFilePath); os.IsNotExist(err) {
-		err = os.MkdirAll(sourceFilePath, 0755)
-		if err != nil {
-			return "", fmt.Errorf("could not create source directory %s: %w", sourceFilePath, err)
-		}
-	}
-
-	return sourceFilePath, nil
-}
-
-func ensureDestPath() (string, error) {
-	// TODO #config configure dest location https://github.com/turbot/tailpipe/issues/1
-	destFilePath, err := filepath.Abs("./data/dest")
-	if err != nil {
-		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)
-	}
-	// ensure it exists
-	if _, err := os.Stat(destFilePath); os.IsNotExist(err) {
-		err = os.MkdirAll(destFilePath, 0755)
-		if err != nil {
-			return "", fmt.Errorf("could not create dest directory %s: %w", destFilePath, err)
-		}
-	}
-
-	return destFilePath, nil
-}
-
-func ensureCollectionStatePath() (string, error) {
-	// TODO #config configure paging location https://github.com/turbot/tailpipe/issues/1
-	destFilePath, err := filepath.Abs("./data/paging")
-	if err != nil {
-		return "", fmt.Errorf("could not get absolute path for dest directory: %w", err)
-	}
-	// ensure it exists
-	if _, err := os.Stat(destFilePath); os.IsNotExist(err) {
-		err = os.MkdirAll(destFilePath, 0755)
-		if err != nil {
-			return "", fmt.Errorf("could not create dest directory %s: %w", destFilePath, err)
-		}
-	}
-
-	return destFilePath, nil
 }
