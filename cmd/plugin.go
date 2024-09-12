@@ -976,7 +976,7 @@ func GetUpdateReport(ctx context.Context, installationID string, plugins []*vers
 		return nil
 	}
 
-	vfd, err := versionfile.LoadPluginVersionFile(ctx)
+	versionFile, err := versionfile.LoadPluginVersionFile(ctx)
 	if err != nil {
 		return nil
 	}
@@ -990,10 +990,10 @@ func GetUpdateReport(ctx context.Context, installationID string, plugins []*vers
 	}
 
 	for _, p := range plugins {
-		vfd.Plugins[p.Name].LastCheckedDate = utils.FormatTime(time.Now())
+		versionFile.Plugins[p.Name].LastCheckedDate = utils.FormatTime(time.Now())
 	}
 
-	if err = vfd.Save(); err != nil {
+	if err = versionFile.Save(); err != nil {
 		return nil
 	}
 
@@ -1003,12 +1003,12 @@ func GetUpdateReport(ctx context.Context, installationID string, plugins []*vers
 // getLatestVersionFromGHCR // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
 func getLatestVersionFromGHCR(ctx context.Context, org, name, constraint, currentVersion string) (string, error) {
 	baseUrl := "https://ghcr.io"
-	url := fmt.Sprintf("%s/v2/turbot/steampipe/plugins/%s/%s/tags/list", baseUrl, org, name)
-	latestSemver, _ := semver.NewVersion("0.0.0")
+	url := fmt.Sprintf("%s/v2/turbot/tailpipe/plugins/%s/%s/tags/list", baseUrl, org, name)
+	latestSemver, _ := semver.NewVersion(currentVersion)
 	constraintSemver, _ := semver.NewConstraint(constraint)
 
 	client := &http.Client{}
-	token := os.Getenv("GHCR_WEB_TOKEN")
+	token := os.Getenv("GHCR_WEB_TOKEN") // NOTE: #tactical we **NEED** this token to be set in the environment for now, will use token in API when moved to hub API
 	if token == "" {
 		return "", fmt.Errorf("GHCR_WEB_TOKEN environment variable is not set")
 	}
