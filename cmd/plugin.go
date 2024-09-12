@@ -2,12 +2,18 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/gosuri/uiprogress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -287,7 +293,8 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		orgAndName := fmt.Sprintf("%s/%s", org, name)
 		var resolved pplugin.ResolvedPluginVersion
 		if ref.IsFromTurbotHub() {
-			rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
+			// TODO: #plugin replace GetLatestPluginVersionByConstraint with method in pipe-fittings once hub api is ready
+			rpv, err := GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
 			if err != nil || rpv == nil {
 				report := &pplugin.PluginInstallReport{
 					Plugin:         pluginName,
@@ -470,7 +477,8 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	defer cancel()
 
 	statushooks.SetStatus(ctx, "Checking for available updates")
-	reports := pplugin.GetUpdateReport(timeoutCtx, state.InstallationID, runUpdatesFor)
+	// TODO: #plugin replace GetUpdateReport with method in pipe-fittings once hub api is ready
+	reports := GetUpdateReport(timeoutCtx, state.InstallationID, runUpdatesFor)
 	statushooks.Done(ctx)
 	if len(reports) == 0 {
 		// this happens if for some reason the update server could not be contacted,
@@ -927,3 +935,144 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 //
 //	return connectionStateMap, res
 //}
+
+// GetLatestPluginVersionByConstraint // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func GetLatestPluginVersionByConstraint(ctx context.Context, installationID, org, name, constraint string) (*pplugin.ResolvedPluginVersion, error) {
+	orgAndName := fmt.Sprintf("%s/%s", org, name)
+
+	version, err := getLatestVersionFromGHCR(ctx, org, name, constraint, "0.0.0")
+	if err != nil {
+		return nil, err
+	}
+
+	rpv := pplugin.NewResolvedPluginVersion(orgAndName, version, constraint)
+	return &rpv, nil
+}
+
+// getLatestVersionsForPlugins // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func getLatestVersionsForPlugins(ctx context.Context, plugins []*versionfile.InstalledVersion) map[string]pplugin.PluginVersionCheckReport {
+	reports := make(map[string]pplugin.PluginVersionCheckReport)
+
+	for _, p := range plugins {
+		ref := pociinstaller.NewImageRef(p.Name)
+		org, name, constraint := ref.GetOrgNameAndStream()
+		mapKey := fmt.Sprintf("%s/%s/%s", org, name, constraint)
+
+		version, _ := getLatestVersionFromGHCR(ctx, org, name, constraint, p.Version)
+		r := reports[mapKey]
+		r.CheckResponse.Name = name
+		r.CheckResponse.Org = org
+		r.CheckResponse.Version = version
+		r.CheckResponse.Constraint = constraint
+
+	}
+
+	return reports
+}
+
+// GetUpdateReport // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func GetUpdateReport(ctx context.Context, installationID string, plugins []*versionfile.InstalledVersion) map[string]pplugin.PluginVersionCheckReport {
+	if len(plugins) == 0 {
+		return nil
+	}
+
+	vfd, err := versionfile.LoadPluginVersionFile(ctx)
+	if err != nil {
+		return nil
+	}
+
+	reports := getLatestVersionsForPlugins(ctx, plugins)
+
+	for k, v := range reports {
+		if v.CheckResponse.Name == "" {
+			delete(reports, k)
+		}
+	}
+
+	for _, p := range plugins {
+		vfd.Plugins[p.Name].LastCheckedDate = utils.FormatTime(time.Now())
+	}
+
+	if err = vfd.Save(); err != nil {
+		return nil
+	}
+
+	return reports
+}
+
+// getLatestVersionFromGHCR // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func getLatestVersionFromGHCR(ctx context.Context, org, name, constraint, currentVersion string) (string, error) {
+	baseUrl := "https://ghcr.io"
+	url := fmt.Sprintf("%s/v2/turbot/steampipe/plugins/%s/%s/tags/list", baseUrl, org, name)
+	latestSemver, _ := semver.NewVersion("0.0.0")
+	constraintSemver, _ := semver.NewConstraint(constraint)
+
+	client := &http.Client{}
+	token := os.Getenv("GHCR_WEB_TOKEN")
+	if token == "" {
+		return "", fmt.Errorf("GHCR_WEB_TOKEN environment variable is not set")
+	}
+
+	for {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return "", err
+		}
+
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to make request: %v", err)
+		}
+
+		if resp.StatusCode == 404 {
+			return "", fmt.Errorf("plugin tags for org:[%s] name:[%s] not found", org, name)
+		} else if resp.StatusCode != 200 {
+			return "", fmt.Errorf("unexpected error: %s", resp.Status)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("failed to read response body: %v", err)
+		}
+
+		var tagsResp tagsResponse
+		if err := json.Unmarshal(body, &tagsResp); err != nil {
+			return "", fmt.Errorf("failed to unmarshal JSON: %v", err)
+		}
+
+		// close here, defer will be too late - possible resource leak
+		_ = resp.Body.Close()
+
+		for _, tag := range tagsResp.Tags {
+			t, err := semver.NewVersion(tag)
+			if err != nil {
+				continue // tag wasn't a semver ignore it
+			}
+
+			if constraintSemver.Check(t) && t.GreaterThan(latestSemver) {
+				latestSemver = t
+			}
+		}
+
+		linkHeader := resp.Header.Get("Link")
+		if linkHeader != "" {
+			re := regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
+			matches := re.FindStringSubmatch(linkHeader)
+			if len(matches) > 1 {
+				url = fmt.Sprintf("%s%s", baseUrl, matches[1])
+			}
+		} else {
+			break
+		}
+
+	}
+
+	return latestSemver.String(), nil
+}
+
+// tagsResponse // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+type tagsResponse struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+}
