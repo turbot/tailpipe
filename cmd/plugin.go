@@ -1013,7 +1013,7 @@ func getLatestVersionFromGHCR(ctx context.Context, org, name, constraint, curren
 	client := &http.Client{}
 	token := os.Getenv("GHCR_WEB_TOKEN") // NOTE: #tactical we **NEED** this token to be set in the environment for now, will use token in API when moved to hub API
 	if token == "" {
-		return "", fmt.Errorf("GHCR_WEB_TOKEN environment variable is not set")
+		return "", fmt.Errorf("GHCR_WEB_TOKEN environment variable is not set, this is needed for now. Use GITHUB_TOKEN w/package:read permissions base64 encoded")
 	}
 
 	for {
