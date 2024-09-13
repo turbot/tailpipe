@@ -61,21 +61,21 @@ func pluginCmd() *cobra.Command {
 		Long: `Steampipe plugin management.
 
 Plugins extend Steampipe to work with many different services and providers.
-Find plugins using the public registry at https://hub.steampipe.io.
+Find plugins using the public registry at https://hub.tailpipe.io.
 
 Examples:
 
   # Install a plugin
-  steampipe plugin install aws
+  tailpipe plugin install aws
 
   # Update a plugin
-  steampipe plugin update aws
+  tailpipe plugin update aws
 
   # List installed plugins
-  steampipe plugin list
+  tailpipe plugin list
 
   # Uninstall a plugin
-  steampipe plugin uninstall aws`,
+  tailpipe plugin uninstall aws`,
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			utils.LogTime("cmd.plugin.PersistentPostRun start")
 			defer utils.LogTime("cmd.plugin.PersistentPostRun end")
@@ -102,25 +102,25 @@ func pluginInstallCmd() *cobra.Command {
 
 Install a Steampipe plugin, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
-registry is hub.steampipe.io, default org is turbot and default version
+registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
 
 Examples:
 
   # Install all missing plugins that are specified in configuration files
-  steampipe plugin install
+  tailpipe plugin install
 
   # Install a common plugin (turbot/aws)
-  steampipe plugin install aws
+  tailpipe plugin install aws
 
   # Install a specific plugin version
-  steampipe plugin install turbot/azure@0.1.0
+  tailpipe plugin install turbot/azure@0.1.0
 
   # Hide progress bars during installation
-  steampipe plugin install --progress=false aws
+  tailpipe plugin install --progress=false aws
 
   # Skip creation of default plugin config file
-  steampipe plugin install --skip-config aws`,
+  tailpipe plugin install --skip-config aws`,
 	}
 
 	cmdconfig.
@@ -141,19 +141,19 @@ func pluginUpdateCmd() *cobra.Command {
 
 Update one or more Steampipe plugins, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
-registry is hub.steampipe.io, default org is turbot and default version
+registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
 
 Examples:
 
   # Update all plugins to their latest available version
-  steampipe plugin update --all
+  tailpipe plugin update --all
 
   # Update a common plugin (turbot/aws)
-  steampipe plugin update aws
+  tailpipe plugin update aws
 
   # Hide progress bars during update
-  steampipe plugin update --progress=false aws`,
+  tailpipe plugin update --progress=false aws`,
 	}
 
 	cmdconfig.
@@ -179,13 +179,13 @@ List all Steampipe plugins installed for this user.
 Examples:
 
   # List installed plugins
-  steampipe plugin list
+  tailpipe plugin list
 
   # List plugins that have updates available
-  steampipe plugin list --outdated
+  tailpipe plugin list --outdated
 
   # List plugins output in json
-  steampipe plugin list --output json`,
+  tailpipe plugin list --output json`,
 	}
 
 	cmdconfig.
@@ -212,7 +212,7 @@ version of a plugin can be installed at a time.)
 Example:
 
   # Uninstall a common plugin (turbot/aws)
-  steampipe plugin uninstall aws
+  tailpipe plugin uninstall aws
 
 `,
 	}
@@ -228,7 +228,7 @@ var pluginInstallSteps = []string{
 	"Installing Plugin",
 	"Installing Docs",
 	"Installing Config",
-	"Updating Steampipe",
+	"Updating Tailpipe",
 	"Done",
 }
 
@@ -249,7 +249,7 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	// - aws
 	// - aws@0.118.0
 	// - aws@^0.118
-	// - ghcr.io/turbot/steampipe/plugins/turbot/aws:1.0.0
+	// - ghcr.io/turbot/tailpipe/plugins/turbot/aws:1.0.0
 	plugins := append([]string{}, args...)
 	showProgress := viper.GetBool(pconstants.ArgProgress)
 	installReports := make(pplugin.PluginInstallReports, 0, len(plugins))
@@ -391,7 +391,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	// - aws
 	// - aws@0.118.0
 	// - aws@^0.118
-	// - ghcr.io/turbot/steampipe/plugins/turbot/aws:1.0.0
+	// - ghcr.io/turbot/tailpipe/plugins/turbot/aws:1.0.0
 	plugins, err := resolveUpdatePluginsFromArgs(args)
 	showProgress := viper.GetBool(pconstants.ArgProgress)
 
@@ -406,7 +406,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if len(plugins) > 0 && !(cmdconfig.Viper().GetBool(pconstants.ArgAll)) && plugins[0] == pconstants.ArgAll {
-		// improve the response to wrong argument "steampipe plugin update all"
+		// improve the response to wrong argument "tailpipe plugin update all"
 		fmt.Println()
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		error_helpers.ShowError(ctx, fmt.Errorf("Did you mean %s?", pconstants.Bold("--all")))
@@ -421,7 +421,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// retrieve the plugin version data from steampipe config
+	// retrieve the plugin version data from tailpipe config
 	pluginVersions := config.GlobalConfig.PluginVersions
 
 	var runUpdatesFor []*versionfile.InstalledVersion
@@ -608,7 +608,7 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 	if image.Config.Plugin.Version != "" {
 		versionString = " v" + image.Config.Plugin.Version
 	}
-	docURL := fmt.Sprintf("https://hub.steampipe.io/plugins/%s/%s", org, name)
+	docURL := fmt.Sprintf("https://hub.tailpipe.io/plugins/%s/%s", org, name)
 	if !image.ImageRef.IsFromTurbotHub() {
 		docURL = fmt.Sprintf("https://%s/%s", org, name)
 	}
