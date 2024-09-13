@@ -448,7 +448,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 				if strings.HasPrefix(ref.DisplayImageRef(), constants.TailpipeHubOCIBase) {
 					runUpdatesFor = append(runUpdatesFor, pluginVersions[ref.DisplayImageRef()])
 				} else {
-					error_helpers.ShowError(ctx, fmt.Errorf("cannot check updates for plugins not distributed via hub.steampipe.io, you should uninstall then reinstall the plugin to get the latest version"))
+					error_helpers.ShowError(ctx, fmt.Errorf("cannot check updates for plugins not distributed via hub.tailpipe.io, you should uninstall then reinstall the plugin to get the latest version"))
 					exitCode = pconstants.ExitCodePluginLoadingError
 					return
 				}
@@ -959,12 +959,13 @@ func getLatestVersionsForPlugins(ctx context.Context, plugins []*versionfile.Ins
 		mapKey := fmt.Sprintf("%s/%s/%s", org, name, constraint)
 
 		version, _ := getLatestVersionFromGHCR(ctx, org, name, constraint, p.Version)
-		r := reports[mapKey]
+		r := pplugin.PluginVersionCheckReport{Plugin: p}
 		r.CheckResponse.Name = name
 		r.CheckResponse.Org = org
 		r.CheckResponse.Version = version
 		r.CheckResponse.Constraint = constraint
 
+		reports[mapKey] = r
 	}
 
 	return reports
