@@ -35,6 +35,10 @@ func SetAppSpecificConstants() {
 	app_specific.VersionCheckHost = "hub.tailpipe.io"
 	app_specific.VersionCheckPath = "api/cli/version/latest"
 
+	// OciInstaller
+	app_specific.DefaultImageRepoActualURL = "ghcr.io/turbot/tailpipe"
+	app_specific.DefaultImageRepoDisplayURL = "hub.tailpipe.io"
+
 	// set the default install dir
 	defaultInstallDir, err := files.Tildefy("~/.tailpipe")
 	error_helpers.FailOnError(err)

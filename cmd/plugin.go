@@ -1005,6 +1005,9 @@ func getLatestVersionFromGHCR(ctx context.Context, org, name, constraint, curren
 	baseUrl := "https://ghcr.io"
 	url := fmt.Sprintf("%s/v2/turbot/tailpipe/plugins/%s/%s/tags/list", baseUrl, org, name)
 	latestSemver, _ := semver.NewVersion(currentVersion)
+	if constraint == "latest" {
+		constraint = "*"
+	}
 	constraintSemver, _ := semver.NewConstraint(constraint)
 
 	client := &http.Client{}
