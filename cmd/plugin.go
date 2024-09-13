@@ -2,12 +2,18 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/gosuri/uiprogress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -55,21 +61,21 @@ func pluginCmd() *cobra.Command {
 		Long: `Steampipe plugin management.
 
 Plugins extend Steampipe to work with many different services and providers.
-Find plugins using the public registry at https://hub.steampipe.io.
+Find plugins using the public registry at https://hub.tailpipe.io.
 
 Examples:
 
   # Install a plugin
-  steampipe plugin install aws
+  tailpipe plugin install aws
 
   # Update a plugin
-  steampipe plugin update aws
+  tailpipe plugin update aws
 
   # List installed plugins
-  steampipe plugin list
+  tailpipe plugin list
 
   # Uninstall a plugin
-  steampipe plugin uninstall aws`,
+  tailpipe plugin uninstall aws`,
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			utils.LogTime("cmd.plugin.PersistentPostRun start")
 			defer utils.LogTime("cmd.plugin.PersistentPostRun end")
@@ -96,25 +102,25 @@ func pluginInstallCmd() *cobra.Command {
 
 Install a Steampipe plugin, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
-registry is hub.steampipe.io, default org is turbot and default version
+registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
 
 Examples:
 
   # Install all missing plugins that are specified in configuration files
-  steampipe plugin install
+  tailpipe plugin install
 
   # Install a common plugin (turbot/aws)
-  steampipe plugin install aws
+  tailpipe plugin install aws
 
   # Install a specific plugin version
-  steampipe plugin install turbot/azure@0.1.0
+  tailpipe plugin install turbot/azure@0.1.0
 
   # Hide progress bars during installation
-  steampipe plugin install --progress=false aws
+  tailpipe plugin install --progress=false aws
 
   # Skip creation of default plugin config file
-  steampipe plugin install --skip-config aws`,
+  tailpipe plugin install --skip-config aws`,
 	}
 
 	cmdconfig.
@@ -135,19 +141,19 @@ func pluginUpdateCmd() *cobra.Command {
 
 Update one or more Steampipe plugins, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
-registry is hub.steampipe.io, default org is turbot and default version
+registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
 
 Examples:
 
   # Update all plugins to their latest available version
-  steampipe plugin update --all
+  tailpipe plugin update --all
 
   # Update a common plugin (turbot/aws)
-  steampipe plugin update aws
+  tailpipe plugin update aws
 
   # Hide progress bars during update
-  steampipe plugin update --progress=false aws`,
+  tailpipe plugin update --progress=false aws`,
 	}
 
 	cmdconfig.
@@ -173,13 +179,13 @@ List all Steampipe plugins installed for this user.
 Examples:
 
   # List installed plugins
-  steampipe plugin list
+  tailpipe plugin list
 
   # List plugins that have updates available
-  steampipe plugin list --outdated
+  tailpipe plugin list --outdated
 
   # List plugins output in json
-  steampipe plugin list --output json`,
+  tailpipe plugin list --output json`,
 	}
 
 	cmdconfig.
@@ -206,7 +212,7 @@ version of a plugin can be installed at a time.)
 Example:
 
   # Uninstall a common plugin (turbot/aws)
-  steampipe plugin uninstall aws
+  tailpipe plugin uninstall aws
 
 `,
 	}
@@ -222,7 +228,7 @@ var pluginInstallSteps = []string{
 	"Installing Plugin",
 	"Installing Docs",
 	"Installing Config",
-	"Updating Steampipe",
+	"Updating Tailpipe",
 	"Done",
 }
 
@@ -243,7 +249,7 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	// - aws
 	// - aws@0.118.0
 	// - aws@^0.118
-	// - ghcr.io/turbot/steampipe/plugins/turbot/aws:1.0.0
+	// - ghcr.io/turbot/tailpipe/plugins/turbot/aws:1.0.0
 	plugins := append([]string{}, args...)
 	showProgress := viper.GetBool(pconstants.ArgProgress)
 	installReports := make(pplugin.PluginInstallReports, 0, len(plugins))
@@ -287,7 +293,8 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		orgAndName := fmt.Sprintf("%s/%s", org, name)
 		var resolved pplugin.ResolvedPluginVersion
 		if ref.IsFromTurbotHub() {
-			rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
+			// TODO: #plugin replace GetLatestPluginVersionByConstraint with method in pipe-fittings once hub api is ready
+			rpv, err := GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
 			if err != nil || rpv == nil {
 				report := &pplugin.PluginInstallReport{
 					Plugin:         pluginName,
@@ -384,7 +391,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	// - aws
 	// - aws@0.118.0
 	// - aws@^0.118
-	// - ghcr.io/turbot/steampipe/plugins/turbot/aws:1.0.0
+	// - ghcr.io/turbot/tailpipe/plugins/turbot/aws:1.0.0
 	plugins, err := resolveUpdatePluginsFromArgs(args)
 	showProgress := viper.GetBool(pconstants.ArgProgress)
 
@@ -399,7 +406,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if len(plugins) > 0 && !(cmdconfig.Viper().GetBool(pconstants.ArgAll)) && plugins[0] == pconstants.ArgAll {
-		// improve the response to wrong argument "steampipe plugin update all"
+		// improve the response to wrong argument "tailpipe plugin update all"
 		fmt.Println()
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		error_helpers.ShowError(ctx, fmt.Errorf("Did you mean %s?", pconstants.Bold("--all")))
@@ -414,7 +421,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// retrieve the plugin version data from steampipe config
+	// retrieve the plugin version data from tailpipe config
 	pluginVersions := config.GlobalConfig.PluginVersions
 
 	var runUpdatesFor []*versionfile.InstalledVersion
@@ -441,7 +448,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 				if strings.HasPrefix(ref.DisplayImageRef(), constants.TailpipeHubOCIBase) {
 					runUpdatesFor = append(runUpdatesFor, pluginVersions[ref.DisplayImageRef()])
 				} else {
-					error_helpers.ShowError(ctx, fmt.Errorf("cannot check updates for plugins not distributed via hub.steampipe.io, you should uninstall then reinstall the plugin to get the latest version"))
+					error_helpers.ShowError(ctx, fmt.Errorf("cannot check updates for plugins not distributed via hub.tailpipe.io, you should uninstall then reinstall the plugin to get the latest version"))
 					exitCode = pconstants.ExitCodePluginLoadingError
 					return
 				}
@@ -470,7 +477,8 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	defer cancel()
 
 	statushooks.SetStatus(ctx, "Checking for available updates")
-	reports := pplugin.GetUpdateReport(timeoutCtx, state.InstallationID, runUpdatesFor)
+	// TODO: #plugin replace GetUpdateReport with method in pipe-fittings once hub api is ready
+	reports := GetUpdateReport(timeoutCtx, state.InstallationID, runUpdatesFor)
 	statushooks.Done(ctx)
 	if len(reports) == 0 {
 		// this happens if for some reason the update server could not be contacted,
@@ -600,7 +608,7 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 	if image.Config.Plugin.Version != "" {
 		versionString = " v" + image.Config.Plugin.Version
 	}
-	docURL := fmt.Sprintf("https://hub.steampipe.io/plugins/%s/%s", org, name)
+	docURL := fmt.Sprintf("https://hub.tailpipe.io/plugins/%s/%s", org, name)
 	if !image.ImageRef.IsFromTurbotHub() {
 		docURL = fmt.Sprintf("https://%s/%s", org, name)
 	}
@@ -927,3 +935,148 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 //
 //	return connectionStateMap, res
 //}
+
+// GetLatestPluginVersionByConstraint // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func GetLatestPluginVersionByConstraint(ctx context.Context, installationID, org, name, constraint string) (*pplugin.ResolvedPluginVersion, error) {
+	orgAndName := fmt.Sprintf("%s/%s", org, name)
+
+	version, err := getLatestVersionFromGHCR(ctx, org, name, constraint, "0.0.0")
+	if err != nil {
+		return nil, err
+	}
+
+	rpv := pplugin.NewResolvedPluginVersion(orgAndName, version, constraint)
+	return &rpv, nil
+}
+
+// getLatestVersionsForPlugins // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func getLatestVersionsForPlugins(ctx context.Context, plugins []*versionfile.InstalledVersion) map[string]pplugin.PluginVersionCheckReport {
+	reports := make(map[string]pplugin.PluginVersionCheckReport)
+
+	for _, p := range plugins {
+		ref := pociinstaller.NewImageRef(p.Name)
+		org, name, constraint := ref.GetOrgNameAndStream()
+		mapKey := fmt.Sprintf("%s/%s/%s", org, name, constraint)
+
+		version, _ := getLatestVersionFromGHCR(ctx, org, name, constraint, p.Version)
+		r := pplugin.PluginVersionCheckReport{Plugin: p}
+		r.CheckResponse.Name = name
+		r.CheckResponse.Org = org
+		r.CheckResponse.Version = version
+		r.CheckResponse.Constraint = constraint
+
+		reports[mapKey] = r
+	}
+
+	return reports
+}
+
+// GetUpdateReport // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func GetUpdateReport(ctx context.Context, installationID string, plugins []*versionfile.InstalledVersion) map[string]pplugin.PluginVersionCheckReport {
+	if len(plugins) == 0 {
+		return nil
+	}
+
+	versionFile, err := versionfile.LoadPluginVersionFile(ctx)
+	if err != nil {
+		return nil
+	}
+
+	reports := getLatestVersionsForPlugins(ctx, plugins)
+
+	for k, v := range reports {
+		if v.CheckResponse.Name == "" {
+			delete(reports, k)
+		}
+	}
+
+	for _, p := range plugins {
+		versionFile.Plugins[p.Name].LastCheckedDate = utils.FormatTime(time.Now())
+	}
+
+	if err = versionFile.Save(); err != nil {
+		return nil
+	}
+
+	return reports
+}
+
+// getLatestVersionFromGHCR // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+func getLatestVersionFromGHCR(ctx context.Context, org, name, constraint, currentVersion string) (string, error) {
+	baseUrl := "https://ghcr.io"
+	url := fmt.Sprintf("%s/v2/turbot/tailpipe/plugins/%s/%s/tags/list", baseUrl, org, name)
+	latestSemver, _ := semver.NewVersion(currentVersion)
+	if constraint == "latest" {
+		constraint = "*"
+	}
+	constraintSemver, _ := semver.NewConstraint(constraint)
+
+	client := &http.Client{}
+	token := os.Getenv("GHCR_WEB_TOKEN") // NOTE: #tactical we **NEED** this token to be set in the environment for now, will use token in API when moved to hub API
+	if token == "" {
+		return "", fmt.Errorf("GHCR_WEB_TOKEN environment variable is not set, this is needed for now. Use GITHUB_TOKEN w/package:read permissions base64 encoded")
+	}
+
+	for {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return "", err
+		}
+
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+		resp, err := client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("failed to make request: %v", err)
+		}
+
+		if resp.StatusCode == 404 {
+			return "", fmt.Errorf("plugin tags for org:[%s] name:[%s] not found", org, name)
+		} else if resp.StatusCode != 200 {
+			return "", fmt.Errorf("unexpected error: %s", resp.Status)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("failed to read response body: %v", err)
+		}
+
+		var tagsResp tagsResponse
+		if err := json.Unmarshal(body, &tagsResp); err != nil {
+			return "", fmt.Errorf("failed to unmarshal JSON: %v", err)
+		}
+
+		// close here, defer will be too late - possible resource leak
+		_ = resp.Body.Close()
+
+		for _, tag := range tagsResp.Tags {
+			t, err := semver.NewVersion(tag)
+			if err != nil {
+				continue // tag wasn't a semver ignore it
+			}
+
+			if constraintSemver.Check(t) && t.GreaterThan(latestSemver) {
+				latestSemver = t
+			}
+		}
+
+		linkHeader := resp.Header.Get("Link")
+		if linkHeader != "" {
+			re := regexp.MustCompile(`<([^>]+)>;\s*rel="next"`)
+			matches := re.FindStringSubmatch(linkHeader)
+			if len(matches) > 1 {
+				url = fmt.Sprintf("%s%s", baseUrl, matches[1])
+			}
+		} else {
+			break
+		}
+
+	}
+
+	return latestSemver.String(), nil
+}
+
+// tagsResponse // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
+type tagsResponse struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
+}

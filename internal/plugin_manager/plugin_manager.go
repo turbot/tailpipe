@@ -3,6 +3,8 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
+	"github.com/turbot/pipe-fittings/filepaths"
+	"github.com/turbot/pipe-fittings/ociinstaller"
 	"github.com/turbot/tailpipe/internal/constants"
 	"math/rand"
 	"os"
@@ -50,6 +52,7 @@ type CollectResponse struct {
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
+	// TODO: #plugin infer plugin if not specified by partition, if a version is set use it
 	plugin, err := p.getPlugin(partition.Plugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin, err)
@@ -138,8 +141,15 @@ func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
 }
 
 func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
-	// TODO search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
-	pluginPath := fmt.Sprintf("%s/tailpipe-plugin-%s.plugin", p.pluginPath, pluginName)
+	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
+
+	// TODO: #plugin this will currently only work for latest constraint plugins as we are not passing the constraint
+	ref := ociinstaller.NewImageRef(pluginName)
+	pluginPath, err := filepaths.GetPluginPath(ref.DisplayImageRef(), pluginName)
+	if err != nil {
+		return nil, fmt.Errorf("error getting plugin path for plugin %s: %w", pluginName, err)
+	}
+
 	// create the plugin map
 	pluginMap := map[string]plugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
