@@ -3,6 +3,8 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
+	"github.com/turbot/pipe-fittings/filepaths"
+	"github.com/turbot/pipe-fittings/ociinstaller"
 	"github.com/turbot/tailpipe/internal/constants"
 	"math/rand"
 	"os"
@@ -139,7 +141,14 @@ func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
 
 func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 	// TODO search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
-	pluginPath := fmt.Sprintf("%s/tailpipe-plugin-%s.plugin", p.pluginPath, pluginName)
+	// pluginPath := fmt.Sprintf("%s/tailpipe-plugin-%s.plugin", p.pluginPath, pluginName)
+	// TODO: #plugin this will currently only work for latest constraint plugins as we are not passing the constraint
+	ref := ociinstaller.NewImageRef(pluginName)
+	pluginPath, err := filepaths.GetPluginPath(ref.DisplayImageRef(), pluginName)
+	if err != nil {
+		return nil, fmt.Errorf("error getting plugin path for plugin %s: %w", pluginName, err)
+	}
+
 	// create the plugin map
 	pluginMap := map[string]plugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
