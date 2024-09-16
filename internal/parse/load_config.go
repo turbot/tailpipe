@@ -94,9 +94,7 @@ func buildValidationLogString(items []string, validationType string) string {
 	return str.String()
 }
 
-// load config from the given folder and update TailpipeConfig
-// NOTE: this mutates steampipe config
-
+// load config from the given folder
 func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error) {
 	defer func() {
 		if r := recover(); r != nil {

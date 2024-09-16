@@ -57,9 +57,11 @@ func pluginCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "plugin [command]",
 		Args:  cobra.NoArgs,
-		Short: "Steampipe plugin management",
-		Long: `Steampipe plugin management.
+		Short: "Tailpipe plugin management",
+		Long: `Tailpipe plugin management.
 
+Plugins extend Tailpipe to work with many different services and providers.
+Find plugins using the public registry at https://hub.tailpipe.io.
 Plugins extend Steampipe to work with many different services and providers.
 Find plugins using the public registry at https://hub.tailpipe.io.
 
@@ -100,7 +102,7 @@ func pluginInstallCmd() *cobra.Command {
 		Short: "Install one or more plugins",
 		Long: `Install one or more plugins.
 
-Install a Steampipe plugin, making it available for queries and configuration.
+Install a Tailpipe plugin, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
 registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
@@ -139,7 +141,7 @@ func pluginUpdateCmd() *cobra.Command {
 		Short: "Update one or more plugins",
 		Long: `Update plugins.
 
-Update one or more Steampipe plugins, making it available for queries and configuration.
+Update one or more Tailpipe plugins, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
 registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
@@ -174,7 +176,7 @@ func pluginListCmd() *cobra.Command {
 		Short: "List currently installed plugins",
 		Long: `List currently installed plugins.
 
-List all Steampipe plugins installed for this user.
+List all Tailpipe plugins installed for this user.
 
 Examples:
 
@@ -205,7 +207,7 @@ func pluginUninstallCmd() *cobra.Command {
 		Short: "Uninstall a plugin",
 		Long: `Uninstall a plugin.
 
-Uninstall a Steampipe plugin, removing it from use. The plugin name format is
+Uninstall a Tailpipe plugin, removing it from use. The plugin name format is
 [registry/org/]name. (Version is not relevant in uninstall, since only one
 version of a plugin can be installed at a time.)
 
@@ -907,7 +909,7 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 //}
 //
 //// load the connection state, waiting until all connections are loaded
-//func getConnectionState(ctx context.Context) (steampipeconfig.ConnectionStateMap, perror_helpers.ErrorAndWarnings) {
+//func getConnectionState(ctx context.Context) (tailpipeconfig.ConnectionStateMap, perror_helpers.ErrorAndWarnings) {
 //	utils.LogTime("cmd.getConnectionState start")
 //	defer utils.LogTime("cmd.getConnectionState end")
 //
@@ -927,7 +929,7 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 //
 //	// load connection state
 //	statushooks.SetStatus(ctx, "Loading connection state")
-//	connectionStateMap, err := steampipeconfig.LoadConnectionState(ctx, conn.Conn(), steampipeconfig.WithWaitUntilReady())
+//	connectionStateMap, err := tailpipeconfig.LoadConnectionState(ctx, conn.Conn(), tailpipeconfig.WithWaitUntilReady())
 //	if err != nil {
 //		res.Error = err
 //		return nil, res

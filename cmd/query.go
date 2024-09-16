@@ -3,16 +3,20 @@ package cmd
 import (
 	"fmt"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/interactive"
+	"github.com/turbot/tailpipe/internal/interactive_"
 	"github.com/turbot/tailpipe/internal/query"
 	"strings"
 )
+
+// variable used to assign the timing mode flag
+var queryTimingMode = constants.QueryTimingModeOff
 
 // variable used to assign the output mode flag
 var queryOutputMode = constants.QueryOutputModeTable
@@ -30,7 +34,11 @@ func queryCmd() *cobra.Command {
 	cmdconfig.OnCmd(cmd).
 		AddVarFlag(enumflag.New(&queryOutputMode, pconstants.ArgOutput, constants.QueryOutputModeIds, enumflag.EnumCaseInsensitive),
 			pconstants.ArgOutput,
-			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.QueryOutputModeIds), ", ")))
+			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.QueryOutputModeIds), ", "))).
+		AddVarFlag(enumflag.New(&queryTimingMode, pconstants.ArgTiming, constants.QueryTimingModeIds, enumflag.EnumCaseInsensitive),
+			pconstants.ArgTiming,
+			fmt.Sprintf("Display query timing; one of: %s", strings.Join(constants.FlagValues(constants.QueryTimingModeIds), ", ")),
+			cmdconfig.FlagOptions.NoOptDefVal(pconstants.ArgOn))
 
 	return cmd
 }
@@ -47,9 +55,13 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		setExitCodeForQueryError(err)
 	}()
 
+	interactiveMode := len(args) == 0
+	// set config to indicate whether we are running an interactive query
+	viper.Set(pconstants.ConfigKeyInteractive, interactiveMode)
+
 	// if an arg was passed, just execute the query
-	if len(args) == 0 {
-		err = interactive.RunInteractiveQuery(ctx)
+	if interactiveMode {
+		err = interactive_.RunInteractiveQuery(ctx)
 	} else {
 		err = query.ExecutQuery(ctx, args[0])
 	}
