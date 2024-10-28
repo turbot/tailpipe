@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/cty_helpers"
 	"github.com/turbot/pipe-fittings/hclhelpers"
