@@ -10,8 +10,8 @@ require (
 	github.com/Masterminds/semver/v3 v3.2.1
 	github.com/hashicorp/hcl/v2 v2.20.1
 	github.com/mattn/go-isatty v0.0.20
-	github.com/spf13/cobra v1.8.0
-	github.com/spf13/viper v1.18.2
+	github.com/spf13/cobra v1.8.1
+	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v0.10.0-rc.0
 	github.com/turbot/pipe-fittings v1.5.2
 	// main
@@ -117,7 +117,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-safetemp v1.0.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
-	github.com/hashicorp/go-version v1.6.0 // indirect
+	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/terraform-registry-address v0.2.1 // indirect
 	github.com/hashicorp/terraform-svchost v0.1.1 // indirect
@@ -134,7 +134,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/karrick/gows v0.3.0 // indirect
-	github.com/klauspost/compress v1.17.0 // indirect
+	github.com/klauspost/compress v1.17.2 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
@@ -188,7 +188,6 @@ require (
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect
 	go.opentelemetry.io/otel v1.26.0 // indirect
 	go.opentelemetry.io/otel/metric v1.26.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.26.0 // indirect
 	go.opentelemetry.io/otel/trace v1.26.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
@@ -206,7 +205,7 @@ require (
 	google.golang.org/genproto v0.0.0-20240722135656-d784300faade // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240722135656-d784300faade // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240722135656-d784300faade // indirect
-	google.golang.org/grpc v1.64.1 // indirect
+	google.golang.org/grpc v1.66.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
