@@ -1,0 +1,191 @@
+name: "01 - Tailpipe: Dev Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      dev_release_identifier:
+        type: choice
+        description: "Select Dev Release Identifier"
+        options:
+          - alpha
+          - beta
+        required: true
+
+env:
+  TAILPIPE_UPDATE_CHECK: false
+  GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+  SPIPETOOLS_TOKEN: ${{ secrets.SPIPETOOLS_TOKEN }}
+
+jobs:
+  # TODO PSKR enable goreleaser after adding tests
+
+  # goreleaser:
+  #   name: Build
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         path: tailpipe
+  #         ref: ${{ github.event.ref }}
+
+  #     - name: Checkout Pipe Fittings Components repository
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: turbot/pipe-fittings
+  #         path: pipe-fittings
+  #         ref: tp2
+
+  #     - name: Checkout Tailpipe plugin SDK repository
+  #       uses: actions/checkout@v4
+  #       with:
+  #         repository: turbot/tailpipe-plugin-sdk
+  #         path: tailpipe-plugin-sdk
+  #         ref: develop
+
+  #      # this is required, check golangci-lint-action docs
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version: '1.22'
+  #         cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
+
+  #     - name: Build
+  #       run: |-
+  #         cd tailpipe
+  #         make release-dry-run
+
+  #     - name: Move build artifacts
+  #       run: |
+  #         ls -al $GITHUB_WORKSPACE/tailpipe
+  #         sudo chown -R runner:docker $GITHUB_WORKSPACE/tailpipe/dist
+  #         mkdir ~/artifacts
+  #         mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.linux.amd64.tar.gz ~/artifacts/linux.tar.gz
+  #         mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.linux.arm64.tar.gz ~/artifacts/linux-arm.tar.gz
+  #         mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.darwin.amd64.tar.gz ~/artifacts/darwin.tar.gz
+  #         mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.darwin.arm64.tar.gz ~/artifacts/darwin-arm.tar.gz
+
+  #     - name: List Build Artifacts
+  #       run: ls -l ~/artifacts
+
+  #     - name: Save Linux Build Artifact
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: build-artifact-linux
+  #         path: ~/artifacts/linux.tar.gz
+  #         if-no-files-found: error
+
+  #     - name: Save Linux ARM Build Artifact
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: build-artifact-linux-arm
+  #         path: ~/artifacts/linux-arm.tar.gz
+  #         if-no-files-found: error
+
+  #     - name: Save MacOS Build Artifact
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: build-artifact-darwin
+  #         path: ~/artifacts/darwin.tar.gz
+  #         if-no-files-found: error
+
+  #     - name: Save MacOS ARM Build Artifact
+  #       uses: actions/upload-artifact@v3
+  #       with:
+  #         name: build-artifact-darwin-arm
+  #         path: ~/artifacts/darwin-arm.tar.gz
+  #         if-no-files-found: error
+
+  # TODO PSKR add acceptance tests
+
+  # TODO PSKR update smoke test(smoke_test_ubuntu_24)
+
+  # TODO PSKR update smoke test(smoke_test_centos_9)
+
+  # TODO PSKR update smoke test(smoke_test_amazonlinux)
+
+  # TODO PSKR update smoke test(smoke_test_ubuntu_24_arm64)
+
+  # TODO PSKR update smoke test(smoke_test_darwin_amd)
+
+  build_version:
+    name: Build Version
+    # TODO needs: [acceptance_test, smoke_test_ubuntu_24, smoke_test_centos_9, smoke_test_amazonlinux, smoke_test_ubuntu_24_arm64, smoke_test_darwin_amd]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: tailpipe
+          ref: ${{ github.event.ref }}
+
+      - name: Calculate version
+        id: calculate_version
+        run: |
+          VERSION_JSON=$(cat tailpipe/internal/version/version.json)
+          MAJOR=$(echo $VERSION_JSON | jq '.major')
+          MINOR=$(echo $VERSION_JSON | jq '.minor')
+          PATCH=$(echo $VERSION_JSON | jq '.patch')
+          VERSION="v$MAJOR.$MINOR.$PATCH"
+
+          if [ "${{ github.event.inputs.dev_release_identifier }}" = "alpha" ]; then
+            echo "VERSION=${VERSION}-alpha.$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
+          elif [ "${{ github.event.inputs.dev_release_identifier }}" = "beta" ]; then
+            echo "VERSION=${VERSION}-beta.$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
+          fi
+
+      - name: Set VERSION as output
+        run: echo "::set-output name=version::$VERSION"
+        id: set_version
+
+  build_and_release:
+    name: Build and Release Tailpipe
+    needs: [build_version]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: tailpipe
+          ref: ${{ github.event.ref }}
+
+      - name: Checkout Pipe Fittings Components repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/pipe-fittings
+          path: pipe-fittings
+          ref: tp2
+      
+      - name: Checkout Tailpipe plugin SDK repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/tailpipe-plugin-sdk
+          path: tailpipe-plugin-sdk
+          ref: develop
+
+      - name: Tag Release
+        run: |
+          cd tailpipe
+          git config user.name "Tailpipe GitHub Actions Bot"
+          git config user.email noreply@github.com
+          git tag $VERSION
+          git push origin $VERSION
+
+      # this is required, check golangci-lint-action docs
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
+
+      - name: Setup release environment
+        run: |-
+          cd tailpipe
+          echo 'GITHUB_TOKEN=${{secrets.GH_ACCESS_TOKEN}}' > .release-env
+
+      - name: Release publish
+        run: |-
+          cd tailpipe
+          make release
