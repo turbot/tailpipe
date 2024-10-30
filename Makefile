@@ -17,7 +17,7 @@ release-dry-run:
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
-		-v `pwd`/../pipe-fittings:/go/src/tailpipe-plugin-sdk \
+		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot
@@ -35,7 +35,7 @@ release:
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
-		-v `pwd`/../pipe-fittings:/go/src/tailpipe-plugin-sdk \
+		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		release --clean --skip=validate
