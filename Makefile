@@ -4,13 +4,10 @@ GOLANG_CROSS_VERSION  ?= v1.22.4
 
 .PHONY: build
 build:
-	$(eval MAJOR := $(shell cat internal/version/version.json | jq '.major'))
-	$(eval MINOR := $(shell cat internal/version/version.json | jq '.minor'))
-	$(eval PATCH := $(shell cat internal/version/version.json | jq '.patch'))
 	$(eval TIMESTAMP := $(shell date +%Y%m%d%H%M%S))
+	$(eval GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | sed 's/[\/]/-/g'))
 
-	go build -o $(OUTPUT_DIR) -ldflags "-X main.version=$(MAJOR).$(MINOR).$(PATCH)-dev.$(TIMESTAMP)" .
-
+	go build -o $(OUTPUT_DIR) -ldflags "-X main.version=0.0.0-dev-$(GIT_BRANCH).$(TIMESTAMP)" .
 
 .PHONY: release-dry-run
 release-dry-run:
@@ -24,7 +21,6 @@ release-dry-run:
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot
-
 
 .PHONY: release
 release:
