@@ -26,3 +26,6 @@
 
 # Go workspace file
 go.work
+
+# Dist directory is created by goreleaser
+/dist
