@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
@@ -11,13 +12,14 @@ import (
 func AddTableView(ctx context.Context, tableName string) error {
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 
+	// TODO is this path correct?
 	query := fmt.Sprintf("CREATE VIEW IF NOT EXISTS %s AS SELECT * FROM '%s/%s/*/*/*/*.parquet'", tableName, dataDir, tableName)
 
 	_, err := Execute(ctx, query)
 	return err
 }
 
-// Execute opens then workspace databasew, executes a query and closes the db again
+// Execute opens then workspace database, executes a query (with no return rows) and closes the db again
 func Execute(ctx context.Context, query string) (sql.Result, error) {
 	// Open a DuckDB connection
 	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
@@ -31,7 +33,7 @@ func Execute(ctx context.Context, query string) (sql.Result, error) {
 	return db.ExecContext(ctx, query)
 }
 
-// Execute opens then workspace databasew, executes a query and closes the db again
+// Query opens then workspace database, executes a query and closes the db again
 func Query(ctx context.Context, query string) (*sql.Rows, error) {
 	// Open a DuckDB connection
 	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())

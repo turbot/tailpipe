@@ -60,7 +60,7 @@ func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Dia
 		}}
 	}
 
-	resourceType := resource.BlockType()
+	resourceType := resource.GetBlockType()
 	mapForType := c.resourceValues[resourceType]
 	if mapForType == nil {
 		mapForType = make(map[string]cty.Value)

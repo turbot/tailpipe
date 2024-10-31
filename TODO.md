@@ -5,8 +5,6 @@
 - if plugins will live longer than CLI instance - then we need a remove observer function to close the strea
 
 ## plugins
-- location
-- installation commands - as steampipe?
 
 ## cancellation
 - implement/test cancellation scenarios - ensure context cancellation and interrupt catching works
