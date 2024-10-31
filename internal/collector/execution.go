@@ -65,6 +65,7 @@ func (e *execution) done(err error) {
 	// if the execution state is NOT already in error, set to complete
 	if err != nil {
 		e.state = ExecutionState_ERROR
+		e.error = err
 	} else {
 		e.state = ExecutionState_COMPLETE
 	}
