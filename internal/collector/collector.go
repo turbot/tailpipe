@@ -278,7 +278,6 @@ func (c *Collector) Close(ctx context.Context) {
 // waitForExecution waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
 func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplete) error {
-
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
 
 	// store the plugin pluginTiming for this execution
@@ -298,6 +297,12 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	}
 	e.totalRows = ce.RowCount
 	e.chunkCount = ce.ChunkCount
+
+	if ce.ChunkCount == 0 && ce.RowCount == 0 {
+		slog.Debug("waitForExecution - no chunks/rows to write", "execution", ce.ExecutionId)
+		e.done(nil)
+		return nil
+	}
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		// check chunk count - ask the parquet writer how many chunks have been written
