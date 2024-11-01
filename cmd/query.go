@@ -51,7 +51,7 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 	if len(args) == 0 {
 		err = interactive.RunInteractiveQuery(ctx)
 	} else {
-		err = query.ExecutQuery(ctx, args[0])
+		err = query.ExecuteQuery(ctx, args[0])
 	}
 	error_helpers.FailOnError(err)
 

@@ -8,7 +8,7 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-func ExecutQuery(ctx context.Context, sql string) error {
+func ExecuteQuery(ctx context.Context, sql string) error {
 	rows, err := database.Query(ctx, sql)
 	if err != nil {
 		return err
