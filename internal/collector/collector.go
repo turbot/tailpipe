@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"log/slog"
 	"os"
@@ -388,6 +389,6 @@ func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) 
 	c.executionsLock.Lock()
 	defer c.executionsLock.Unlock()
 	if e, ok := c.executions[executionId]; ok {
-		e.pluginTiming = proto.TimingCollectionFromProto(timing)
+		e.pluginTiming = events.TimingCollectionFromProto(timing)
 	}
 }
