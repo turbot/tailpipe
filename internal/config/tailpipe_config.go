@@ -12,6 +12,8 @@ type TailpipeConfig struct {
 	// map of partitions, keyed by unqualified name (<partition_type>.<partition_name>)
 	Partitions map[string]*Partition
 
+	Connections map[string]*TailpipeConnection
+
 	// map of plugin configs, keyed by plugin image ref
 	// (for each image ref we store an array of configs)
 	Plugins map[string][]*plugin.Plugin
@@ -23,13 +25,17 @@ type TailpipeConfig struct {
 
 func NewTailpipeConfig() *TailpipeConfig {
 	return &TailpipeConfig{
-		Partitions: make(map[string]*Partition),
+		Partitions:  make(map[string]*Partition),
+		Connections: make(map[string]*TailpipeConnection),
 	}
 }
 func (c *TailpipeConfig) Add(resource modconfig.HclResource) error {
 	switch t := resource.(type) {
 	case *Partition:
 		c.Partitions[t.GetUnqualifiedName()] = t
+		return nil
+	case *TailpipeConnection:
+		c.Connections[t.GetUnqualifiedName()] = t
 		return nil
 	default:
 		return fmt.Errorf("unsupported resource type %T", t)

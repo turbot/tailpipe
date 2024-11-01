@@ -3,9 +3,6 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/pipe-fittings/filepaths"
-	"github.com/turbot/pipe-fittings/ociinstaller"
-	"github.com/turbot/tailpipe/internal/constants"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -19,10 +16,13 @@ import (
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
+	"github.com/turbot/pipe-fittings/filepaths"
+	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 type PluginManager struct {
@@ -52,10 +52,9 @@ type CollectResponse struct {
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
-	// TODO: #plugin infer plugin if not specified by partition, if a version is set use it
 	plugin, err := p.getPlugin(partition.Plugin)
 	if err != nil {
-		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin, err)
+		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
 
 	// TODO #design consider the flow
@@ -80,6 +79,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		TableData:       partition.ToProto(),
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
+		ConnectionData:  partition.Connection.ToProto(),
 	}
 
 	err = plugin.Collect(req)
@@ -119,17 +119,19 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000))
 }
 
-func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
+func (p *PluginManager) getPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 	p.pluginMutex.RLock()
-	client, ok := p.Plugins[pluginName]
+	// Plugins map is keyed by image ref
+	pluginImageRef := tp.Plugin
+	client, ok := p.Plugins[pluginImageRef]
 	p.pluginMutex.RUnlock()
 	if !ok {
 		p.pluginMutex.Lock()
-		// recheck if plugin was started by another goroutine
-		client, ok = p.Plugins[pluginName]
+		// recheck if pluginImageRef was started by another goroutine
+		client, ok = p.Plugins[pluginImageRef]
 		if !ok {
 			var err error
-			client, err = p.startPlugin(pluginName)
+			client, err = p.startPlugin(tp)
 			if err != nil {
 				return nil, err
 			}
@@ -140,14 +142,14 @@ func (p *PluginManager) getPlugin(pluginName string) (*PluginClient, error) {
 	return client, nil
 }
 
-func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
+func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
 
-	// TODO: #plugin this will currently only work for latest constraint plugins as we are not passing the constraint
-	ref := ociinstaller.NewImageRef(pluginName)
-	pluginPath, err := filepaths.GetPluginPath(ref.DisplayImageRef(), pluginName)
+	pluginName := tp.Alias
+
+	pluginPath, err := filepaths.GetPluginPath(tp.Plugin, tp.Alias)
 	if err != nil {
-		return nil, fmt.Errorf("error getting plugin path for plugin %s: %w", pluginName, err)
+		return nil, fmt.Errorf("error getting plugin path for plugin %s: %w", tp.Alias, err)
 	}
 
 	// create the plugin map
@@ -182,8 +184,8 @@ func (p *PluginManager) startPlugin(pluginName string) (*PluginClient, error) {
 	// store the schema for this plugin
 	client.schemaMap = schema.SchemaMapFromProto(partitionSchemas.Schemas)
 
-	// store the client
-	p.Plugins[pluginName] = client
+	// store the client, keyed by image ref
+	p.Plugins[tp.Plugin] = client
 
 	return client, nil
 }

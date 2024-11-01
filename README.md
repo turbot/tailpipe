@@ -44,7 +44,7 @@ make
 
 ```
 
-configure collection config
+configure table config
 ``` 
 # tailpipe.hcl
 ```
