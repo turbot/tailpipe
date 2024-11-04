@@ -1,6 +1,6 @@
 OUTPUT_DIR?=/usr/local/bin
 PACKAGE_NAME          := github.com/turbot/tailpipe
-GOLANG_CROSS_VERSION  ?= v1.22.4
+GOLANG_CROSS_VERSION  ?= v1.23.2
 
 .PHONY: build
 build:
