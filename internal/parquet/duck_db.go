@@ -19,7 +19,10 @@ func newDuckDb() (*duckDb, error) {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 
-	// Load the JSON extension
+	// install and load the JSON extension
+	if _, err := db.Exec("INSTALL 'json';"); err != nil {
+		return nil, fmt.Errorf("failed to install JSON extension: %w", err)
+	}
 	if _, err := db.Exec("LOAD 'json';"); err != nil {
 		return nil, fmt.Errorf("failed to load JSON extension: %w", err)
 	}
