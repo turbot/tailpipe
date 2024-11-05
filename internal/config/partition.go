@@ -60,10 +60,11 @@ func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider
 			Plugin:   plugin.ResolvePluginImageRef(name),
 		}
 	}
+	// TODO K default connections
 	// if the connection is not set, set it to the default connection
-	if c.Connection == nil {
-		c.Connection = getDefaultConnection(c.Plugin.Alias)
-	}
+	//if c.Connection == nil {
+	//	c.Connection = getDefaultConnection(c.Plugin.Alias)
+	//}
 	return nil
 }
 
