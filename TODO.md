@@ -13,7 +13,7 @@
 - configure inbox location: per execution? single location?
 
 ## colection
-- add collection config to collect request
+- add table config to collect request
 
 ## parsing
 - Handle 3 part names for parsing etc - impacts name functions and eval ctx

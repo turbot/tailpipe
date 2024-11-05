@@ -20,7 +20,7 @@ func (s *Source) ToProto() *proto.ConfigData {
 	}
 }
 
-func (s *Source) SetUnknownHcl(u *UnknownHcl) {
+func (s *Source) SetConfigHcl(u *HclBytes) {
 	if u == nil {
 		return
 	}

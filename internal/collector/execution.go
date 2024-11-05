@@ -42,7 +42,7 @@ func newExecution(executionId string, part *config.Partition) *execution {
 		id:        executionId,
 		partition: part.UnqualifiedName,
 		table:     part.Table,
-		plugin:    part.Plugin,
+		plugin:    part.Plugin.Alias,
 		state:     ExecutionState_PENDING,
 	}
 	e.executionTiming.TryStart("total time")

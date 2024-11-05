@@ -35,8 +35,8 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 		resourceMap:    make(map[string]modconfig.HclResource),
 	}
 
-	// only load partition blocks - we parse connections, and workspoaces separately
-	c.SetBlockTypes(schema.BlockTypePartition)
+	// we load workspaces separately
+	c.SetBlockTypeExclusions(schema.BlockTypeWorkspaceProfile)
 
 	//override ResourceNameFromDependencyFunc to use a version
 	// which uses the local ParsedPropertyPath type
@@ -65,8 +65,24 @@ func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Dia
 	if mapForType == nil {
 		mapForType = make(map[string]cty.Value)
 	}
-	// ad value to map
-	mapForType[resource.GetShortName()] = ctyVal
+
+	// if the resource supports 3 part names, we need to store in the eval context accordingly
+	type HasSubType interface {
+		GetSubType() string
+	}
+	if subType, ok := resource.(HasSubType); ok {
+		mapForSubType := c.resourceValues[subType.GetSubType()]
+		if mapForSubType == nil {
+			mapForSubType = make(map[string]cty.Value)
+		}
+		mapForSubType[resource.GetShortName()] = ctyVal
+		mapForType[subType.GetSubType()] = cty.ObjectVal(mapForSubType)
+
+	} else {
+		// add value to map
+		mapForType[resource.GetShortName()] = ctyVal
+	}
+
 	// write back
 	c.resourceValues[resourceType] = mapForType
 
