@@ -79,7 +79,6 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		TableData:       partition.ToProto(),
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
-		ConnectionData:  partition.Connection.ToProto(),
 	}
 	if partition.Connection != nil {
 		req.ConnectionData = partition.Connection.ToProto()
