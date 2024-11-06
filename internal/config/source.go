@@ -14,9 +14,9 @@ type Source struct {
 
 func (s *Source) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		Type:  s.Type,
-		Hcl:   s.Config,
-		Range: proto.RangeToProto(s.ConfigRange),
+		Target: "source." + s.Type,
+		Hcl:    s.Config,
+		Range:  proto.RangeToProto(s.ConfigRange),
 	}
 }
 

@@ -25,7 +25,10 @@ func (c *TailpipeConnection) GetSubType() string {
 
 func (c *TailpipeConnection) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		Type:  "connection",
+		//Target:  c.Name(),
+		// TODO fix connection parsing to populate name
+		Target: "connection." + c.Plugin,
+
 		Hcl:   c.Hcl,
 		Range: proto.RangeToProto(c.DeclRange),
 	}
@@ -49,3 +52,47 @@ func NewTailpipeConnection(block *hcl.Block, fullName string) (modconfig.HclReso
 	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Plugin, c.ShortName)
 	return c, nil
 }
+
+// TODO K implement if needed
+//
+//func CtyValueToConnection(value cty.Value) (_ *TailpipeConnection, err error) {
+//	defer func() {
+//		if r := recover(); r != nil {
+//			err = perr.BadRequestWithMessage("unable to decode connection: " + r.(string))
+//		}
+//	}()
+//
+//	// get the name, block type and range and use to construct a connection
+//	shortName := value.GetAttr("short_name").AsString()
+//	name := value.GetAttr("name").AsString()
+//	block := &hcl.Block{
+//		Labels: []string{"connection", name},
+//	}
+//
+//
+//
+//	// now instantiate an empty connection of the correct type
+//	conn, err := NewTailpipeConnection(&hcl.Block{}, name)
+//	if err != nil {
+//		return nil, perr.BadRequestWithMessage("unable to decode connection: " + err.Error())
+//	}
+//
+//	// split the cty value into fields for ConnectionImpl and the derived connection,
+//	// (NOTE: exclude the 'env', 'type', 'resource_type' fields, which are manually added)
+//	baseValue, derivedValue, err := getKnownCtyFields(value, conn.GetConnectionImpl(), "env", "type", "resource_type")
+//	if err != nil {
+//		return nil, perr.BadRequestWithMessage("unable to decode connection: " + err.Error())
+//	}
+//	// decode the base fields into the ConnectionImpl
+//	err = gocty.FromCtyValue(baseValue, conn.GetConnectionImpl())
+//	if err != nil {
+//		return nil, perr.BadRequestWithMessage("unable to decode ConnectionImpl: " + err.Error())
+//	}
+//	// decode remaining fields into the derived connection
+//	err = gocty.FromCtyValue(derivedValue, &conn)
+//	if err != nil {
+//		return nil, perr.BadRequestWithMessage("unable to decode connection: " + err.Error())
+//	}
+//
+//	return nil, nil
+//}

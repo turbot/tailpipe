@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/cty_helpers"
 	"github.com/turbot/pipe-fittings/hclhelpers"
@@ -50,6 +51,8 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Diagnostics {
 	// TODO handle 3 part names
 	name := resource.Name()
+	// TODO K look at using GetResourceCtyValue
+	//ctyVal, err := c.GetResourceCtyValue(resource)
 	ctyVal, err := cty_helpers.GetCtyValue(resource)
 	if err != nil {
 		return hcl.Diagnostics{&hcl.Diagnostic{

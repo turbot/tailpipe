@@ -77,9 +77,9 @@ func getDefaultConnection(alias string) *TailpipeConnection {
 
 func (c *Partition) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		Type:  c.Table,
-		Hcl:   c.Config,
-		Range: proto.RangeToProto(c.DeclRange),
+		Target: c.Name(),
+		Hcl:    c.Config,
+		Range:  proto.RangeToProto(c.DeclRange),
 	}
 }
 
