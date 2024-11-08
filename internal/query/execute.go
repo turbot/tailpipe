@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/tailpipe/internal/database"
@@ -18,7 +19,7 @@ func ExecuteQuery(ctx context.Context, sql string) error {
 	case constants.OutputFormatJSON:
 		panic("not implemented")
 	case constants.OutputFormatCSV:
-		panic("not implemented")
+		return DisplayResultCsv(ctx, rows)
 	case constants.OutputFormatTable:
 		return DisplayResultTable(ctx, rows)
 	default:

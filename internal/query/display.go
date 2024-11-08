@@ -3,7 +3,10 @@ package query
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"fmt"
+	"os"
+
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -126,4 +129,59 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the Bubble Tea table.
 func (m model) View() string {
 	return baseStyle.Render(m.table.View()) + "\n"
+}
+
+// DisplayResultCsv fetches data from sql.Rows and outputs it as CSV.
+func DisplayResultCsv(ctx context.Context, rows *sql.Rows) error {
+
+	writer := csv.NewWriter(os.Stdout)
+	defer writer.Flush() // Ensure data is written to output
+
+	// get column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return err
+	}
+
+	// write column names as the first row in the CSV
+	if err := writer.Write(columns); err != nil {
+		return fmt.Errorf("failed to write header row: %w", err)
+	}
+
+	// create a slice of interfaces to hold each column value, and a slice of pointers to each value in the row
+	values := make([]interface{}, len(columns))
+	valuePtrs := make([]interface{}, len(columns))
+	for i := range values {
+		valuePtrs[i] = &values[i]
+	}
+
+	// iterate through the result set
+	for rows.Next() {
+		// Scan the row into the value pointers
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return fmt.Errorf("failed to scan row: %w", err)
+		}
+
+		// convert each value to a string to be written as a CSV row
+		row := make([]string, len(columns))
+		for i, val := range values {
+			if val == nil {
+				row[i] = "" // Handle NULL values
+			} else {
+				row[i] = fmt.Sprintf("%v", val)
+			}
+		}
+
+		// write the row to the CSV
+		if err := writer.Write(row); err != nil {
+			return fmt.Errorf("failed to write row: %w", err)
+		}
+	}
+
+	// error check
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return nil
 }
