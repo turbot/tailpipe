@@ -43,6 +43,7 @@ func rootCommand() *cobra.Command {
 	rootCmd.AddCommand(
 		queryCmd(),
 		collectCmd(),
+		connectCmd(),
 		pluginCmd(),
 	)
 
