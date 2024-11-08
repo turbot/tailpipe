@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -321,7 +322,15 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 		}
 
 		// so we are done writing chunks - now update the db to add a view to this data
-		return database.AddTableView(ctx, e.table)
+		//TODO this will go
+		// Open a DuckDB connection
+		db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+		if err != nil {
+			return err
+		}
+		defer db.Close()
+
+		return database.AddTableView(ctx, e.table, db)
 	})
 
 	slog.Debug("waitForExecution - all chunks written", "execution", e.id)
