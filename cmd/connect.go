@@ -3,6 +3,8 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,7 +17,6 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 func connectCmd() *cobra.Command {
@@ -60,40 +61,27 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	//// if there are no filters, just return the database file path
-	//if len(filters) == 0 {
-	//	defaultDBFilePath := filepaths.TailpipeDbFilePath()
-	//
-	//	if filehelpers.FileExists(defaultDBFilePath) {
-	//		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
-	//		return
-	//	}
-	//	// db file does not exist - fall through to create a db for this request
-	//}
+	alwaysCopy := viper.GetBool("copy")
+	// if there are no filters, just copy the db file
+	if len(filters) == 0 || alwaysCopy {
+		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
+	}
 
-	//
+	if len(filters) == 0 {
+		return
+	}
+
 	// Open a DuckDB connection (creates the file if it doesn't exist)
 	var db *sql.DB
 	db, err = sql.Open("duckdb", databaseFilePath)
 	if err != nil {
 		return
 	}
-
 	defer db.Close()
 
-	// identify tables by listing files in the data directory
-	tables, err := getDirNames(config.GlobalWorkspaceProfile.GetDataDir())
-	if err != nil {
-		return
-	}
-	// create a view for each table
-	for _, table := range tables {
-		// create a view for the table
-		err = database.AddTableView(ctx, table, db, filters...)
-		if err != nil {
-			return
-		}
-	}
+	err = database.AddTableViews(ctx, db, filters...)
+
+	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
 }
 
 func getFilters() ([]string, error) {
@@ -125,25 +113,6 @@ func getFilters() ([]string, error) {
 
 	}
 	return result, nil
-}
-
-func getDirNames(folderPath string) ([]string, error) {
-	var dirNames []string
-
-	// Read the directory contents
-	files, err := os.ReadDir(folderPath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Loop through the contents and add directories to dirNames
-	for _, file := range files {
-		if file.IsDir() {
-			dirNames = append(dirNames, file.Name())
-		}
-	}
-
-	return dirNames, nil
 }
 
 // generateTempDBFilename generates a temporary filename with a timestamp

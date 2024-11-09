@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	_ "github.com/marcboeker/go-duckdb"
 	filehelpers "github.com/turbot/go-kit/files"
@@ -9,7 +10,7 @@ import (
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
-func EnsureDatabaseFile() error {
+func EnsureDatabaseFile(ctx context.Context) error {
 	databaseFilePath := filepaths.TailpipeDbFilePath()
 	if filehelpers.FileExists(databaseFilePath) {
 		return nil
@@ -22,5 +23,6 @@ func EnsureDatabaseFile() error {
 		return err
 	}
 	defer db.Close()
-	return nil
+
+	return AddTableViews(ctx, db)
 }

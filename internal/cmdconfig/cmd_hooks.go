@@ -127,7 +127,7 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	error_helpers.FailOnError(err)
 
 	// ensure we have a database file for this workspace
-	err = database.EnsureDatabaseFile()
+	err = database.EnsureDatabaseFile(ctx)
 	error_helpers.FailOnError(err)
 
 	var cmd = viper.Get(constants.ConfigKeyActiveCommand).(*cobra.Command)
