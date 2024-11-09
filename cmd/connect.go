@@ -3,6 +3,11 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"time"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
@@ -11,9 +16,6 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"os"
-	"path/filepath"
-	"time"
 )
 
 func connectCmd() *cobra.Command {
@@ -32,9 +34,10 @@ func connectCmd() *cobra.Command {
 	return cmd
 }
 
-func runConnectCmd(cmd *cobra.Command, args []string) {
+func runConnectCmd(cmd *cobra.Command, _ []string) {
 	ctx := cmd.Context()
 	var err error
+	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -42,9 +45,31 @@ func runConnectCmd(cmd *cobra.Command, args []string) {
 			error_helpers.ShowError(ctx, err)
 		}
 		setExitCodeForConnectError(err)
+		if err == nil {
+			// output the filepath
+			fmt.Println(databaseFilePath)
+		} else {
+			error_helpers.ShowError(ctx, err)
+		}
 	}()
 
-	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
+	// first build the filters
+	filters, err := getFilters()
+	if err != nil {
+		err = fmt.Errorf("error building filters: %w", err)
+		return
+	}
+
+	//// if there are no filters, just return the database file path
+	//if len(filters) == 0 {
+	//	defaultDBFilePath := filepaths.TailpipeDbFilePath()
+	//
+	//	if filehelpers.FileExists(defaultDBFilePath) {
+	//		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
+	//		return
+	//	}
+	//	// db file does not exist - fall through to create a db for this request
+	//}
 
 	//
 	// Open a DuckDB connection (creates the file if it doesn't exist)
@@ -62,12 +87,6 @@ func runConnectCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 	// create a view for each table
-	// first build the filters
-	filters, err := getFilters()
-	if err != nil {
-		return
-	}
-
 	for _, table := range tables {
 		// create a view for the table
 		err = database.AddTableView(ctx, table, db, filters...)
@@ -75,8 +94,6 @@ func runConnectCmd(cmd *cobra.Command, args []string) {
 			return
 		}
 	}
-
-	fmt.Println(fmt.Sprintf("duckdb://%s", databaseFilePath))
 }
 
 func getFilters() ([]string, error) {
@@ -89,8 +106,9 @@ func getFilters() ([]string, error) {
 			return nil, fmt.Errorf("invalid date format for 'from': %s", from)
 		}
 		//convert to unix milliseconds
-		from = fmt.Sprintf("%d", t.UnixNano()/1000000)
-		result = append(result, fmt.Sprintf("tp_timestamp >= %s", from))
+		fromDate := t.Format("2006-01-02")
+		fromTimestamp := fmt.Sprintf("%d", t.UnixNano()/1000000)
+		result = append(result, fmt.Sprintf("tp_date >= DATE '%s' AND tp_timestamp >= %s", fromDate, fromTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgTo) {
 		to := viper.GetString(pconstants.ArgTo)
@@ -101,8 +119,9 @@ func getFilters() ([]string, error) {
 		}
 
 		//convert to unix milliseconds
-		to = fmt.Sprintf("%d", t.UnixNano()/1000000)
-		result = append(result, fmt.Sprintf("tp_timestamp <= %s", to))
+		toDate := t.Format("2006-01-02")
+		toTimestamp := fmt.Sprintf("%d", t.UnixNano()/1000000)
+		result = append(result, fmt.Sprintf("tp_date <= DATE '%s' AND tp_timestamp <= %s", toDate, toTimestamp))
 
 	}
 	return result, nil
@@ -140,4 +159,22 @@ func setExitCodeForConnectError(err error) {
 	}
 
 	exitCode = 1
+}
+
+// copyDBFile copies the source database file to the destination
+func copyDBFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	_, err = io.Copy(destFile, sourceFile)
+	return err
 }
