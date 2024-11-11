@@ -92,7 +92,7 @@ jobs:
         with:
           repository: turbot/pipe-fittings
           path: pipe-fittings
-          ref: tp2
+          ref: integrated-2024
 
       - name: Checkout Tailpipe plugin SDK repository
         uses: actions/checkout@v4
