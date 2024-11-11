@@ -93,10 +93,10 @@ func getFilters() ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid date format for 'from': %s", from)
 		}
-		//convert to unix milliseconds
+		// format as SQL timestamp
 		fromDate := t.Format("2006-01-02")
-		fromTimestamp := fmt.Sprintf("%d", t.UnixNano()/1000000)
-		result = append(result, fmt.Sprintf("tp_date >= DATE '%s' AND tp_timestamp >= %s", fromDate, fromTimestamp))
+		fromTimestamp := t.Format("2006-01-02 15:04:05")
+		result = append(result, fmt.Sprintf("tp_date >= DATE '%s' AND tp_timestamp >= TIMESTAMP '%s'", fromDate, fromTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgTo) {
 		to := viper.GetString(pconstants.ArgTo)
@@ -105,12 +105,10 @@ func getFilters() ([]string, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid date format for 'to': %s", to)
 		}
-
-		//convert to unix milliseconds
+		// format as SQL timestamp
 		toDate := t.Format("2006-01-02")
-		toTimestamp := fmt.Sprintf("%d", t.UnixNano()/1000000)
-		result = append(result, fmt.Sprintf("tp_date <= DATE '%s' AND tp_timestamp <= %s", toDate, toTimestamp))
-
+		toTimestamp := t.Format("2006-01-02 15:04:05")
+		result = append(result, fmt.Sprintf("tp_date <= DATE '%s' AND tp_timestamp <= TIMESTAMP '%s'", toDate, toTimestamp))
 	}
 	return result, nil
 }
