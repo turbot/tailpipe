@@ -14,7 +14,7 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-func decode(parseCtx *ConfigParseContext) (*config.TailpipeConfig, hcl.Diagnostics) {
+func decodeTailpipeConfig(parseCtx *ConfigParseContext) (*config.TailpipeConfig, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
 	blocksToDecode, err := parseCtx.BlocksToDecode()
 	// build list of blocks to decode
@@ -63,7 +63,7 @@ func decodeBlock(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.HclR
 	return resource, res
 }
 
-// generic decode function for any resource we do not have custom decode logic for
+// generic decode function for any resource we do not have custom decodeTailpipeConfig logic for
 func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.HclResource, *parse.DecodeResult) {
 	res := parse.NewDecodeResult()
 	// get shell resource

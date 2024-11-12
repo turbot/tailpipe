@@ -13,6 +13,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// ConfigParseContext is a parse context that is used to parse the TailpipeConfig
 type ConfigParseContext struct {
 	parse.ParseContext
 
@@ -49,9 +50,8 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 
 // AddResource stores this resource as a variable to be added to the eval context.
 func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Diagnostics {
-	// TODO handle 3 part names
 	name := resource.Name()
-	// TODO K look at using GetResourceCtyValue
+	// TODO look at using GetResourceCtyValue https://github.com/turbot/tailpipe/issues/33
 	//ctyVal, err := c.GetResourceCtyValue(resource)
 	ctyVal, err := cty_helpers.GetCtyValue(resource)
 	if err != nil {

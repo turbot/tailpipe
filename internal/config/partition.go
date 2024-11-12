@@ -60,7 +60,7 @@ func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider
 			Plugin:   plugin.ResolvePluginImageRef(name),
 		}
 	}
-	// TODO K default connections
+	// TODO  default connections https://github.com/turbot/tailpipe/issues/31
 	// if the connection is not set, set it to the default connection
 	//if c.Connection == nil {
 	//	c.Connection = getDefaultConnection(c.Plugin.Alias)
@@ -69,7 +69,7 @@ func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider
 }
 
 func getDefaultConnection(alias string) *TailpipeConnection {
-	// TODO: think about default connections
+	// TODO: think about default connections https://github.com/turbot/tailpipe/issues/31
 	return &TailpipeConnection{
 		Plugin: alias,
 	}

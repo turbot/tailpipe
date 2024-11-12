@@ -178,7 +178,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.executionsLock.RUnlock()
 		if !ok {
 			slog.Error("Event_ChunkWrittenEvent - execution not found", "execution", executionId)
-			// TODO #errors what to do with this error?
+			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 			return
 		}
 
@@ -192,14 +192,14 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		err := c.parquetWriter.AddJob(executionId, chunkNumber)
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
-			// TODO #errors what to do with this error?
+			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 		}
 		// store collection state data
 		if len(ev.CollectionState) > 0 {
 			err = c.collectionStateRepository.Save(execution.partition, string(ev.CollectionState))
 			if err != nil {
 				slog.Error("failed to save collection state data", "error", err)
-				// TODO #errors what to do with this error?
+				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 			}
 		}
 
@@ -229,12 +229,12 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		// TODO #errors what to do with an error here?
+		// TODO #errors what to do with an error here?  https://github.com/turbot/tailpipe/issues/35
 		go func() {
 			err := c.waitForExecution(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
-				// TODO #errors what to do with this error?
+				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 			}
 		}()
 
@@ -248,7 +248,7 @@ func (c *Collector) Close(ctx context.Context) {
 	// wait for any ongoing partitions to complete
 	err := c.waitForExecutions(ctx)
 	if err != nil {
-		// TODO #errors
+		// TODO #errors  https://github.com/turbot/tailpipe/issues/35
 		slog.Error("error waiting for executions to complete", "error", err)
 	}
 
@@ -322,7 +322,6 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 		}
 
 		// so we are done writing chunks - now update the db to add a view to this data
-		//TODO this will go
 		// Open a DuckDB connection
 		db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
 		if err != nil {

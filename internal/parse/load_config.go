@@ -145,7 +145,7 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	var config *config.TailpipeConfig
 
 	for attempts := 0; ; attempts++ {
-		config, diags = decode(parseCtx)
+		config, diags = decodeTailpipeConfig(parseCtx)
 		if diags.HasErrors() {
 			return nil, error_helpers.HclDiagsToError("Failed to decode all config files", diags)
 		}

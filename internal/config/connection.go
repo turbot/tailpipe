@@ -53,7 +53,7 @@ func NewTailpipeConnection(block *hcl.Block, fullName string) (modconfig.HclReso
 	return c, nil
 }
 
-// TODO K implement if needed
+// TODO implement if needed https://github.com/turbot/tailpipe/issues/34
 //
 //func CtyValueToConnection(value cty.Value) (_ *TailpipeConnection, err error) {
 //	defer func() {

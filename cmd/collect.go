@@ -18,7 +18,7 @@ import (
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
 // to reference this use: collect --config-path <path to tailpipe>/internal/parse/test_data/configs --partition aws_cloudtrail_log.cloudtrail_logs
 
-// TODO #errors have good think about error handling and return codes
+// TODO #errors think about error handling and return codes https://github.com/turbot/tailpipe/issues/35
 
 func collectCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -49,7 +49,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 	partitions, err := getPartitionConfig(args)
 	if err != nil {
-		// TODO #errors - think about error codes
+		// TODO #errors think about error handling and return codes https://github.com/turbot/tailpipe/issues/35
 		error_helpers.FailOnError(fmt.Errorf("failed to get partition config: %w", err))
 	}
 	if len(partitions) == 0 {
@@ -102,7 +102,7 @@ func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
 	}
 
 	if len(errorList) > 0 {
-		// TODO errors better formating/error message
+		// TODO errors better formating/error message https://github.com/turbot/tailpipe/issues/35
 		return nil, errors.Join(errorList...)
 	}
 
@@ -167,6 +167,6 @@ func setExitCodeForCollectError(err error) {
 		return
 	}
 
-	// TODO #errors - assign exit codes
+	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/35
 	exitCode = 1
 }

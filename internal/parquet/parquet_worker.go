@@ -24,7 +24,6 @@ type parquetConversionWorker struct {
 	db *duckDb
 }
 
-// ctor
 func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
 	w := &parquetConversionWorker{
 		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
@@ -41,7 +40,6 @@ func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan
 	w.doWorkFunc = w.doJSONToParquetConversion
 	w.closeFunc = w.close
 	return w, nil
-
 }
 
 func (w *parquetConversionWorker) close() {
