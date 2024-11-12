@@ -80,8 +80,8 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
 	}
-	if partition.Connection != nil {
-		req.ConnectionData = partition.Connection.ToProto()
+	if partition.Source.Connection != nil {
+		req.ConnectionData = partition.Source.Connection.ToProto()
 	}
 
 	err = plugin.Collect(req)

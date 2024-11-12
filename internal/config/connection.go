@@ -10,6 +10,7 @@ import (
 
 type TailpipeConnection struct {
 	modconfig.HclResourceImpl
+	// TODO K rather than plugin - just use a name which in practice will be the plugin name
 	Plugin string `cty:"plugin"`
 	Hcl    []byte `cty:"hcl"`
 	// the hcl range for the connection - use our version so we can sty serialise it
@@ -53,7 +54,7 @@ func NewTailpipeConnection(block *hcl.Block, fullName string) (modconfig.HclReso
 	return c, nil
 }
 
-// TODO K implement if needed
+// TODO implement if needed https://github.com/turbot/tailpipe/issues/34
 //
 //func CtyValueToConnection(value cty.Value) (_ *TailpipeConnection, err error) {
 //	defer func() {

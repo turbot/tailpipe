@@ -1,7 +1,7 @@
 package config
 
 //
-//// TODO K move to pipe-fittings and think about combining with existing ParsedResourceName
+//// TODO  move to pipe-fittings and think about combining with existing ParsedResourceName
 //
 //// ParsedResourceName represents a parsed resource name for a resource with a subtype
 //type ParsedResourceName struct {

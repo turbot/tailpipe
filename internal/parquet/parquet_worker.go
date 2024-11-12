@@ -24,7 +24,6 @@ type parquetConversionWorker struct {
 	db *duckDb
 }
 
-// ctor
 func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
 	w := &parquetConversionWorker{
 		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
@@ -41,7 +40,6 @@ func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan
 	w.doWorkFunc = w.doJSONToParquetConversion
 	w.closeFunc = w.close
 	return w, nil
-
 }
 
 func (w *parquetConversionWorker) close() {
@@ -107,8 +105,6 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 		return fmt.Errorf("failed to export data to parquet: %w", err)
 	}
 
-	//slog.Debug("exported data to parquet", "file", filePath)
-
 	return nil
 }
 
@@ -143,7 +139,7 @@ func buildViewQuery(rowSchema *schema.RowSchema) string {
 		}
 	}
 
-	// build column defintions
+	// build column definitions
 	columnDefinitions := getReadJSONColumnDefinitions(rowSchema)
 
 	columnStrings.WriteString(fmt.Sprintf(`

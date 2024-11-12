@@ -7,7 +7,7 @@ import (
 	"github.com/turbot/pipe-fittings/perr"
 )
 
-// TODO K move to pipe-fittings and think about combining with existing ParsedResourceName
+// TODO  move to pipe-fittings and think about combining with existing ParsedResourceName https://github.com/turbot/tailpipe/issues/32
 
 // ParsedPropertyPath represents a parsed property path for a resource with a subtype
 type ParsedPropertyPath struct {
