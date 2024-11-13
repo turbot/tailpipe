@@ -35,7 +35,7 @@ func ExecuteQuery(ctx context.Context, query string) (int, error) {
 	// show output
 	_, rowErrors := querydisplay.ShowOutput(ctx, result)
 	if rowErrors > 0 {
-		// find a way to return the error
+		// TODO find a way to return the error
 		return rowErrors, fmt.Errorf("Error: query execution failed")
 	}
 	return 0, nil
@@ -58,37 +58,39 @@ func Execute(ctx context.Context, rows *sql.Rows, query string) (res *queryresul
 
 	result := queryresult.NewResult[TimingMetadata](colDefs, TimingMetadata{})
 
-	// Add rows from the query result
-	go func() {
-		defer func() {
-			rows.Close()
-			if err := rows.Err(); err != nil {
-				result.StreamError(err)
-			}
-			// close the channels in the result object
-			result.Close()
-
-		}()
-		for rows.Next() {
-			// Create a slice to hold the values for each row
-			columnsData := make([]interface{}, len(colDefs))
-			columnPointers := make([]interface{}, len(colDefs))
-
-			// Fill columnPointers with pointers to each item in columnsData
-			for i := range columnsData {
-				columnPointers[i] = &columnsData[i]
-			}
-
-			// Scan the current row into columnPointers
-			if err := rows.Scan(columnPointers...); err != nil {
-				// return result, err
-			}
-
-			result.StreamRow(columnsData)
-		}
-	}()
+	// stream rows from the query result
+	go streamResults(ctx, rows, result, colDefs)
 
 	return result, nil
+}
+
+func streamResults(ctx context.Context, rows *sql.Rows, result *queryresult.Result[TimingMetadata], colDefs []*queryresult.ColumnDef) {
+	defer func() {
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			result.StreamError(err)
+		}
+		// close the channels in the result object
+		result.Close()
+
+	}()
+	for rows.Next() {
+		// Create a slice to hold the values for each row
+		columnsData := make([]interface{}, len(colDefs))
+		columnPointers := make([]interface{}, len(colDefs))
+
+		// Fill columnPointers with pointers to each item in columnsData
+		for i := range columnsData {
+			columnPointers[i] = &columnsData[i]
+		}
+
+		// Scan the current row into columnPointers
+		if err := rows.Scan(columnPointers...); err != nil {
+			// return result, err
+		}
+
+		result.StreamRow(columnsData)
+	}
 }
 
 // FetchColumnDefs extracts column definitions from sql.Rows and returns a slice of ColumnDef.
