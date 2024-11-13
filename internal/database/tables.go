@@ -31,7 +31,7 @@ func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
 	return nil
 }
 
-// optimisation - it seems the first time DuckDB creates a view which inspects the file system it is slow
+// NOTE: tactical optimisation - it seems the first time DuckDB creates a view which inspects the file system it is slow
 // creating and empty view first and then dropping it seems to speed up the process
 func createAndDropEmptyView(ctx context.Context, db *sql.DB) {
 	_ = AddTableView(ctx, "empty", db)
