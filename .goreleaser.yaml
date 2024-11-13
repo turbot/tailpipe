@@ -12,6 +12,10 @@ builds:
       - CC=aarch64-linux-gnu-gcc
       - CXX=aarch64-linux-gnu-g++
 
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh linux arm64
+
     # Custom ldflags.
     #
     # Default: '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser'
@@ -32,6 +36,10 @@ builds:
       - CC=x86_64-linux-gnu-gcc
       - CXX=x86_64-linux-gnu-g++
 
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh linux amd64
+
     ldflags:
       - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
 
@@ -46,6 +54,10 @@ builds:
       - CC=oa64-clang
       - CXX=oa64-clang++
 
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh osx arm64
+
     ldflags:
       - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
 
@@ -59,6 +71,10 @@ builds:
     env:
       - CC=o64-clang
       - CXX=o64-clang++
+
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh osx amd64
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
