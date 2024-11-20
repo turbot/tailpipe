@@ -10,6 +10,7 @@ import (
 
 type TailpipeConnection struct {
 	modconfig.HclResourceImpl
+	// TODO K rather than plugin - just use a name which in practice will be the plugin name
 	Plugin string `cty:"plugin"`
 	Hcl    []byte `cty:"hcl"`
 	// the hcl range for the connection - use our version so we can sty serialise it

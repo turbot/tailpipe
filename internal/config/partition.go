@@ -22,9 +22,6 @@ type Partition struct {
 	// Source of the data for this partition
 	Source Source `hcl:"source,block"`
 
-	// The connection
-	Connection *TailpipeConnection `hcl:"connection"`
-
 	// any partition-type specific config data for the partition
 	Config []byte
 	// the config location

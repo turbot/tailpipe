@@ -95,51 +95,11 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 
 	attrs := syntaxBody.Attributes
 
-	// we only parse known attributes - unknown ones are passed through as hcl
-	var propertyNames = map[string]struct{}{"plugin": {}, "source": {}, "connection": {}}
-
+	// TODO K decode plugin block
+	// TODO K use handleUnknownAttributes?
 	var unknownAttrs []*hcl.Attribute
-	for name, attr := range attrs {
-		if _, ok := propertyNames[name]; ok {
-			// try to evaluate expression
-			val, diags := attr.Expr.Value(parseCtx.EvalCtx)
-			res.HandleDecodeDiags(diags)
-			if diags.HasErrors() {
-				continue
-			}
-			switch name {
-			// TODO implement plugin parsing
-			//case "plugin":
-			//	var conn = &config.TailpipeConnection{}
-			//	err := gocty.FromCtyValue(val,conn)
-			//	if err != nil {
-			//		// failed to decode connection
-			//		res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
-			//			Severity: hcl.DiagError,
-			//			Summary:  "failed to decode connection",
-			//			Detail:  fmt.Sprintf("failed to decode connection: %s", err.Error()),
-			//			Subject:  hclhelpers.BlockRangePointer(block),
-			//		}})
-			//		continue
-			//	}
-			case "connection":
-				var conn = &config.TailpipeConnection{}
-				err := gocty.FromCtyValue(val, conn)
-				if err != nil {
-					// failed to decode connection
-					res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
-						Severity: hcl.DiagError,
-						Summary:  "failed to decode connection",
-						Detail:   fmt.Sprintf("failed to decode connection: %s", err.Error()),
-						Subject:  hclhelpers.BlockRangePointer(block),
-					}})
-					continue
-				}
-				target.Connection = conn
-			}
-		} else {
-			unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
-		}
+	for _, attr := range attrs {
+		unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
 	}
 
 	unknown, diags := handleUnknownAttributes(block, parseCtx, unknownAttrs)
@@ -151,7 +111,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 		switch block.Type {
 		case "source":
 			// decode source block
-			source, diags := decodeSource(block, parseCtx)
+			source, res := decodeSource(block, parseCtx)
 			res.HandleDecodeDiags(diags)
 			if !diags.HasErrors() {
 				target.Source = *source
@@ -211,24 +171,52 @@ func handleUnknownAttributes(block *hcl.Block, parseCtx *ConfigParseContext, unk
 	return unknown, diags
 }
 
-func decodeSource(block *hclsyntax.Block, ctx *ConfigParseContext) (*config.Source, hcl.Diagnostics) {
+func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config.Source, *parse.DecodeResult) {
+	res := parse.NewDecodeResult()
 	source := &config.Source{}
 	source.Type = block.Labels[0]
 
 	attrs, diags := block.Body.JustAttributes()
+	res.HandleDecodeDiags(diags)
 	if len(attrs) == 0 {
-		return source, diags
+		return source, res
 	}
 
-	unknown, diags := handleUnknownAttributes(block.AsHCLBlock(), ctx, maps.Values(attrs))
-	if diags.HasErrors() {
-		return source, diags
+	// special case for connection
+	if connectionAttr, ok := attrs["connection"]; ok {
+		//try to evaluate expression
+		val, diags := connectionAttr.Expr.Value(parseCtx.EvalCtx)
+		res.HandleDecodeDiags(diags)
+		if res.Diags.HasErrors() {
+			return source, res
+		}
+		var conn = &config.TailpipeConnection{}
+		err := gocty.FromCtyValue(val, conn)
+		if err != nil {
+			// failed to decode connection
+			res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "failed to decode connection",
+				Detail:   fmt.Sprintf("failed to decode connection: %s", err.Error()),
+				Subject:  hclhelpers.BlockRangePointer(block.AsHCLBlock()),
+			}})
+			return source, res
+		}
+		source.Connection = conn
+	}
+	delete(attrs, "connection")
+
+	// get the unknown hcl
+	unknown, diags := handleUnknownAttributes(block.AsHCLBlock(), parseCtx, maps.Values(attrs))
+	res.HandleDecodeDiags(diags)
+	if res.Diags.HasErrors() {
+		return source, res
 	}
 
 	// set the unknown hcl on the source
 	source.SetConfigHcl(unknown)
 
-	return source, diags
+	return source, res
 
 }
 

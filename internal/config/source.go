@@ -6,8 +6,10 @@ import (
 )
 
 type Source struct {
-	Type   string `hcl:" type,label"`
-	Config []byte
+	Type       string `hcl:" type,label"`
+	Config     []byte
+	Connection *TailpipeConnection `hcl:"connection"`
+
 	// the config location
 	ConfigRange hcl.Range
 }
