@@ -73,13 +73,18 @@ func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Dia
 	type HasSubType interface {
 		GetSubType() string
 	}
-	if subType, ok := resource.(HasSubType); ok {
-		mapForSubType := c.resourceValues[subType.GetSubType()]
-		if mapForSubType == nil {
+	if subTypeProvider, ok := resource.(HasSubType); ok {
+		subType := subTypeProvider.GetSubType()
+		var mapForSubType map[string]cty.Value
+		mapForSubTypeVal, ok := mapForType[subType]
+		if ok {
+			mapForSubType = mapForSubTypeVal.AsValueMap()
+		} else {
 			mapForSubType = make(map[string]cty.Value)
 		}
+
 		mapForSubType[resource.GetShortName()] = ctyVal
-		mapForType[subType.GetSubType()] = cty.ObjectVal(mapForSubType)
+		mapForType[subType] = cty.ObjectVal(mapForSubType)
 
 	} else {
 		// add value to map

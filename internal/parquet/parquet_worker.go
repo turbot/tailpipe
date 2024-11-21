@@ -466,6 +466,9 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 		str.WriteString(fmt.Sprintf(`
 %s) AS "%s"`, tab, column.ColumnName))
 		return str.String()
+	case "JSON":
+		// convert the value using json()
+		return fmt.Sprintf(`%sjson("%s") AS "%s"`, tab, column.SourceName, column.ColumnName)
 	default:
 		//<SourceName> AS <ColumnName>
 		return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)

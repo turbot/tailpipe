@@ -61,13 +61,9 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	alwaysCopy := viper.GetBool("copy")
 	// if there are no filters, just copy the db file
-	if len(filters) == 0 || alwaysCopy {
-		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
-	}
-
 	if len(filters) == 0 {
+		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
 		return
 	}
 

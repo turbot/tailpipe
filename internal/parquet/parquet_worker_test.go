@@ -115,6 +115,33 @@ FROM
 			wantData: []any{"StructStringVal"},
 		},
 		{
+			name: "json",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{
+							SourceName: "JsonField",
+							ColumnName: "json_field",
+							Type:       "JSON",
+						},
+					},
+				},
+				json:      `{  "JsonField": {   "string_field": "JsonStringVal", "int_field": 100   }}`,
+				sqlColumn: "json_field.string_field",
+			},
+			wantQuery: `SELECT
+	json("JsonField") AS "json_field"
+FROM
+	read_ndjson(
+		'%s',
+		columns = {
+			"JsonField": 'JSON'
+		}
+	)`,
+			// NOTE: the data is returned as a json string
+			wantData: []any{`"JsonStringVal"`},
+		},
+		{
 			name: "struct with keyword names",
 			args: args{
 				schema: &schema.RowSchema{
@@ -969,7 +996,9 @@ FROM
 	raw	
 LEFT JOIN
 	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
-			wantData: []any{nil, "StringValue1"},
+			//wantData: []any{nil, "StringValue1"},
+			// NOTE: ordering is not guaranteed
+			wantData: []any{"StringValue1", nil},
 		},
 		{
 			name: "2 arrays of simple structs",

@@ -37,23 +37,71 @@ func createAndDropEmptyView(ctx context.Context, db *sql.DB) {
 	_ = AddTableView(ctx, "empty", db)
 	// drop again
 	_, _ = db.ExecContext(ctx, "DROP VIEW empty")
-	return
 }
 
 func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...string) error {
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
+	// Path to the Parquet directory
+	parquetPath := fmt.Sprintf("'%s/%s/*/*/*/*.parquet'", dataDir, tableName)
 
+	// Step 1: Query the first Parquet file to infer columns
+	columns, err := getColumnNames(ctx, parquetPath, db)
+	if err != nil {
+		return err
+	}
+
+	// Step 2: Build the SELECT clause - cast tp_index as string
+	// (this is necessary as duckdb infers the type from the partition column name
+	// if the index looks like a number, it will infer the column as an int)
+	var typeOverrides = map[string]string{
+		"tp_partition": "VARCHAR",
+		"tp_index":     "VARCHAR",
+		"tp_date":      "DATE",
+	}
+	var selectClauses []string
+	for _, col := range columns {
+		if overrideType, ok := typeOverrides[col]; ok {
+			// Apply the override with casting
+			selectClauses = append(selectClauses, fmt.Sprintf("CAST(%s AS %s) AS %s", col, overrideType, col))
+		} else {
+			// Add the column as-is
+			selectClauses = append(selectClauses, col)
+		}
+	}
+	selectClause := strings.Join(selectClauses, ", ")
+
+	// Step 3: Build the WHERE clause
 	filterString := ""
 	if len(filters) > 0 {
-		// join filters
 		filterString = fmt.Sprintf(" WHERE %s", strings.Join(filters, " AND "))
 	}
 
-	// TODO wrap path into function?
-	query := fmt.Sprintf("CREATE OR REPLACE VIEW %s AS SELECT * FROM '%s/%s/*/*/*/*.parquet'%s", tableName, dataDir, tableName, filterString)
+	// Step 4: Construct the final query
+	query := fmt.Sprintf(
+		"CREATE OR REPLACE VIEW %s AS SELECT %s FROM %s%s",
+		tableName, selectClause, parquetPath, filterString,
+	)
 
-	_, err := db.ExecContext(ctx, query)
+	// Execute the query
+	_, err = db.ExecContext(ctx, query)
 	return err
+}
+
+// query the provided parquet path to get the columns
+func getColumnNames(ctx context.Context, parquetPath string, db *sql.DB) ([]string, error) {
+	columnQuery := fmt.Sprintf("SELECT * FROM %s LIMIT 0", parquetPath)
+	rows, err := db.QueryContext(ctx, columnQuery)
+	if err != nil {
+		return nil, fmt.Errorf("failed to infer schema: %w", err)
+	}
+	defer rows.Close()
+
+	// Retrieve column names
+	columns, err := rows.Columns()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get column names: %w", err)
+	}
+	return columns, nil
 }
 
 func getDirNames(folderPath string) ([]string, error) {
