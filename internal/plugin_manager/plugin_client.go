@@ -3,15 +3,13 @@ package plugin_manager
 import (
 	"github.com/hashicorp/go-plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
 // PluginClient is the client object used by clients of the plugin
 type PluginClient struct {
 	shared.TailpipePluginClientWrapper
-	Name      string
-	client    *plugin.Client
-	schemaMap schema.SchemaMap
+	Name   string
+	client *plugin.Client
 }
 
 func NewPluginClient(client *plugin.Client, pluginName string) (*PluginClient, error) {

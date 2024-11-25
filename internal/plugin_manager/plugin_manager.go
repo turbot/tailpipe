@@ -17,10 +17,8 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
 	"github.com/turbot/pipe-fittings/filepaths"
-	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 )
@@ -44,15 +42,10 @@ func New(o Observer, inboxPath string) *PluginManager {
 	}
 }
 
-type CollectResponse struct {
-	ExecutionId     string
-	PartitionSchema *schema.RowSchema
-}
-
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
-	plugin, err := p.getPlugin(partition.Plugin)
+	plugin, err := p.getPlugin(partition)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
@@ -84,23 +77,17 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		req.ConnectionData = partition.Source.Connection.ToProto()
 	}
 
-	err = plugin.Collect(req)
+	collectResponse, err := plugin.Collect(req)
 	if err != nil {
 		return nil, fmt.Errorf("error starting collection for plugin %s: %w", plugin.Name, err)
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
 	// this will loop until it hits an error or the stream is closed
-	go p.doCollect(ctx, eventStream)
-
-	// get the schema for the partition type (we will have fetched this when starting the plugin
-	partitionSchema := plugin.schemaMap[partition.Table]
+	go p.readCollectionEvents(ctx, eventStream)
 
 	// just return - the observer is responsible for waiting for completion
-	return &CollectResponse{
-		ExecutionId:     executionID,
-		PartitionSchema: partitionSchema,
-	}, nil
+	return CollectResponseFromProto(collectResponse), nil
 }
 
 func (p *PluginManager) Close() {
@@ -109,7 +96,6 @@ func (p *PluginManager) Close() {
 	for _, plugin := range p.Plugins {
 		plugin.client.Kill()
 	}
-
 }
 
 // getExecutionId generates a unique id based on the current time
@@ -121,10 +107,10 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000))
 }
 
-func (p *PluginManager) getPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
+func (p *PluginManager) getPlugin(partition *config.Partition) (*PluginClient, error) {
 	p.pluginMutex.RLock()
 	// Plugins map is keyed by image ref
-	pluginImageRef := tp.Plugin
+	pluginImageRef := partition.Plugin.Plugin
 	client, ok := p.Plugins[pluginImageRef]
 	p.pluginMutex.RUnlock()
 	if !ok {
@@ -133,7 +119,7 @@ func (p *PluginManager) getPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 		client, ok = p.Plugins[pluginImageRef]
 		if !ok {
 			var err error
-			client, err = p.startPlugin(tp)
+			client, err = p.startPlugin(partition)
 			if err != nil {
 				return nil, err
 			}
@@ -144,9 +130,9 @@ func (p *PluginManager) getPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 	return client, nil
 }
 
-func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
+func (p *PluginManager) startPlugin(partition *config.Partition) (*PluginClient, error) {
 	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
-
+	tp := partition.Plugin
 	pluginName := tp.Alias
 
 	pluginPath, err := filepaths.GetPluginPath(tp.Plugin, tp.Alias)
@@ -178,14 +164,6 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 
 	}
 
-	// get the partition schemas for this plugin
-	partitionSchemas, err := client.GetSchema()
-	if err != nil {
-		return nil, fmt.Errorf("error getting schema for plugin %s: %w", pluginName, err)
-	}
-	// store the schema for this plugin
-	client.schemaMap = schema.SchemaMapFromProto(partitionSchemas.Schemas)
-
 	// store the client, keyed by image ref
 	p.Plugins[tp.Plugin] = client
 
@@ -206,7 +184,7 @@ func (p *PluginManager) getPluginStartTimeout() time.Duration {
 	return pluginStartTimeout
 }
 
-func (p *PluginManager) doCollect(ctx context.Context, pluginStream proto.TailpipePlugin_AddObserverClient) {
+func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream proto.TailpipePlugin_AddObserverClient) {
 	pluginEventChan := make(chan *proto.Event)
 	errChan := make(chan error)
 
