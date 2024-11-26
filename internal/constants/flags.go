@@ -21,6 +21,18 @@ var QueryOutputModeIds = map[QueryOutputMode][]string{
 	QueryOutputModeTable: {constants.OutputFormatTable},
 }
 
+type PluginOutputMode enumflag.Flag
+
+const (
+	PluginOutputModeJson PluginOutputMode = iota
+	PluginOutputModeTable
+)
+
+var PluginOutputModeIds = map[PluginOutputMode][]string{
+	PluginOutputModeJson:  {constants.OutputFormatJSON},
+	PluginOutputModeTable: {constants.OutputFormatTable},
+}
+
 func FlagValues[T comparable](mappings map[T][]string) []string {
 	var res = make([]string, 0, len(mappings))
 	for _, v := range mappings {

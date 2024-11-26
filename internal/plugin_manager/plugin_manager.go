@@ -3,6 +3,7 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
+	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -29,23 +30,26 @@ type PluginManager struct {
 	pluginMutex sync.RWMutex
 	// TODO #design should this be a list?
 	obs        Observer
-	inboxPath  string
 	pluginPath string
 }
 
-func New(o Observer, inboxPath string) *PluginManager {
+func New() *PluginManager {
 	return &PluginManager{
 		Plugins:    make(map[string]*PluginClient),
-		obs:        o,
-		inboxPath:  inboxPath,
 		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
 	}
 }
 
+// AddObserver adds an observer to the plugin manager
+func (p *PluginManager) AddObserver(o Observer) {
+	p.obs = o
+}
+
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, collectionState string) (*CollectResponse, error) {
+func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, inboxPath string, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
-	plugin, err := p.getPlugin(partition)
+	pluginDef := partition.Plugin
+	pluginClient, err := p.getPlugin(pluginDef)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
@@ -58,17 +62,17 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// call into the plugin to collect log rows
 	// this returns a stream which will send events
 	// TODO #design maybe we already have an observer - or is a stream only for a single execution and reuse the stream?
-	// otherwise be sure to colse the stream
-	eventStream, err := plugin.AddObserver()
+	// otherwise be sure to close the stream
+	eventStream, err := pluginClient.AddObserver()
 	if err != nil {
-		return nil, fmt.Errorf("error adding observer for plugin %s: %w", plugin.Name, err)
+		return nil, fmt.Errorf("error adding observer for plugin %s: %w", pluginClient.Name, err)
 	}
 	executionID := getExecutionId()
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
 		ExecutionId:     executionID,
-		OutputPath:      p.inboxPath,
+		OutputPath:      inboxPath,
 		PartitionData:   partition.ToProto(),
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
@@ -77,9 +81,9 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		req.ConnectionData = partition.Source.Connection.ToProto()
 	}
 
-	collectResponse, err := plugin.Collect(req)
+	collectResponse, err := pluginClient.Collect(req)
 	if err != nil {
-		return nil, fmt.Errorf("error starting collection for plugin %s: %w", plugin.Name, err)
+		return nil, fmt.Errorf("error starting collection for plugin %s: %w", pluginClient.Name, err)
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
@@ -88,6 +92,25 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
+}
+
+// Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
+func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*DescribeResponse, error) {
+	// build plugin ref from the name
+	pluginDef := pplugin.NewPlugin(pluginName)
+
+	pluginClient, err := p.getPlugin(pluginDef)
+	if err != nil {
+		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
+	}
+
+	describeResponse, err := pluginClient.Describe()
+	if err != nil {
+		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
+	}
+
+	// just return - the observer is responsible for waiting for completion
+	return DescribeResponseFromProto(describeResponse), nil
 }
 
 func (p *PluginManager) Close() {
@@ -107,10 +130,10 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000))
 }
 
-func (p *PluginManager) getPlugin(partition *config.Partition) (*PluginClient, error) {
+func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, error) {
 	p.pluginMutex.RLock()
 	// Plugins map is keyed by image ref
-	pluginImageRef := partition.Plugin.Plugin
+	pluginImageRef := pluginDef.Plugin
 	client, ok := p.Plugins[pluginImageRef]
 	p.pluginMutex.RUnlock()
 	if !ok {
@@ -119,7 +142,7 @@ func (p *PluginManager) getPlugin(partition *config.Partition) (*PluginClient, e
 		client, ok = p.Plugins[pluginImageRef]
 		if !ok {
 			var err error
-			client, err = p.startPlugin(partition)
+			client, err = p.startPlugin(pluginDef)
 			if err != nil {
 				return nil, err
 			}
@@ -130,9 +153,8 @@ func (p *PluginManager) getPlugin(partition *config.Partition) (*PluginClient, e
 	return client, nil
 }
 
-func (p *PluginManager) startPlugin(partition *config.Partition) (*PluginClient, error) {
+func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
-	tp := partition.Plugin
 	pluginName := tp.Alias
 
 	pluginPath, err := filepaths.GetPluginPath(tp.Plugin, tp.Alias)

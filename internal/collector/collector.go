@@ -60,11 +60,10 @@ func New(ctx context.Context) (*Collector, error) {
 	}
 
 	// create a plugin manager
-	c.pluginManager = plugin_manager.New(c, sourcePath)
+	c.pluginManager = plugin_manager.New()
+	c.pluginManager.AddObserver(c)
 
-	//
 	// create a parquet writer
-
 	parquetWriter, err := parquet.NewWriter(sourcePath, parquetPath, parquetWorkerCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
@@ -105,7 +104,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	}
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, partition, collectionState)
+	collectResponse, err := c.pluginManager.Collect(ctx, partition, c.sourcePath, collectionState)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}

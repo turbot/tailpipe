@@ -50,12 +50,7 @@ func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl
 func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider) hcl.Diagnostics {
 	// if plugin is not set, deduce it from the type
 	if c.Plugin == nil {
-		name := c.inferPluginName()
-		c.Plugin = &plugin.Plugin{
-			Instance: name,
-			Alias:    name,
-			Plugin:   plugin.ResolvePluginImageRef(name),
-		}
+		c.Plugin = plugin.NewPlugin(c.inferPluginName())
 	}
 	// TODO  default connections https://github.com/turbot/tailpipe/issues/31
 	// if the connection is not set, set it to the default connection

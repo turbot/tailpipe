@@ -14,6 +14,7 @@ import (
 	"github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/pipe-fittings/statushooks"
 	"github.com/turbot/pipe-fittings/versionfile"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 // Remove removes an installed plugin
@@ -54,9 +55,17 @@ func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan 
 
 // PluginListItem is a struct representing an item in the list of plugins
 type PluginListItem struct {
-	Name        string
-	Version     *plugin.PluginVersionString
-	Connections []string
+	Name       string
+	Version    *plugin.PluginVersionString
+	Partitions []string
+}
+
+func (i *PluginListItem) setPartitions(partitions map[string]*config.Partition) {
+	for _, partition := range partitions {
+		if partition.Plugin.Plugin == i.Name {
+			i.Partitions = append(i.Partitions, partition.ShortName)
+		}
+	}
 }
 
 // List returns all installed plugins
@@ -94,6 +103,8 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 				}
 			}
 
+			// find the partitions referring to this plugin
+			item.setPartitions(config.GlobalConfig.Partitions)
 			items = append(items, item)
 		}
 	}

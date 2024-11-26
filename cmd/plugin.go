@@ -17,6 +17,7 @@ import (
 	"github.com/gosuri/uiprogress"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/thediveo/enumflag/v2"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
@@ -25,6 +26,7 @@ import (
 	"github.com/turbot/pipe-fittings/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
+	"github.com/turbot/pipe-fittings/querydisplay"
 	"github.com/turbot/pipe-fittings/statushooks"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/versionfile"
@@ -32,12 +34,13 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
+	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 type installedPlugin struct {
-	Name        string   `json:"name"`
-	Version     string   `json:"version"`
-	Connections []string `json:"connections"`
+	Name       string   `json:"name"`
+	Version    string   `json:"version"`
+	Partitions []string `json:"partitions"`
 }
 
 type failedPlugin struct {
@@ -84,6 +87,7 @@ Examples:
 	}
 	cmd.AddCommand(pluginInstallCmd())
 	cmd.AddCommand(pluginListCmd())
+	cmd.AddCommand(pluginShowCmd())
 	cmd.AddCommand(pluginUninstallCmd())
 	cmd.AddCommand(pluginUpdateCmd())
 	cmd.Flags().BoolP(pconstants.ArgHelp, "h", false, "Help for plugin")
@@ -165,6 +169,9 @@ Examples:
 	return cmd
 }
 
+// variable used to assign the output mode flag
+var pluginOutputMode = constants.PluginOutputModeTable
+
 // List plugins
 func pluginListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
@@ -190,9 +197,30 @@ Examples:
 
 	cmdconfig.
 		OnCmd(cmd).
-		AddBoolFlag("outdated", false, "Check each plugin in the list for updates").
-		AddStringFlag(pconstants.ArgOutput, "table", "Output format: table or json").
+		AddVarFlag(enumflag.New(&pluginOutputMode, pconstants.ArgOutput, constants.PluginOutputModeIds, enumflag.EnumCaseInsensitive),
+			pconstants.ArgOutput,
+			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.PluginOutputModeIds), ", "))).
 		AddBoolFlag(pconstants.ArgHelp, false, "Help for plugin list", cmdconfig.FlagOptions.WithShortHand("h"))
+	return cmd
+}
+
+// Show plugin
+func pluginShowCmd() *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:  "show <plugin>",
+		Args: cobra.ExactArgs(1),
+		Run:  runPluginShowCmd,
+		// TODO improve descriptions
+		Short: "Show details of a plugin",
+		Long:  `Show the tables and sources provided by plugin`,
+	}
+
+	cmdconfig.
+		OnCmd(cmd).
+		AddVarFlag(enumflag.New(&pluginOutputMode, pconstants.ArgOutput, constants.PluginOutputModeIds, enumflag.EnumCaseInsensitive),
+			pconstants.ArgOutput,
+			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.PluginOutputModeIds), ", "))).
+		AddBoolFlag(pconstants.ArgHelp, false, "Help for plugin show", cmdconfig.FlagOptions.WithShortHand("h"))
 	return cmd
 }
 
@@ -642,146 +670,140 @@ func resolveUpdatePluginsFromArgs(args []string) ([]string, error) {
 }
 
 func runPluginListCmd(cmd *cobra.Command, _ []string) {
-	// TODO implement
-	// setup a cancel context and start cancel handler
-	//ctx, cancel := context.WithCancel(cmd.Context())
-	//contexthelpers.StartCancelHandler(cancel)
-	//outputFormat := viper.GetString(pconstants.ArgOutput)
-	//
-	//utils.LogTime("runPluginListCmd list")
-	//defer func() {
-	//	utils.LogTime("runPluginListCmd end")
-	//	if r := recover(); r != nil {
-	//		error_helpers.ShowError(ctx, helpers.ToError(r))
-	//		exitCode = pconstants.ExitCodeUnknownErrorPanic
-	//	}
-	//}()
-	//
-	//pluginList, failedPluginMap, missingPluginMap, res := getPluginList(ctx)
-	//if res.Error != nil {
-	//	error_helpers.ShowErrorWithMessage(ctx, res.Error, "plugin listing failed")
-	//	exitCode = pconstants.ExitCodePluginListFailure
-	//	return
-	//}
+	//setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
+	outputFormat := viper.GetString(pconstants.ArgOutput)
 
-	//err := showPluginListOutput(pluginList, failedPluginMap, missingPluginMap, res, outputFormat)
-	//if err != nil {
-	//	error_helpers.ShowError(ctx, err)
-	//}
+	utils.LogTime("runPluginListCmd list")
+	defer func() {
+		utils.LogTime("runPluginListCmd end")
+		if r := recover(); r != nil {
+			error_helpers.ShowError(ctx, helpers.ToError(r))
+			exitCode = pconstants.ExitCodeUnknownErrorPanic
+		}
+	}()
+
+	pluginList, err := plugin.List(ctx, config.GlobalConfig.PluginVersions)
+	error_helpers.FailOnError(err)
+
+	err = showPluginListOutput(pluginList, outputFormat)
+	if err != nil {
+		error_helpers.ShowError(ctx, err)
+	}
 
 }
 
-//func showPluginListOutput(pluginList []plugin.PluginListItem, failedPluginMap, missingPluginMap map[string][]plugin.PluginConnection, res perror_helpers.ErrorAndWarnings, outputFormat string) error {
-//	switch outputFormat {
-//	case "table":
-//		return showPluginListAsTable(pluginList, failedPluginMap, missingPluginMap, res)
-//	case "json":
-//		return showPluginListAsJSON(pluginList, failedPluginMap, missingPluginMap, res)
-//	default:
-//		return errors.New("invalid output format")
-//	}
-//}
-//
-//func showPluginListAsTable(pluginList []plugin.PluginListItem, failedPluginMap, missingPluginMap map[string][]plugin.PluginConnection, res perror_helpers.ErrorAndWarnings) error {
-//	headers := []string{"Installed", "Version", "Connections"}
-//	var rows [][]string
-//	// List installed plugins in a table
-//	if len(pluginList) != 0 {
-//		for _, item := range pluginList {
-//			rows = append(rows, []string{item.Name, item.Version.String(), strings.Join(item.Connections, ",")})
-//		}
-//	} else {
-//		rows = append(rows, []string{"", "", ""})
-//	}
-//	pplugin.ShowWrappedTable(headers, rows, &pplugin.ShowWrappedTableOptions{AutoMerge: false})
-//	fmt.Printf("\n")
-//
-//	// List failed/missing plugins in a separate table
-//	if len(failedPluginMap)+len(missingPluginMap) != 0 {
-//		headers := []string{"Failed", "Connections", "Reason"}
-//		var conns []string
-//		var missingRows [][]string
-//
-//		// failed plugins
-//		for p, item := range failedPluginMap {
-//			for _, conn := range item {
-//				conns = append(conns, conn.GetName())
-//			}
-//			missingRows = append(missingRows, []string{p, strings.Join(conns, ","), pconstants.ConnectionErrorPluginFailedToStart})
-//			conns = []string{}
-//		}
-//
-//		// missing plugins
-//		for p, item := range missingPluginMap {
-//			for _, conn := range item {
-//				conns = append(conns, conn.GetName())
-//			}
-//			missingRows = append(missingRows, []string{p, strings.Join(conns, ","), pconstants.InstallMessagePluginNotInstalled})
-//			conns = []string{}
-//		}
-//
-//		pplugin.ShowWrappedTable(headers, missingRows, &pplugin.ShowWrappedTableOptions{AutoMerge: false})
-//		fmt.Println()
-//	}
-//
-//	if len(res.Warnings) > 0 {
-//		fmt.Println()
-//		res.ShowWarnings()
-//		fmt.Printf("\n")
-//	}
-//	return nil
-//}
-//
-//func showPluginListAsJSON(pluginList []plugin.PluginListItem, failedPluginMap, missingPluginMap map[string][]plugin.PluginConnection, res perror_helpers.ErrorAndWarnings) error {
-//	output := pluginJsonOutput{}
-//
-//	for _, item := range pluginList {
-//		installed := installedPlugin{
-//			Name:        item.Name,
-//			Version:     item.Version.String(),
-//			Connections: item.Connections,
-//		}
-//		output.Installed = append(output.Installed, installed)
-//	}
-//
-//	for p, item := range failedPluginMap {
-//		connections := make([]string, len(item))
-//		for i, conn := range item {
-//			connections[i] = conn.GetName()
-//		}
-//		failed := failedPlugin{
-//			Name:        p,
-//			Connections: connections,
-//			Reason:      pconstants.ConnectionErrorPluginFailedToStart,
-//		}
-//		output.Failed = append(output.Failed, failed)
-//	}
-//
-//	for p, item := range missingPluginMap {
-//		connections := make([]string, len(item))
-//		for i, conn := range item {
-//			connections[i] = conn.GetName()
-//		}
-//		missing := failedPlugin{
-//			Name:        p,
-//			Connections: connections,
-//			Reason:      pconstants.InstallMessagePluginNotInstalled,
-//		}
-//		output.Failed = append(output.Failed, missing)
-//	}
-//
-//	if len(res.Warnings) > 0 {
-//		output.Warnings = res.Warnings
-//	}
-//
-//	jsonOutput, err := json.MarshalIndent(output, "", "  ")
-//	if err != nil {
-//		return err
-//	}
-//	fmt.Println(string(jsonOutput))
-//	fmt.Println()
-//	return nil
-//}
+func showPluginListOutput(pluginList []plugin.PluginListItem, outputFormat string) error {
+	switch outputFormat {
+	case pconstants.OutputFormatTable:
+		showPluginListAsTable(pluginList)
+		return nil
+	case pconstants.OutputFormatJSON:
+		return showPluginListAsJSON(pluginList)
+	default:
+		return errors.New("invalid output format")
+	}
+}
+
+func showPluginListAsTable(pluginList []plugin.PluginListItem) {
+	headers := []string{"Installed", "Version", "Partitions"}
+	var rows [][]string
+	// List installed plugins in a table
+	if len(pluginList) != 0 {
+		for _, item := range pluginList {
+			rows = append(rows, []string{item.Name, item.Version.String(), strings.Join(item.Partitions, ",")})
+		}
+	} else {
+		rows = append(rows, []string{"", "", ""})
+	}
+	querydisplay.ShowWrappedTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
+	fmt.Printf("\n")
+
+	return
+}
+
+func showPluginListAsJSON(pluginList []plugin.PluginListItem) error {
+	output := pluginJsonOutput{}
+
+	for _, item := range pluginList {
+		installed := installedPlugin{
+			Name:       item.Name,
+			Version:    item.Version.String(),
+			Partitions: item.Partitions,
+		}
+		output.Installed = append(output.Installed, installed)
+	}
+
+	jsonOutput, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(jsonOutput))
+	fmt.Println()
+	return nil
+}
+
+func runPluginShowCmd(cmd *cobra.Command, args []string) {
+	// we expect 1 argument, the plugin name
+	if len(args) != 1 {
+		error_helpers.ShowError(cmd.Context(), fmt.Errorf("you need to provide the name of a plugin"))
+		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
+		return
+	}
+
+	// now ask the plugin manager to make a describe call
+	pluginManager := plugin_manager.New()
+	describeResponse, err := pluginManager.Describe(cmd.Context(), args[0])
+	error_helpers.FailOnError(err)
+
+	err = showPluginShowOutput(describeResponse, viper.GetString(pconstants.ArgOutput))
+	if err != nil {
+		error_helpers.ShowError(cmd.Context(), err)
+		exitCode = pconstants.ExitCodePluginListFailure
+	}
+}
+
+func showPluginShowOutput(resp *plugin_manager.DescribeResponse, outputFormat string) error {
+	switch outputFormat {
+	case pconstants.OutputFormatTable:
+		showPluginShowAsTable(resp)
+		return nil
+	case pconstants.OutputFormatJSON:
+		return showPluginShowAsJSON(resp)
+	default:
+		return errors.New("invalid output format")
+	}
+}
+
+func showPluginShowAsTable(resp *plugin_manager.DescribeResponse) {
+	fmt.Println("table output not implemented")
+	//headers := []string{"Installed", "Version", "Partitions"}
+	//var rows [][]string
+	//// Show installed plugins in a table
+	//if len(pluginShow) != 0 {
+	//	for _, item := range pluginShow {
+	//		rows = append(rows, []string{item.Name, item.Version.String(), strings.Join(item.Partitions, ",")})
+	//	}
+	//} else {
+	//	rows = append(rows, []string{"", "", ""})
+	//}
+	//querydisplay.ShowWrappedTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
+	//fmt.Printf("\n")
+
+	return
+}
+
+func showPluginShowAsJSON(pluginShow *plugin_manager.DescribeResponse) error {
+
+	jsonOutput, err := json.MarshalIndent(pluginShow, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(jsonOutput))
+	fmt.Println()
+	return nil
+}
 
 func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
@@ -808,13 +830,6 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	//connectionMap, _, _, res := getPluginConnectionMap(ctx)
-	//if res.Error != nil {
-	//	error_helpers.ShowError(ctx, res.Error)
-	//	exitCode = pconstants.ExitCodePluginListFailure
-	//	return
-	//}
-
 	reports := plugin.PluginRemoveReports{}
 	statushooks.SetStatus(ctx, fmt.Sprintf("Uninstalling %s", utils.Pluralize("plugin", len(args))))
 	for _, p := range args {
@@ -834,107 +849,6 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 }
 
 //
-//func getPluginList(ctx context.Context) (pluginList []plugin.PluginListItem) {
-//	statushooks.Show(ctx)
-//	defer statushooks.Done(ctx)
-//
-//	//// get the maps of available and failed/missing plugins
-//	//pluginConnectionMap, failedPluginMap, missingPluginMap, res := getPluginConnectionMap(ctx)
-//	//if res.Error != nil {
-//	//	return nil, nil, nil, res
-//	//}
-//
-//	//// TODO do we really need to look at installed plugins - can't we just use the plugin connection map
-//	//// get a list of the installed plugins by inspecting the install location
-//	//// pass pluginConnectionMap so we can populate the connections for each plugin
-//	//pluginList, err := plugin.List(ctx, pluginConnectionMap, nil)
-//	//if err != nil {
-//	//	res.Error = err
-//	//	return nil, nil, nil, res
-//	//}
-//	//
-//	//// remove the failed plugins from `list` since we don't want them in the installed table
-//	//for pluginName := range failedPluginMap {
-//	//	for i := 0; i < len(pluginList); i++ {
-//	//		if pluginList[i].Name == pluginName {
-//	//			pluginList = append(pluginList[:i], pluginList[i+1:]...)
-//	//			i-- // Decrement the loop index since we just removed an element
-//	//		}
-//	//	}
-//	//}
-//	//return pluginList, failedPluginMap, missingPluginMap, res
-//
-//	// TODO IMPLEMENT
-//
-//	return nil, nil, nil, res
-//}
-//
-//func getPluginConnectionMap(ctx context.Context) (pluginConnectionMap, failedPluginMap, missingPluginMap map[string][]plugin.PluginConnection, res perror_helpers.ErrorAndWarnings) {
-//	utils.LogTime("cmd.getPluginConnectionMap start")
-//	defer utils.LogTime("cmd.getPluginConnectionMap end")
-//
-//	statushooks.SetStatus(ctx, "Fetching connection map")
-//
-//	res = perror_helpers.ErrorAndWarnings{}
-//
-//	connectionStateMap, stateRes := getConnectionState(ctx)
-//	res.Merge(stateRes)
-//	if res.Error != nil {
-//		return nil, nil, nil, res
-//	}
-//
-//	// create the map of failed/missing plugins and available/loaded plugins
-//	failedPluginMap = map[string][]plugin.PluginConnection{}
-//	missingPluginMap = map[string][]plugin.PluginConnection{}
-//	pluginConnectionMap = make(map[string][]plugin.PluginConnection)
-//
-//	for _, state := range connectionStateMap {
-//		connection, ok := config.GlobalConfig.Connections[state.ConnectionName]
-//		if !ok {
-//			continue
-//		}
-//
-//		if state.State == pconstants.ConnectionStateError && state.Error() == pconstants.ConnectionErrorPluginFailedToStart {
-//			failedPluginMap[state.Plugin] = append(failedPluginMap[state.Plugin], connection)
-//		} else if state.State == pconstants.ConnectionStateError && state.Error() == pconstants.ConnectionErrorPluginNotInstalled {
-//			missingPluginMap[state.Plugin] = append(missingPluginMap[state.Plugin], connection)
-//		}
-//
-//		pluginConnectionMap[state.Plugin] = append(pluginConnectionMap[state.Plugin], connection)
-//	}
-//
-//	return pluginConnectionMap, failedPluginMap, missingPluginMap, res
-//}
-//
-//// load the connection state, waiting until all connections are loaded
-//func getConnectionState(ctx context.Context) (steampipeconfig.ConnectionStateMap, perror_helpers.ErrorAndWarnings) {
-//	utils.LogTime("cmd.getConnectionState start")
-//	defer utils.LogTime("cmd.getConnectionState end")
-//
-//	// start service
-//	client, res := db_local.GetLocalClient(ctx, pconstants.InvokerPlugin, nil)
-//	if res.Error != nil {
-//		return nil, res
-//	}
-//	defer client.Close(ctx)
-//
-//	conn, err := client.AcquireManagementConnection(ctx)
-//	if err != nil {
-//		res.Error = err
-//		return nil, res
-//	}
-//	defer conn.Release()
-//
-//	// load connection state
-//	statushooks.SetStatus(ctx, "Loading connection state")
-//	connectionStateMap, err := steampipeconfig.LoadConnectionState(ctx, conn.Conn(), steampipeconfig.WithWaitUntilReady())
-//	if err != nil {
-//		res.Error = err
-//		return nil, res
-//	}
-//
-//	return connectionStateMap, res
-//}
 
 // GetLatestPluginVersionByConstraint // TODO: #plugin remove this and use variant in pipe-fittings once hub API is available
 func GetLatestPluginVersionByConstraint(ctx context.Context, installationID, org, name, constraint string) (*pplugin.ResolvedPluginVersion, error) {
