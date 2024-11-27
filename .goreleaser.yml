@@ -23,7 +23,7 @@ builds:
     ldflags:
       # Go Releaser analyzes your Git repository and identifies the most recent Git tag (typically the highest version number) as the version for your release.
       # This is how it determines the value of {{.Version}}.
-      - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
 
   - id: tailpipe-linux-amd64
     binary: tailpipe
@@ -41,7 +41,7 @@ builds:
         - ./scripts/download_json_extension.sh linux amd64
 
     ldflags:
-      - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
 
   - id: tailpipe-darwin-arm64
     binary: tailpipe
@@ -59,7 +59,7 @@ builds:
         - ./scripts/download_json_extension.sh osx arm64
 
     ldflags:
-      - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
 
   - id: tailpipe-darwin-amd64
     binary: tailpipe
@@ -77,7 +77,7 @@ builds:
         - ./scripts/download_json_extension.sh osx amd64
 
     ldflags:
-      - -s -w -X main.version={{.Version}} -X version.buildTime={{.Date}} -X version.commit={{.Commit}} -X version.builtBy=goreleaser
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
 
 release:
   prerelease: auto

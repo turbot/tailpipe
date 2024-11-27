@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"time"
 
+	"github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/extensions"
 )
 
@@ -27,34 +27,48 @@ func newDuckDb() (*duckDb, error) {
 	}
 
 	// Extract the embedded extension
-	now := time.Now()
-	fmt.Printf(now.String())
-	extension, err := extensions.Extract()
+	extractedExtensionName, err := extractAndPrepareExtension()
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract extension: %w", err)
+		return nil, fmt.Errorf("failed to extract extension for loading: %w", err)
 	}
-
-	// Create a temporary file to store the extracted extension
-	tmpFile, err := os.CreateTemp("", "json.duckdb_extension")
-	if err != nil {
-		return nil, fmt.Errorf("could not create temporary file for duckdb extension: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	// Copy the content from the embedded extension file
-	_, err = io.Copy(tmpFile, extension)
-	if err != nil {
-		return nil, fmt.Errorf("could not copy embedded extension content to temporary file: %w", err)
-	}
-	tmpFile.Close() // Ensure the file is closed before loading
-	fmt.Println("Time: ", time.Since(now).String())
 
 	// Load the extracted JSON extension from the temporary file
-	loadStmt := fmt.Sprintf("LOAD '%s';", tmpFile.Name())
+	// check if it is a local build, then just load the json extension, else use the extracted extension
+	// for local builds, the json extension should be available in the system
+	var loadStmt string
+	if cmdconfig.IsLocal() {
+		fmt.Println("Local build detected, loading JSON extension")
+		loadStmt = "LOAD 'json';"
+	} else {
+		loadStmt = fmt.Sprintf("LOAD '%s';", extractedExtensionName)
+	}
 	if _, err := db.Exec(loadStmt); err != nil {
 		return nil, fmt.Errorf("failed to load JSON extension: %w", err)
 	}
 
 	w.DB = db
 	return w, nil
+}
+
+func extractAndPrepareExtension() (string, error) {
+	extension, err := extensions.Extract()
+	if err != nil {
+		return "", fmt.Errorf("failed to extract extension: %w", err)
+	}
+
+	// Create a temporary file to store the extracted extension
+	tmpFile, err := os.CreateTemp("", "json.duckdb_extension")
+	if err != nil {
+		return "", fmt.Errorf("could not create temporary file for duckdb extension: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	// Copy the content from the embedded extension file
+	_, err = io.Copy(tmpFile, extension)
+	if err != nil {
+		return "", fmt.Errorf("could not copy embedded extension content to temporary file: %w", err)
+	}
+	tmpFile.Close() // Ensure the file is closed before loading
+
+	return tmpFile.Name(), nil
 }

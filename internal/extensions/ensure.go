@@ -18,12 +18,6 @@ const (
 
 func Extract() (fs.File, error) {
 
-	// fmt.Println("Contents of the embedded file:")
-	// fmt.Println(staticFS)
-
-	// TODO if we are running in development, we don't need to load extensions
-	// the dev should have the extension enabled in their local duckdb
-
 	extension, err := staticFS.Open(embeddedExtensionName)
 	if err != nil {
 		return nil, sperr.WrapWithMessage(err, "could not open embedded duckdb extension")
