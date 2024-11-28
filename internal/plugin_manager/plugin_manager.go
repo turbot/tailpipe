@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,8 +22,11 @@ import (
 	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	// refer to artifact source so sdk sources are registered
+	_ "github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 )
 
 type PluginManager struct {
@@ -48,10 +52,23 @@ func (p *PluginManager) AddObserver(o Observer) {
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, inboxPath string, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
-	pluginDef := partition.Plugin
-	pluginClient, err := p.getPlugin(pluginDef)
+	tablePlugin := partition.Plugin
+	tablePluginClient, err := p.getPlugin(tablePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
+	}
+
+	var sourcePluginReattach *proto.SourcePluginReattach
+	// identify which plugin provides the source
+	sourcePlugin := p.determineSourcePlugin(partition)
+	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
+	// and then pass reattach info
+	if sourcePlugin.Plugin != tablePlugin.Plugin {
+		sourcePluginClient, err := p.getPlugin(sourcePlugin)
+		if err != nil {
+			return nil, fmt.Errorf("error starting plugin %s required for source %s: %w", sourcePlugin.Alias, partition.Source.Type, err)
+		}
+		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.client.ReattachConfig())
 	}
 
 	// TODO #design consider the flow
@@ -63,9 +80,9 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// this returns a stream which will send events
 	// TODO #design maybe we already have an observer - or is a stream only for a single execution and reuse the stream?
 	// otherwise be sure to close the stream
-	eventStream, err := pluginClient.AddObserver()
+	eventStream, err := tablePluginClient.AddObserver()
 	if err != nil {
-		return nil, fmt.Errorf("error adding observer for plugin %s: %w", pluginClient.Name, err)
+		return nil, fmt.Errorf("error adding observer for plugin %s: %w", tablePluginClient.Name, err)
 	}
 	executionID := getExecutionId()
 
@@ -76,6 +93,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		ExecutionId:     executionID,
 		OutputPath:      inboxPath,
 		SourceData:      partition.Source.ToProto(),
+		SourcePlugin:    sourcePluginReattach,
 		CollectionState: []byte(collectionState),
 	}
 
@@ -97,9 +115,9 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		}
 	}
 
-	collectResponse, err := pluginClient.Collect(req)
+	collectResponse, err := tablePluginClient.Collect(req)
 	if err != nil {
-		return nil, fmt.Errorf("error starting collection for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
+		return nil, fmt.Errorf("error starting collection for plugin %s: %w", tablePluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
@@ -276,4 +294,17 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 		}
 	}
 
+}
+
+func (p *PluginManager) determineSourcePlugin(partition *config.Partition) *pplugin.Plugin {
+	sourceType := partition.Source.Type
+
+	if row_source.Factory.ProvidesRowSource(sourceType) {
+		// this is a source type built into the sdk - the partition plugin will provide it
+		return partition.Plugin
+	}
+
+	// assume the source type name is of form "<plugin>_<source>",. eg. aws_s3_bucket
+	pluginName := strings.Split(sourceType, "_")[0]
+	return pplugin.NewPlugin(pluginName)
 }
