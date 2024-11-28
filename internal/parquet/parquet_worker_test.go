@@ -101,17 +101,20 @@ func Test_buildViewQuery(t *testing.T) {
 				sqlColumn: "struct_field.struct_string_field",
 			},
 			wantQuery: `SELECT
-	struct_pack(
-		"struct_string_field" := "StructField"."StructStringField"::VARCHAR,
-		"struct_int_field" := "StructField"."StructIntField"::BIGINT
-	) AS "struct_field"
+    CASE
+        WHEN "StructField" IS NULL THEN NULL
+        ELSE struct_pack(
+            "struct_string_field" := "StructField"."StructStringField"::VARCHAR,
+            "struct_int_field" := "StructField"."StructIntField"::BIGINT
+        )
+    END AS "struct_field"
 FROM
-	read_ndjson(
-		'%s',
-		columns = {
-			"StructField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" BIGINT)'
-		}
-	)`,
+    read_ndjson(
+        '%s',
+        columns = {
+            "StructField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" BIGINT)'
+        }
+    );`,
 			wantData: []any{"StructStringVal"},
 		},
 		{
@@ -173,6 +176,37 @@ FROM
 			wantData: []any{"StructStringVal"},
 		},
 		{
+			name: "null struct",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{
+							SourceName: "end",
+							ColumnName: "end",
+							Type:       "STRUCT",
+							StructFields: []*schema.ColumnSchema{
+								{SourceName: "any", ColumnName: "any", Type: "VARCHAR"},
+							},
+						},
+					},
+				},
+				json:      `{ }`,
+				sqlColumn: `"end"."any"`,
+			},
+			wantQuery: `SELECT
+	struct_pack(
+		"any" := "end"."any"::VARCHAR
+	) AS "end"
+FROM
+	read_ndjson(
+		'%s',
+		columns = {
+			"end": 'STRUCT("any" VARCHAR)'
+		}
+	)`,
+			wantData: []any{nil},
+		},
+		{
 			name: "nested struct",
 			args: args{
 				schema: &schema.RowSchema{
@@ -204,6 +238,57 @@ FROM
 					},
 				},
 				json:      `{  "StructField": {    "NestedStruct": {      "NestedStructStringField": "NestedStructStringVal"    },    "StructStringField": "StructStringVal"  }}`,
+				sqlColumn: "struct_field.nested_struct.nested_struct_string_field",
+			},
+			wantQuery: `SELECT
+ CASE
+   WHEN "StructField" IS NULL THEN NULL
+   ELSE struct_pack(
+   "struct_string_field" := "StructField"."StructStringField"::VARCHAR,
+   "struct_int_field" := "StructField"."StructIntField"::BIGINT
+   ) END AS "struct_field"
+FROM
+	read_ndjson(
+		'%s',
+		columns = {
+			"StructField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" BIGINT)'
+		}
+	)`,
+			wantData: []any{"NestedStructStringVal"},
+		},
+		{
+			name: "null nested struct",
+			args: args{
+				schema: &schema.RowSchema{
+					Columns: []*schema.ColumnSchema{
+						{
+							SourceName: "StructField",
+							ColumnName: "struct_field",
+							Type:       "STRUCT",
+							StructFields: []*schema.ColumnSchema{
+								{
+									SourceName: "NestedStruct",
+									ColumnName: "nested_struct",
+									Type:       "STRUCT",
+									StructFields: []*schema.ColumnSchema{
+										{
+											SourceName: "NestedStructStringField",
+											ColumnName: "nested_struct_string_field",
+											Type:       "VARCHAR",
+										},
+									},
+								},
+								{
+									SourceName: "StructStringField",
+									ColumnName: "struct_string_field",
+									Type:       "VARCHAR",
+								},
+							},
+						},
+					},
+				},
+				json: `{  "StructField": {    "NestedStruct": {      "NestedStructStringField": "NestedStructStringVal"    },    "StructStringField": "StructStringVal"  }}
+{  }`,
 				sqlColumn: "struct_field.nested_struct.nested_struct_string_field",
 			},
 			wantQuery: `SELECT

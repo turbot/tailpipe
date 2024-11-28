@@ -417,88 +417,74 @@ FROM
 	return str.String()
 }
 
-// return the sql line to select the given field
+// Return the SQL line to select the given field
 func getSqlForField(column *schema.ColumnSchema, tabs int) string {
-
-	/* for scalar fields this wll be
-	    <SourceName> AS <ColumnName>
-	e.g.
-		tpIps AS tp_ips,
-
-		for struct fields this will be
-
-		struct_pack(
-			<ColumnName> := <ParentSourceName>.<SourceName>::<Type>,
-
-		where ParentSourceName is the SourceName of the struct field
-	e.g.
-		type_field := userIdentity.nested.typeField::VARCHAR,
-
-	struct_pack(
-		        type_feld := userIdentity.typeField::VARCHAR,
-		        session_context := userIdentity.sessionContext::VARCHAR
-				)
-	*/
-
-	// calculate the tab
+	// Calculate the tab spacing
 	tab := strings.Repeat("\t", tabs)
+
 	switch column.Type {
-
-	// TODO #parquet https://github.com/turbot/tailpipe/issues/new
-	//case "MAP":
-	//
-	//	return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
-
 	case "STRUCT":
-		//  struct_pack(
-		//  <StructColumnName> := <ParentSourceName>.<SourceName>::<Type>,
-		//  ...) AS <ColumnName>
-
 		var str strings.Builder
-		str.WriteString(fmt.Sprintf("%sstruct_pack(\n", tab))
+
+		// Start CASE logic to handle NULL values for the struct
+		str.WriteString(fmt.Sprintf("%sCASE\n", tab))
+		str.WriteString(fmt.Sprintf("%s\tWHEN \"%s\" IS NULL THEN NULL\n", tab, column.SourceName))
+		str.WriteString(fmt.Sprintf("%s\tELSE struct_pack(\n", tab))
+
+		// Add nested fields to the struct_pack
 		for j, nestedColumn := range column.StructFields {
 			if j > 0 {
 				str.WriteString(",\n")
 			}
-			parentName := fmt.Sprintf(`"%s"`, column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+1))
+			parentName := fmt.Sprintf("\"%s\"", column.SourceName)
+			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+2))
 		}
-		str.WriteString(fmt.Sprintf(`
-%s) AS "%s"`, tab, column.ColumnName))
-		return str.String()
-	case "JSON":
-		// convert the value using json()
-		return fmt.Sprintf(`%sjson("%s") AS "%s"`, tab, column.SourceName, column.ColumnName)
-	default:
-		//<SourceName> AS <ColumnName>
-		return fmt.Sprintf(`%s"%s" AS "%s"`, tab, column.SourceName, column.ColumnName)
-	}
 
+		// Close struct_pack and CASE
+		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
+		str.WriteString(fmt.Sprintf("%sEND AS \"%s\"", tab, column.ColumnName))
+		return str.String()
+
+	case "JSON":
+		// Convert the value using json()
+		return fmt.Sprintf("%sjson(\"%s\") AS \"%s\"", tab, column.SourceName, column.ColumnName)
+
+	default:
+		// Scalar fields
+		return fmt.Sprintf("%s\"%s\" AS \"%s\"", tab, column.SourceName, column.ColumnName)
+	}
 }
 
-// return the sql line to pack the given field as a struct
-// this will use StructFields to build a struct_pack command
+// Return the SQL line to pack the given field as a struct
 func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, tabs int) string {
 	tab := strings.Repeat("\t", tabs)
-	switch column.Type {
-	//case "MAP":
-	// TODO #parquet https://github.com/turbot/tailpipe/issues/new
 
+	switch column.Type {
 	case "STRUCT":
 		var str strings.Builder
-		str.WriteString(fmt.Sprintf(`%s"%s" := struct_pack(`, tab, column.ColumnName))
-		str.WriteString("\n")
+
+		// Add CASE logic to handle NULL values for the struct
+		str.WriteString(fmt.Sprintf("%s\"%s\" := CASE\n", tab, column.ColumnName))
+		str.WriteString(fmt.Sprintf("%s\tWHEN %s.\"%s\" IS NULL THEN NULL\n", tab, parentName, column.SourceName))
+		str.WriteString(fmt.Sprintf("%s\tELSE struct_pack(\n", tab))
+
+		// Loop through nested fields and add them to the struct_pack
 		for j, nestedColumn := range column.StructFields {
 			if j > 0 {
 				str.WriteString(",\n")
 			}
-			// newParent is the parentName for the nested column
-			newParent := fmt.Sprintf(`%s."%s"`, parentName, column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, newParent, tabs+1))
+			// Use the current field as the new parent for recursion
+			newParent := fmt.Sprintf("%s.\"%s\"", parentName, column.SourceName)
+			str.WriteString(getTypeSqlForStructField(nestedColumn, newParent, tabs+2))
 		}
-		str.WriteString(fmt.Sprintf("\n%s)", tab))
+
+		// Close struct_pack and CASE
+		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
+		str.WriteString(fmt.Sprintf("%sEND", tab))
 		return str.String()
+
 	default:
-		return fmt.Sprintf(`%s"%s" := %s."%s"::%s`, tab, column.ColumnName, parentName, column.SourceName, column.Type)
+		// Scalar fields
+		return fmt.Sprintf("%s\"%s\" := %s.\"%s\"::%s", tab, column.ColumnName, parentName, column.SourceName, column.Type)
 	}
 }
