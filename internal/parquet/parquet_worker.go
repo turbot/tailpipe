@@ -137,6 +137,13 @@ func buildViewQuery(rowSchema *schema.RowSchema) string {
 		if column.Type == "STRUCT[]" {
 			structSliceColumns = append(structSliceColumns, column)
 		}
+		// TODO take nested struct arays into account
+		//for _, nestedColumn := range column.StructFields {
+		//	if nestedColumn.Type == "STRUCT[]" {
+		//		structSliceColumns = append(structSliceColumns, nestedColumn)
+		//	}
+		//
+		//}
 	}
 
 	// build column definitions
