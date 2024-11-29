@@ -45,6 +45,7 @@ func rootCommand() *cobra.Command {
 		collectCmd(),
 		connectCmd(),
 		pluginCmd(),
+		compactCmd(),
 	)
 
 	// disable auto completion generation, since we don't want to support
