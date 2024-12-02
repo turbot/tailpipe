@@ -1,0 +1,222 @@
+name: "11 - Test: Acceptance"
+on:
+  workflow_call:
+  push:
+    tags:
+      - v*
+    branches:
+      - main
+  workflow_dispatch:
+  pull_request:
+
+env:
+  TAILPIPE_UPDATE_CHECK: false
+  SPIPETOOLS_TOKEN: ${{ secrets.SPIPETOOLS_TOKEN }}
+
+jobs:
+  goreleaser:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: tailpipe
+          ref: ${{ github.event.ref }}
+
+      - name: Checkout Pipe Fittings Components repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/pipe-fittings
+          path: pipe-fittings
+          ref: tp
+
+      - name: Checkout Tailpipe plugin SDK repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/tailpipe-plugin-sdk
+          path: tailpipe-plugin-sdk
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: develop
+
+       # this is required, check golangci-lint-action docs
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
+
+      - name: Run CLI Unit Tests
+        run: |
+          cd tailpipe
+          go clean -testcache
+          go test -timeout 30s ./... -test.v
+
+      - name: Build
+        run: |-
+          cd tailpipe
+          make release-dry-run
+
+      - name: Move build artifacts
+        run: |
+          ls -al $GITHUB_WORKSPACE/tailpipe
+          sudo chown -R runner:docker $GITHUB_WORKSPACE/tailpipe/dist
+          mkdir ~/artifacts
+          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.linux.amd64.tar.gz ~/artifacts/linux.tar.gz
+          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.darwin.amd64.tar.gz ~/artifacts/darwin.tar.gz
+
+      - name: List Build Artifacts
+        run: ls -l ~/artifacts
+
+      - name: Save Linux Build Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifact-linux
+          path: ~/artifacts/linux.tar.gz
+          if-no-files-found: error
+
+      - name: Save MacOS Build Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifact-darwin
+          path: ~/artifacts/darwin.tar.gz
+          if-no-files-found: error
+
+  # TODO - Update the acceptance test job with the correct test suite
+  # acceptance_test:
+  #   name: Test
+  #   needs: goreleaser
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       platform: [ubuntu-latest]
+  #       test_block:
+  #         - "check"
+  #         - "resource_show_outputs"
+  #         - "dashboard"
+  #         - "backend"
+  #         - "mod"
+  #         - "mod_install"
+  #         - "sp_files"
+  #         - "var_resolution"
+  #         - "params_and_args"
+  #         - "snapshot"
+  #         - "dashboard_parsing_validation"
+  #         - "database_precedence"
+  #   runs-on: ${{ matrix.platform }}
+  #   steps:
+  #     - name: Checkout
+  #       uses: actions/checkout@v4
+  #       with:
+  #         submodules: true
+  #         path: powerpipe
+  #         ref: ${{ github.event.ref }}
+
+  #     - uses: actions/setup-go@v5
+  #       with:
+  #         go-version: 1.22
+  #         cache: false
+
+  #     - name: Prepare for downloads
+  #       id: prepare-for-downloads
+  #       run: |
+  #         mkdir ~/artifacts
+  
+  #     - name: Download Linux Build Artifacts
+  #       uses: actions/download-artifact@v3
+  #       if: ${{ matrix.platform == 'ubuntu-latest' }}
+  #       with:
+  #         name: build-artifact-linux
+  #         path: ~/artifacts
+
+  #     - name: Download Darwin Build Artifacts
+  #       uses: actions/download-artifact@v3
+  #       if: ${{ matrix.platform == 'macos-latest' }}
+  #       with:
+  #         name: build-artifact-darwin
+  #         path: ~/artifacts
+
+  #     - name: Extract Darwin Artifacts and Install Binary
+  #       if: ${{ matrix.platform == 'macos-latest' }}
+  #       run: |
+  #         mkdir ~/build
+  #         tar -xf ~/artifacts/darwin.tar.gz -C ~/build
+
+  #     - name: Extract Ubuntu Artifacts and Install Binary
+  #       if: ${{ matrix.platform == 'ubuntu-latest' }}
+  #       run: |
+  #         mkdir ~/build
+  #         tar -xf ~/artifacts/linux.tar.gz -C ~/build
+      
+  #     - name: Install Steampipe(Darwin)
+  #       if: ${{ matrix.platform == 'macos-latest' }}
+  #       run: |
+  #         brew install turbot/tap/steampipe
+  #         steampipe -v
+
+  #     - name: Install Steampipe(Linux)
+  #       if: ${{ matrix.platform == 'ubuntu-latest' }}
+  #       run: |
+  #         sudo /bin/sh -c "$(curl -fsSL https://steampipe.io/install/steampipe.sh)"
+  #         steampipe -v
+      
+  #     - name: Set PATH
+  #       run: |
+  #         echo "PATH=$PATH:$HOME/build:$GTIHUB_WORKSPACE/powerpipe/tests/acceptance/lib/bats-core/libexec" >> $GITHUB_ENV
+
+  #     - name: Go install jd
+  #       run: |
+  #         go install github.com/josephburnett/jd@latest
+
+  #     - name: Start steamipipe service
+  #       run: |
+  #         steampipe service start
+
+  #     - name: Run Test Suite
+  #       id: run-test-suite
+  #       timeout-minutes: 15
+  #       continue-on-error: true
+  #       run: |
+  #         chmod +x $GITHUB_WORKSPACE/powerpipe/tests/acceptance/run.sh
+  #         $GITHUB_WORKSPACE/powerpipe/tests/acceptance/run.sh ${{ matrix.test_block }}.bats
+  #         echo "exit_code=$(echo $?)" >> $GITHUB_OUTPUT
+  #         echo ">> here"
+
+  #     # This job checks whether the test suite has passed or not.
+  #     # Since the exit_code is set only when the bats test suite pass,
+  #     # we have added the if-conditional block
+  #     - name: Check Test Passed/Failed
+  #       if: ${{ success() }}
+  #       continue-on-error: false
+  #       run: |
+  #         if [ ${{ steps.run-test-suite.outputs.exit_code }} -eq 0 ]; then
+  #           exit 0
+  #         else
+  #           exit 1
+  #         fi
+
+  #     - name: Stop steampipe service
+  #       run: |
+  #         steampipe service stop
+
+  cleanup:
+    # let's clean up the artifacts.
+    # incase this step isn't reached,
+    # artifacts automatically expire after 90 days anyway
+    # refer:
+    #   https://docs.github.com/en/actions/configuring-and-managing-workflows/persisting-workflow-data-using-artifacts#downloading-and-deleting-artifacts-after-a-workflow-run-is-complete
+    name: Clean Up Artifacts
+    needs: goreleaser
+    # if: ${{ needs.acceptance_test.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clean up Linux Build
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: build-artifact-linux
+          failOnError: true
+
+      - name: Clean up Darwin Build
+        uses: geekyeggo/delete-artifact@v5
+        with:
+          name: build-artifact-darwin
+          failOnError: true
