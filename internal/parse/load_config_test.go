@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"context"
 	"reflect"
 	"testing"
 )
@@ -15,6 +16,7 @@ type result struct {
 }
 
 func TestGetPartitionConfig(t *testing.T) {
+	var ctx context.Context
 	type args struct {
 		configPath string
 		partition  string
@@ -46,8 +48,8 @@ extensions = [".gz"]`,
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config, err := LoadTailpipeConfig()
-			if (err != nil) != tt.wantErr {
+			config, err := LoadTailpipeConfig(ctx)
+			if (err.Error != nil) != tt.wantErr {
 				t.Errorf("LoadTailpipeConfig() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
@@ -59,7 +61,7 @@ extensions = [".gz"]`,
 
 			// build the result
 			var got = result{
-				plugin:          col.Plugin,
+				plugin:          col.Plugin.Alias,
 				partitionType:   col.Table,
 				partitionConfig: string(col.Config),
 				sourceType:      col.Source.Type,
