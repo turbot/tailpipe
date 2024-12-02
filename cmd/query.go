@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/spf13/cobra"
 	"github.com/thediveo/enumflag/v2"
 	"github.com/turbot/go-kit/helpers"
@@ -11,7 +13,6 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/interactive"
 	"github.com/turbot/tailpipe/internal/query"
-	"strings"
 )
 
 // variable used to assign the output mode flag
@@ -30,7 +31,9 @@ func queryCmd() *cobra.Command {
 	cmdconfig.OnCmd(cmd).
 		AddVarFlag(enumflag.New(&queryOutputMode, pconstants.ArgOutput, constants.QueryOutputModeIds, enumflag.EnumCaseInsensitive),
 			pconstants.ArgOutput,
-			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.QueryOutputModeIds), ", ")))
+			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.QueryOutputModeIds), ", "))).
+		AddBoolFlag(pconstants.ArgHeader, true, "Include column headers csv and table output").
+		AddStringFlag(pconstants.ArgSeparator, ",", "Separator string for csv output")
 
 	return cmd
 }
@@ -39,6 +42,8 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 	ctx := cmd.Context()
 
 	var err error
+	var failures int
+
 	defer func() {
 		if r := recover(); r != nil {
 			err = helpers.ToError(r)
@@ -51,9 +56,12 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 	if len(args) == 0 {
 		err = interactive.RunInteractiveQuery(ctx)
 	} else {
-		err = query.ExecuteQuery(ctx, args[0])
+		failures, err = query.ExecuteQuery(ctx, args[0])
 	}
-	error_helpers.FailOnError(err)
+	if failures > 0 {
+		exitCode = pconstants.ExitCodeQueryExecutionFailed
+		error_helpers.FailOnError(err)
+	}
 
 }
 
