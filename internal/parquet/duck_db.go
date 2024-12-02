@@ -37,7 +37,6 @@ func newDuckDb() (*duckDb, error) {
 	// for local builds, the json extension should be available in the system
 	var loadStmt string
 	if cmdconfig.IsLocal() {
-		fmt.Println("Local build detected, loading JSON extension")
 		loadStmt = "LOAD 'json';"
 	} else {
 		loadStmt = fmt.Sprintf("LOAD '%s';", extractedExtensionName)
