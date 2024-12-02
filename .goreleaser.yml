@@ -1,0 +1,121 @@
+version: 2
+
+builds:
+  - id: tailpipe-linux-arm64
+    binary: tailpipe
+    goos:
+      - linux
+    goarch:
+      - arm64
+
+    env:
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
+
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh linux arm64
+
+    # Custom ldflags.
+    #
+    # Default: '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser'
+    # Templates: allowed
+    ldflags:
+      # Go Releaser analyzes your Git repository and identifies the most recent Git tag (typically the highest version number) as the version for your release.
+      # This is how it determines the value of {{.Version}}.
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+  - id: tailpipe-linux-amd64
+    binary: tailpipe
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+    env:
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
+
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh linux amd64
+
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+  - id: tailpipe-darwin-arm64
+    binary: tailpipe
+    goos:
+      - darwin
+    goarch:
+      - arm64
+
+    env:
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh osx arm64
+
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+  - id: tailpipe-darwin-amd64
+    binary: tailpipe
+    goos:
+      - darwin
+    goarch:
+      - amd64
+
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+
+    hooks:
+      pre:
+        - ./scripts/download_json_extension.sh osx amd64
+
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+release:
+  prerelease: auto
+
+archives:
+  - id: homebrew
+    format: tar.gz
+    name_template: "{{ .ProjectName }}.{{ .Os }}.{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  disable: true
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+brews:
+  - ids:
+      - homebrew
+    name: tailpipe@{{ .Major }}.{{ .Minor }}.{{ .Patch }}
+    repository:
+      owner: turbot
+      name: homebrew-tap
+      branch: tailpipe-brew
+    directory: Formula
+    url_template: "https://github.com/turbot/tailpipe/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    homepage: "https://tailpipe.io/"
+    # TODO - update this description
+    description: "TODO"
+    skip_upload: auto
+    install: |-
+      bin.install "tailpipe"
