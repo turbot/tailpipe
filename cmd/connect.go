@@ -3,9 +3,8 @@ package cmd
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
-	"github.com/thediveo/enumflag/v2"
-	"github.com/turbot/tailpipe/internal/constants"
 	"io"
 	"os"
 	"path/filepath"
@@ -14,11 +13,14 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/thediveo/enumflag/v2"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
+	"github.com/turbot/pipe-fittings/connection"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
@@ -97,13 +99,19 @@ func displayOutput(ctx context.Context, databaseFilePath string, err error) {
 			error_helpers.ShowError(ctx, err)
 		}
 	case pconstants.OutputFormatJSON:
-		if err == nil {
-			// build JSON output string
-			fmt.Printf(`{"database": "%s"}`, databaseFilePath)
-		} else {
-			// show error json
-			fmt.Printf(`{"error": "%s"}`, err)
+		res := connection.TailpipeConnectResponse{
+			DatabaseFilepath: databaseFilePath,
 		}
+		if err != nil {
+			res.Error = err.Error()
+		}
+		b, err := json.Marshal(res)
+		if err == nil {
+			fmt.Println(string(b))
+		} else {
+			fmt.Printf(`{"error": "failed to marshal response: %s"}`, err)
+		}
+
 	default:
 		// unexpected - cobras validation should prevent
 		error_helpers.ShowError(ctx, fmt.Errorf("unsupported output format %q", viper.GetString(pconstants.ArgOutput)))
@@ -147,7 +155,8 @@ func generateTempDBFilename(dataDir string) string {
 
 func setExitCodeForConnectError(err error) {
 	// if exit code already set, leave as is
-	if exitCode != 0 || err == nil {
+	// NOTE: DO NOT set exit code if the output format is JSON
+	if exitCode != 0 || err == nil || viper.GetString(pconstants.ArgOutput) == pconstants.OutputFormatJSON {
 		return
 	}
 
