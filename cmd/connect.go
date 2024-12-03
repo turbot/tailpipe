@@ -3,8 +3,6 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
 	"io"
 	"os"
 	"path/filepath"
@@ -17,6 +15,8 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 func connectCmd() *cobra.Command {
