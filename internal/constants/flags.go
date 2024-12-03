@@ -33,6 +33,18 @@ var PluginOutputModeIds = map[PluginOutputMode][]string{
 	PluginOutputModeTable: {constants.OutputFormatTable},
 }
 
+type ConnectOutputMode enumflag.Flag
+
+const (
+	ConnectOutputModeJson ConnectOutputMode = iota
+	ConnectOutputModeText
+)
+
+var ConnectOutputModeIds = map[ConnectOutputMode][]string{
+	ConnectOutputModeJson: {constants.OutputFormatJSON},
+	ConnectOutputModeText: {constants.OutputFormatText},
+}
+
 func FlagValues[T comparable](mappings map[T][]string) []string {
 	var res = make([]string, 0, len(mappings))
 	for _, v := range mappings {

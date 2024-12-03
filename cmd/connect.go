@@ -1,11 +1,15 @@
 package cmd
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+	"github.com/thediveo/enumflag/v2"
+	"github.com/turbot/tailpipe/internal/constants"
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,6 +23,9 @@ import (
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
+// variable used to assign the output mode flag
+var connectOutputMode = constants.ConnectOutputModeText
+
 func connectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect [flags]",
@@ -30,7 +37,10 @@ func connectCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
-		AddStringFlag(pconstants.ArgTo, "", "Specify the end time")
+		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
+		AddVarFlag(enumflag.New(&connectOutputMode, pconstants.ArgOutput, constants.ConnectOutputModeIds, enumflag.EnumCaseInsensitive),
+			pconstants.ArgOutput,
+			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.PluginOutputModeIds), ", ")))
 
 	return cmd
 }
@@ -46,12 +56,9 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 			error_helpers.ShowError(ctx, err)
 		}
 		setExitCodeForConnectError(err)
-		if err == nil {
-			// output the filepath
-			fmt.Println(databaseFilePath)
-		} else {
-			error_helpers.ShowError(ctx, err)
-		}
+
+		displayOutput(ctx, databaseFilePath, err)
+
 	}()
 
 	// first build the filters
@@ -78,6 +85,29 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 	err = database.AddTableViews(ctx, db, filters...)
 
 	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
+}
+
+func displayOutput(ctx context.Context, databaseFilePath string, err error) {
+	switch viper.GetString(pconstants.ArgOutput) {
+	case pconstants.OutputFormatText:
+		if err == nil {
+			// output the filepath
+			fmt.Println(databaseFilePath)
+		} else {
+			error_helpers.ShowError(ctx, err)
+		}
+	case pconstants.OutputFormatJSON:
+		if err == nil {
+			// build JSON output string
+			fmt.Printf(`{"database": "%s"}`, databaseFilePath)
+		} else {
+			// show error json
+			fmt.Printf(`{"error": "%s"}`, err)
+		}
+	default:
+		// unexpected - cobras validation should prevent
+		error_helpers.ShowError(ctx, fmt.Errorf("unsupported output format %q", viper.GetString(pconstants.ArgOutput)))
+	}
 }
 
 func getFilters() ([]string, error) {
