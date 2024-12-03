@@ -100,7 +100,9 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	// TODO review to ensure we are safe from SQL injection
 	// https://github.com/turbot/tailpipe/issues/67
 	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, w.destDir, strings.Join(partitionColumns, ","))
+
+	formattedTime := time.Now().Format("20060102150405")
+	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "data_%s_{i}");`, selectQuery, w.destDir, strings.Join(partitionColumns, ","), formattedTime)
 
 	_, err = w.db.Exec(exportQuery)
 	if err != nil {
