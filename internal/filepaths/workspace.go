@@ -9,7 +9,7 @@ import (
 
 // EnsureSourcePath ensures the source path exists - this is the folder where the plugin writes JSONL files
 func EnsureSourcePath() (string, error) {
-	sourceFilePath := filepath.Join(config.GlobalWorkspaceProfile.GetInternalDir(), "source")
+	sourceFilePath := filepath.Join(config.GlobalWorkspaceProfile.GetCollectionDir(), "source")
 	// ensure it exists
 	if _, err := os.Stat(sourceFilePath); os.IsNotExist(err) {
 		err = os.MkdirAll(sourceFilePath, 0755)

@@ -13,6 +13,6 @@ func TailpipeDbFilePath() string {
 }
 
 func CollectionStateDbFilePath() string {
-	dataDir := config.GlobalWorkspaceProfile.GetInternalDir()
+	dataDir := config.GlobalWorkspaceProfile.GetCollectionDir()
 	return filepath.Join(dataDir, constants.CollectionStateDbName)
 }
