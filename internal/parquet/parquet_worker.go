@@ -97,7 +97,9 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// Create a query to write to partitioned parquet files
-	partitionColumns := []string{constants.TpPartition, constants.TpIndex, constants.TpDate}
+	// TODO review to ensure we are safe from SQL injection
+	// https://github.com/turbot/tailpipe/issues/67
+	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
 
 	_, err = w.db.Exec(exportQuery)

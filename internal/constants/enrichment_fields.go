@@ -9,6 +9,7 @@ const (
 	TpTimestamp       = "tp_timestamp"
 	TpSourceIP        = "tp_source_ip"
 	TpDestinationIP   = "tp_destination_ip"
+	TpTable           = "tp_table"
 	TpPartition       = "tp_partition"
 	TpIndex           = "tp_index"
 	TpDate            = "tp_date"
