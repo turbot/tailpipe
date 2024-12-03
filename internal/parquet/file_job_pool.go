@@ -236,6 +236,11 @@ func (w *fileJobPool[T]) waitForNextChunk(job *jobGroup[T]) int {
 		// update the index to point to the start of the trimmed buffer
 		job.nextChunkIndex = 0
 
+		if len(job.chunks) == 0 {
+			slog.Warn("no more chunks - jobGroup is done", "execution id", job.id)
+			// no more chunks - jobGroup is done
+			return -1
+		}
 		// we have new chunks - return the next
 		return job.chunks[job.nextChunkIndex]
 
