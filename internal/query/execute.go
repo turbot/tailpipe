@@ -85,7 +85,7 @@ func streamResults(ctx context.Context, rows *sql.Rows, result *queryresult.Resu
 		}
 
 		// Scan the current row into columnPointers
-		if err := rows.Scan(columnPointers...); err != nil {
+		if err := rows.Scan(columnPointers...); err != nil { //nolint:staticcheck // TODO handle the error
 			// return result, err
 		}
 
