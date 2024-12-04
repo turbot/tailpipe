@@ -36,7 +36,7 @@ func decodeTailpipeConfig(parseCtx *ConfigParseContext) (*config.TailpipeConfig,
 		if !res.Success() || resource == nil {
 			continue
 		}
-		config.Add(resource) //nolint: errcheck
+		config.Add(resource) //nolint: errcheck // TODO find a way to handle this error
 
 	}
 	return config, diags

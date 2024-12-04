@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 
@@ -140,7 +139,7 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 		var pk bool
 		var dfltValue sql.NullString
 		if err := rows.Scan(&cid, &colName, &colType, &notnull, &dfltValue, &pk); err != nil {
-			log.Fatalf("Failed to scan table schema: %v", err)
+			return nil, fmt.Errorf("Failed to scan table schema: %v", err)
 		}
 		expectedType, exists := expectedSchema[colName]
 		if !exists || colType != expectedType {
