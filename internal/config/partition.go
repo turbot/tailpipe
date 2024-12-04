@@ -61,7 +61,7 @@ func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider
 	return nil
 }
 
-func getDefaultConnection(alias string) *TailpipeConnection { // nolint: unused
+func getDefaultConnection(alias string) *TailpipeConnection { //nolint: unused
 	// TODO: think about default connections https://github.com/turbot/tailpipe/issues/31
 	return &TailpipeConnection{
 		Plugin: alias,

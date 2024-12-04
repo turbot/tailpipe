@@ -151,8 +151,8 @@ func getPartitionMatchPatterns(partitions []string, name string, parts []string,
 
 		// so there IS a table with this name - set partitionPattern to *
 		if table == name {
-			tablePattern = name    // nolint:staticcheck
-			partitionPattern = "*" // nolint:staticcheck
+			tablePattern = name    //nolint:staticcheck
+			partitionPattern = "*" //nolint:staticcheck
 			return tablePattern, partitionPattern, nil
 		}
 	}

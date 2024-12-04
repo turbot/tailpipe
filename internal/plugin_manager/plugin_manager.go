@@ -239,7 +239,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 			if err != nil {
 				// TODO #error WHAT TO DO HERE? send error to observers
 
-				fmt.Printf("Error reading from plugin stream: %v\n", err) // nolint:forbidigo
+				fmt.Printf("Error reading from plugin stream: %v\n", err) //nolint:forbidigo
 				return
 			}
 		case protoEvent := <-pluginEventChan:
