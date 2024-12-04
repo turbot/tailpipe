@@ -36,6 +36,8 @@ type fileJobPool[T any] struct {
 	workerCount int
 	// function to create a new worker
 	newWorker newWorkerFunc[T]
+	// helper to provide unique file roots
+	fileRootProvider *FileRootProvider
 }
 
 // create a new fileJobPool[T]
@@ -46,13 +48,14 @@ func newFileJobPool[T any](workers int, sourceDir, destDir string, newWorker new
 		// create worker jobGroup channel
 		// amount of buffering is not crucial as the Writer will also be buffering the jobGroups
 		// just set to twice number of workers
-		jobChan:     make(chan fileJob[T], workers*2),
-		errorChan:   make(chan jobGroupError),
-		closing:     make(chan struct{}),
-		workerCount: workers,
-		sourceDir:   sourceDir,
-		destDir:     destDir,
-		newWorker:   newWorker,
+		jobChan:          make(chan fileJob[T], workers*2),
+		errorChan:        make(chan jobGroupError),
+		closing:          make(chan struct{}),
+		workerCount:      workers,
+		sourceDir:        sourceDir,
+		destDir:          destDir,
+		newWorker:        newWorker,
+		fileRootProvider: &FileRootProvider{},
 	}
 }
 
@@ -63,8 +66,7 @@ func (w *fileJobPool[T]) Start() error {
 	go w.readJobErrors()
 	// start the workers
 	for i := 0; i < w.workerCount; i++ {
-
-		wk, err := w.newWorker(w.jobChan, w.errorChan, w.sourceDir, w.destDir)
+		wk, err := w.newWorker(w.jobChan, w.errorChan, w.sourceDir, w.destDir, w.fileRootProvider)
 		if err != nil {
 			return fmt.Errorf("failed to create worker: %w", err)
 

@@ -10,12 +10,16 @@ import (
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/contexthelpers"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"golang.org/x/sync/semaphore"
 	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -54,45 +58,47 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 		spinner.WithWriter(os.Stdout),
 	)
 
-	fileCount, compactedCount, err := compactDataFiles(ctx, s)
+	// start and stop spinner around the processing
+	s.Start()
+	defer s.Stop()
+	s.Suffix = " compacting parquet files"
 
+	// define func to update the spinner suffix with the number of files compacted
+	var sourceCount, destCount int
+	updateTotals := func(sourceInc, destInc int) {
+		sourceCount += sourceInc
+		destCount += destInc
+		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", sourceCount, destCount)
+	}
+
+	err = compactDataFiles(ctx, updateTotals)
 	if err == nil {
-		fmt.Printf("\nCompacted %d files into %d files\n\n", fileCount, compactedCount)
+		fmt.Printf("\nCompacted %d files into %d files\n\n", sourceCount, destCount)
 	} else if ctx.Err() != nil {
-		fmt.Printf("\nCompaction cancelled: Compacted %d files into %d files\n\n", fileCount, compactedCount)
+		fmt.Printf("\nCompaction cancelled: Compacted %d files into %d files\n\n", sourceCount, destCount)
 		// clear error so we do not display it
 		err = nil
 	}
 }
-func compactDataFiles(ctx context.Context, s *spinner.Spinner) (int, int, error) {
+
+func compactDataFiles(ctx context.Context, updateFunc func(filesCompacted int, compactedCount int)) error {
 	// get the root data directory
 	baseDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	// open a duckdb connection
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
-		return 0, 0, fmt.Errorf("failed to open duckdb connection: %w", err)
+		return fmt.Errorf("failed to open duckdb connection: %w", err)
 	}
 	defer db.Close()
 
-	// start and stop spinner around the processing
-	s.Start()
-	defer s.Stop()
-
-	s.Suffix = " compacting parquet files"
-
 	// traverse the directory and compact files
-	// initialize counters
-	totalFiles := 0
-	compactedCount := 0
-
-	// traverse the directory and compact files
-	err = traverseAndCompact(ctx, db, baseDir, s, &totalFiles, &compactedCount)
-	return totalFiles, compactedCount, err
+	err = traverseAndCompact(ctx, db, baseDir, updateFunc)
+	return err
 
 }
 
-func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, s *spinner.Spinner, totalFiles *int, compactedCount *int) error {
+func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(int, int)) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", dirPath, err)
@@ -105,7 +111,7 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, s *spin
 		if entry.IsDir() {
 			// recursively process subdirectories
 			subDirPath := filepath.Join(dirPath, entry.Name())
-			err := traverseAndCompact(ctx, db, subDirPath, s, totalFiles, compactedCount)
+			err := traverseAndCompact(ctx, db, subDirPath, updateFunc)
 			if err != nil {
 				return err
 			}
@@ -127,20 +133,15 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, s *spin
 		return fmt.Errorf("failed to compact parquet files in %s: %w", dirPath, err)
 	}
 
-	// update totals via pointers
-	*totalFiles += len(parquetFiles)
-	*compactedCount++
-
-	// update the spinner suffix
-	if s != nil {
-		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", *totalFiles, *compactedCount)
-	}
+	// update the totals
+	updateFunc(len(parquetFiles), 1)
 
 	return nil
 }
 
 func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string, inputPath string) (err error) {
-	compactedFileName := fmt.Sprintf("data_%s.parquet", time.Now().Format("20060102150405"))
+	now := time.Now()
+	compactedFileName := fmt.Sprintf("snap_%s_%06d.parquet", now.Format("20060102150405"), now.Nanosecond()/1000)
 
 	// define temp and output file paths
 	tempOutputFile := filepath.Join(inputPath, compactedFileName+".tmp")
@@ -168,22 +169,83 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 		return fmt.Errorf("failed to compact parquet files: %w", err)
 	}
 
+	// rename all parquet files to add a .compacted extension
+	err = renameCompactedFiles(parquetFiles)
+	if err != nil {
+		// delete the temp file
+		_ = os.Remove(tempOutputFile)
+		return err
+	}
+
 	// rename temp file to final output file
 	if err := os.Rename(tempOutputFile, outputFile); err != nil {
 		return fmt.Errorf("failed to rename temp file %s to %s: %w", tempOutputFile, outputFile, err)
 	}
 
-	// delete source parquet files
-	for _, file := range parquetFiles {
-		if err := os.Remove(file); err != nil {
-			// TODO K what to do here - we have deleted some files but not others
-			// just log and continue - try to delete what we can
-			slog.Warn("Failed to delete parquet file", "file", file, "error", err)
-		}
-	}
+	// finally, delete renamed source parquet files
+	err = deleteCompactedFiles(ctx, parquetFiles)
 
 	// TODO dedupe rows ignoring ingestion timestamp and tp_index? https://github.com/turbot/tailpipe/issues/69
 
+	return nil
+}
+
+// renameCompactedFiles renames all parquet files to add a .compacted extension
+func renameCompactedFiles(parquetFiles []string) error {
+
+	var renamedFiles []string
+	for _, file := range parquetFiles {
+		newFile := file + ".compacted"
+		renamedFiles = append(renamedFiles, newFile)
+		if err := os.Rename(file, newFile); err != nil {
+			// try to rename all files we have already renamed back to their original names
+			for _, renamedFile := range renamedFiles {
+				// remove the .compacted extension
+				originalFile := strings.TrimSuffix(renamedFile, ".compacted")
+				if err := os.Rename(renamedFile, originalFile); err != nil {
+					slog.Warn("Failed to rename parquet file back to original name", "file", renamedFile, "error", err)
+				}
+			}
+			return fmt.Errorf("failed to rename parquet file %s to %s: %w", file, newFile, err)
+		}
+	}
+	return nil
+}
+
+// deleteCompactedFiles deletes all parquet files with a .compacted extension
+func deleteCompactedFiles(ctx context.Context, parquetFiles []string) error {
+	const maxConcurrentDeletions = 5
+	sem := semaphore.NewWeighted(int64(maxConcurrentDeletions))
+	var wg sync.WaitGroup
+	var failures int32
+
+	for _, file := range parquetFiles {
+		wg.Add(1)
+		go func(file string) {
+			defer wg.Done()
+
+			// Acquire a slot in the semaphore
+			if err := sem.Acquire(ctx, 1); err != nil {
+				atomic.AddInt32(&failures, 1)
+				return
+			}
+			defer sem.Release(1)
+
+			newFile := file + ".compacted"
+			if err := os.Remove(newFile); err != nil {
+				atomic.AddInt32(&failures, 1)
+			}
+		}(file)
+	}
+
+	// Wait for all deletions to complete
+	wg.Wait()
+
+	// Check failure count atomically
+	failureCount := atomic.LoadInt32(&failures)
+	if failureCount > 0 {
+		return fmt.Errorf("failed to delete %d parquet %s", failureCount, utils.Pluralize("file", int(failureCount)))
+	}
 	return nil
 }
 

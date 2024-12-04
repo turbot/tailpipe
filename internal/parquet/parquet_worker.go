@@ -20,14 +20,16 @@ type parquetConversionWorker struct {
 	fileWorkerBase[JobPayload]
 	// cache partition schemas - key by partition name
 	viewQueries map[string]string
-
-	db *duckDb
+	// helper struct which provides unique filename roots
+	fileRootProvider *FileRootProvider
+	db               *duckDb
 }
 
-func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error) {
+func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (worker, error) {
 	w := &parquetConversionWorker{
-		fileWorkerBase: newWorker(jobChan, errorChan, sourceDir, destDir),
-		viewQueries:    make(map[string]string),
+		fileWorkerBase:   newWorker(jobChan, errorChan, sourceDir, destDir),
+		viewQueries:      make(map[string]string),
+		fileRootProvider: fileRootProvider,
 	}
 
 	// create a new DuckDB instance
@@ -99,8 +101,13 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	// Create a query to write to partitioned parquet files
 	// TODO review to ensure we are safe from SQL injection
 	// https://github.com/turbot/tailpipe/issues/67
+
+	// get a unique file root
+	fileRoot := w.fileRootProvider.GetFileRoot()
+
 	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "data_{uuid}");`, selectQuery,  w.destDir, strings.Join(partitionColumns, ","))
+	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "%s_{i}");`,
+		selectQuery, w.destDir, strings.Join(partitionColumns, ","), fileRoot)
 
 	_, err = w.db.Exec(exportQuery)
 	if err != nil {
