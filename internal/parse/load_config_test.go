@@ -1,13 +1,13 @@
 package parse
 
 // result is a struct to hold the expected result of the test - designed to be easily compared with the actual result
-type result struct {
-	plugin          string
-	partitionType   string
-	partitionConfig string
-	sourceType      string
-	sourceConfig    string
-}
+// type result struct {
+// 	plugin          string
+// 	partitionType   string
+// 	partitionConfig string
+// 	sourceType      string
+// 	sourceConfig    string
+// }
 
 // TODO enable and fix this test
 // func TestGetPartitionConfig(t *testing.T) {
