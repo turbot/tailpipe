@@ -427,7 +427,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 		fmt.Println()
 		error_helpers.ShowError(ctx, err)
 		fmt.Println()
-		cmd.Help()
+		cmd.Help() // nolint:errcheck
 		fmt.Println()
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		return
@@ -574,7 +574,7 @@ func doPluginUpdate(ctx context.Context, bar *uiprogress.Bar, pvr pplugin.Plugin
 			return helpers.Resize(pconstants.InstallMessagePluginLatestAlreadyInstalled, 30)
 		})
 		// set the progress bar to the maximum
-		bar.Set(len(pluginInstallSteps))
+		bar.Set(len(pluginInstallSteps)) // nolint:golint,errcheck
 		report = &pplugin.PluginInstallReport{
 			Plugin:         fmt.Sprintf("%s@%s", pvr.CheckResponse.Name, pvr.CheckResponse.Constraint),
 			Skipped:        true,
@@ -719,8 +719,6 @@ func showPluginListAsTable(pluginList []plugin.PluginListItem) {
 	}
 	querydisplay.ShowWrappedTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
 	fmt.Printf("\n")
-
-	return
 }
 
 func showPluginListAsJSON(pluginList []plugin.PluginListItem) error {
@@ -790,8 +788,6 @@ func showPluginShowAsTable(resp *plugin_manager.DescribeResponse) {
 	//}
 	//querydisplay.ShowWrappedTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
 	//fmt.Printf("\n")
-
-	return
 }
 
 func showPluginShowAsJSON(pluginShow *plugin_manager.DescribeResponse) error {
@@ -824,7 +820,7 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		fmt.Println()
 		error_helpers.ShowError(ctx, fmt.Errorf("you need to provide at least one plugin to uninstall"))
 		fmt.Println()
-		cmd.Help()
+		cmd.Help() // nolint:errcheck
 		fmt.Println()
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		return

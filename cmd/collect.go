@@ -3,8 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"strings"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
@@ -150,8 +151,8 @@ func getPartitionMatchPatterns(partitions []string, name string, parts []string,
 
 		// so there IS a table with this name - set partitionPattern to *
 		if table == name {
-			tablePattern = name
-			partitionPattern = "*"
+			tablePattern = name    // nolint:staticcheck
+			partitionPattern = "*" // nolint:staticcheck
 			return tablePattern, partitionPattern, nil
 		}
 	}
