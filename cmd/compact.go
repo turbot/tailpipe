@@ -12,13 +12,12 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 )
-
-const compactedFileName = "compacted.parquet"
 
 func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -115,11 +114,10 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, s *spin
 			parquetFiles = append(parquetFiles, filepath.Join(dirPath, entry.Name()))
 		}
 	}
-
-	// compact files if there are any `.parquet` files
-	if len(parquetFiles) == 0 || len(parquetFiles) == 1 && strings.Contains(parquetFiles[0], compactedFileName) {
+	if len(parquetFiles) < 2 {
 		return nil
 	}
+
 	log.Printf("processing directory: %s", dirPath)
 	err = compactParquetFiles(ctx, db, parquetFiles, dirPath)
 	if err != nil {
@@ -141,10 +139,20 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, s *spin
 	return nil
 }
 
-func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string, inputPath string) error {
+func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string, inputPath string) (err error) {
+	compactedFileName := fmt.Sprintf("data_%s.parquet", time.Now().Format("20060102150405"))
+
 	// define temp and output file paths
 	tempOutputFile := filepath.Join(inputPath, compactedFileName+".tmp")
 	outputFile := filepath.Join(inputPath, compactedFileName)
+
+	defer func() {
+		if err != nil {
+			slog.Error("Compaction failed", "inputPath", inputPath, "error", err)
+			// delete temp file if it exists
+			_ = os.Remove(tempOutputFile)
+		}
+	}()
 
 	// compact files using duckdb
 	query := fmt.Sprintf(`
@@ -160,17 +168,21 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 		return fmt.Errorf("failed to compact parquet files: %w", err)
 	}
 
-	// delete source parquet files
-	for _, file := range parquetFiles {
-		if err := os.Remove(file); err != nil {
-			return fmt.Errorf("failed to delete parquet file %s: %w", file, err)
-		}
-	}
-
 	// rename temp file to final output file
 	if err := os.Rename(tempOutputFile, outputFile); err != nil {
 		return fmt.Errorf("failed to rename temp file %s to %s: %w", tempOutputFile, outputFile, err)
 	}
+
+	// delete source parquet files
+	for _, file := range parquetFiles {
+		if err := os.Remove(file); err != nil {
+			// TODO K what to do here - we have deleted some files but not others
+			// just log and continue - try to delete what we can
+			slog.Warn("Failed to delete parquet file", "file", file, "error", err)
+		}
+	}
+
+	// TODO dedupe rows ignoring ingestion timestamp and tp_index? https://github.com/turbot/tailpipe/issues/69
 
 	return nil
 }
