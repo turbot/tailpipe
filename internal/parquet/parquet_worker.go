@@ -86,8 +86,8 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	}
 
 	// determine the root based on the partition
-	fileRoot := w.getParquetFileRoot(partition.Table)
-	if err := os.MkdirAll(filepath.Dir(fileRoot), 0755); err != nil {
+
+	if err := os.MkdirAll(filepath.Dir(w.destDir), 0755); err != nil {
 		return fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
@@ -100,7 +100,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	// TODO review to ensure we are safe from SQL injection
 	// https://github.com/turbot/tailpipe/issues/67
 	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, fileRoot, strings.Join(partitionColumns, ","))
+	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "file_{uuid}");`, selectQuery, w.destDir, strings.Join(partitionColumns, ","))
 
 	_, err = w.db.Exec(exportQuery)
 	if err != nil {
@@ -108,12 +108,6 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	}
 
 	return nil
-}
-
-// getParquetFileRoot generates the file root for the parquet file based on the naming convention
-func (w *parquetConversionWorker) getParquetFileRoot(partitionName string) string {
-	// TODO #parquet should this be partition_type/partition_name ot what?
-	return filepath.Join(w.destDir, partitionName)
 }
 
 func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.RowSchema) interface{} {
