@@ -94,7 +94,7 @@ func displayOutput(ctx context.Context, databaseFilePath string, err error) {
 	case pconstants.OutputFormatText:
 		if err == nil {
 			// output the filepath
-			fmt.Println(databaseFilePath)
+			fmt.Println(databaseFilePath) //nolint:forbidigo // ui output
 		} else {
 			error_helpers.ShowError(ctx, err)
 		}
@@ -107,9 +107,9 @@ func displayOutput(ctx context.Context, databaseFilePath string, err error) {
 		}
 		b, err := json.Marshal(res)
 		if err == nil {
-			fmt.Println(string(b))
+			fmt.Println(string(b)) //nolint:forbidigo // ui output
 		} else {
-			fmt.Printf(`{"error": "failed to marshal response: %s"}`, err)
+			fmt.Printf(`{"error": "failed to marshal response: %s"}`, err) //nolint:forbidigo // ui output
 		}
 
 	default:
