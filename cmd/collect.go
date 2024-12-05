@@ -9,11 +9,15 @@ import (
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
+	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"golang.org/x/exp/maps"
+	"strings"
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
@@ -31,7 +35,8 @@ func collectCmd() *cobra.Command {
 		Long:             `Collect logs from configured sources.`,
 	}
 
-	cmdconfig.OnCmd(cmd)
+	cmdconfig.OnCmd(cmd).
+		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection")
 
 	return cmd
 }
@@ -43,9 +48,12 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = helpers.ToError(r)
-			error_helpers.ShowError(ctx, err)
 		}
-		setExitCodeForCollectError(err)
+
+		if err != nil {
+			error_helpers.ShowError(ctx, err)
+			setExitCodeForCollectError(err)
+		}
 	}()
 
 	partitions, err := getPartitionConfig(args)
@@ -76,7 +84,24 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 	}
 
 	// now wait for all partitions to complete and close the collector
-	c.Close(ctx)
+	c.WaitForCompletion(ctx)
+
+	collectStatus := c.StatusString()
+	collectTiming := c.TimingString()
+	var compactStatus string
+
+	// compact the data
+	if err == nil && viper.GetBool(pconstants.ArgCompact) {
+		compactStatus, err = doCompaction(ctx)
+	}
+
+	if err == nil {
+		fmt.Println(collectStatus)
+		if compactStatus != "" {
+			fmt.Println(compactStatus)
+		}
+		fmt.Println(collectTiming)
+	}
 }
 
 func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
