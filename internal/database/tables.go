@@ -14,7 +14,7 @@ import (
 func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
 	tables, err := getDirNames(config.GlobalWorkspaceProfile.GetDataDir())
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get tables: %w", err)
 	}
 
 	// optimisation - it seems the first time DuckDB creates a view which inspects the file system it is slow
@@ -22,8 +22,10 @@ func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
 	createAndDropEmptyView(ctx, db)
 
 	//create a view for each table
-	for _, table := range tables {
+	for _, tableFolder := range tables {
 		// create a view for the table
+		// the tab;le folder is a hive partition folder so will have the format tp_table=table_name
+		table := strings.TrimPrefix(tableFolder, "tp_table=")
 		err = AddTableView(ctx, table, db, filters...)
 		if err != nil {
 			return err
@@ -85,7 +87,10 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 
 	// Execute the query
 	_, err = db.ExecContext(ctx, query)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to create view: %w", err)
+	}
+	return nil
 }
 
 // query the provided parquet path to get the columns

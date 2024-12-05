@@ -80,6 +80,7 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 	var db *sql.DB
 	db, err = sql.Open("duckdb", databaseFilePath)
 	if err != nil {
+		err = fmt.Errorf("failed to open DuckDB connection: %w", err)
 		return
 	}
 	defer db.Close()
