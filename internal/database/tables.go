@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/config"
 	"os"
 	"strings"
+
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
@@ -77,7 +78,7 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	}
 
 	// Step 4: Construct the final query
-	query := fmt.Sprintf(
+	query := fmt.Sprintf( //nolint: gosec // this is a controlled query
 		"CREATE OR REPLACE VIEW %s AS SELECT %s FROM %s%s",
 		tableName, selectClause, parquetPath, filterString,
 	)
@@ -89,7 +90,7 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 
 // query the provided parquet path to get the columns
 func getColumnNames(ctx context.Context, parquetPath string, db *sql.DB) ([]string, error) {
-	columnQuery := fmt.Sprintf("SELECT * FROM %s LIMIT 0", parquetPath)
+	columnQuery := fmt.Sprintf("SELECT * FROM %s LIMIT 0", parquetPath) //nolint: gosec // this is a controlled query
 	rows, err := db.QueryContext(ctx, columnQuery)
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer schema: %w", err)

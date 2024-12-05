@@ -55,9 +55,9 @@ func (e *execution) getTiming() types.TimingCollection {
 	// TODO #timing a nice way of doing this
 	res := e.pluginTiming
 	if e.conversionTiming.Operation != "" {
-		res = append(res, e.conversionTiming)
+		res = append(res, e.conversionTiming) //nolint: govet // TODO Timing contains sync.Mutex, find a nice way of handling this
 	}
-	return append(res, e.executionTiming)
+	return append(res, e.executionTiming) //nolint: govet // TODO Timing contains sync.Mutex, find a nice way of handling this
 }
 
 // set state to complete and set end time for the execution and the conversion timing

@@ -3,7 +3,6 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
-	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -11,6 +10,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	pplugin "github.com/turbot/pipe-fittings/plugin"
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
@@ -127,7 +128,7 @@ func getExecutionId() string {
 	// include the connection name in the call ID
 	// include the connection name in the call ID
 	//- it is used to identify calls to the shared cache service so there is a chance of callId clash
-	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000))
+	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000)) //nolint:gosec // TODO use math/rand/v2 for security
 }
 
 func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, error) {
@@ -236,9 +237,8 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 			return
 		case err := <-errChan:
 			if err != nil {
-				// TODO #error WHAT TO DO HERE? send error to observers
 
-				fmt.Printf("Error reading from plugin stream: %v\n", err)
+				fmt.Printf("Error reading from plugin stream: %v\n", err) //nolint:forbidigo // TODO #error WHAT TO DO HERE? send error to observers
 				return
 			}
 		case protoEvent := <-pluginEventChan:

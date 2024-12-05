@@ -261,18 +261,18 @@ func (c *Collector) Close(ctx context.Context) {
 	// TODO #temp
 	c.spinner.Stop()
 
-	fmt.Println("Collection complete")
-	fmt.Println(c.status.String())
+	fmt.Println("Collection complete") //nolint:forbidigo // ui
+	fmt.Println(c.status.String())     //nolint:forbidigo // ui
 	// print out the execution status
 	for _, e := range c.executions {
 		switch e.state {
 		case ExecutionState_ERROR:
-			fmt.Printf("Execution %s failed: %s\n", e.id, e.error)
+			fmt.Printf("Execution %s failed: %s\n", e.id, e.error) //nolint:forbidigo // ui
 		case ExecutionState_COMPLETE:
-			fmt.Printf("Execution %s complete\n", e.id)
+			fmt.Printf("Execution %s complete\n", e.id) //nolint:forbidigo // ui
 		}
 
-		fmt.Println(e.getTiming().String())
+		fmt.Println(e.getTiming().String()) //nolint:forbidigo // ui
 	}
 }
 

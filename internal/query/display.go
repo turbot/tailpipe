@@ -61,7 +61,7 @@ func getRowsAndColumns(rows *sql.Rows) ([]table.Column, []table.Row, error) {
 	var bubbleColumns []table.Column
 	for _, colName := range columns {
 		bubbleColumns = append(bubbleColumns, table.Column{
-			Title: fmt.Sprintf("%s", colName),
+			Title: colName,
 			Width: 10,
 		})
 	}

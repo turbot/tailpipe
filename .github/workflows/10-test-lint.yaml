@@ -1,0 +1,49 @@
+name: "10 - Test: Linting"
+on:
+  push:
+    tags:
+      - v*
+    branches:
+      - main
+      - "v*"
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  golangci:
+    name: Test Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Tailpipe repository
+        uses: actions/checkout@v4
+        with:
+          path: tailpipe
+
+      - name: Checkout Pipe Fittings Components repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/pipe-fittings
+          path: pipe-fittings
+          ref: tp
+
+      - name: Checkout Tailpipe plugin SDK repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/tailpipe-plugin-sdk
+          path: tailpipe-plugin-sdk
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: develop
+
+      # this is required, check golangci-lint-action docs
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.61.0
+          args: --timeout=10m
+          working-directory: tailpipe
+          skip-cache: true

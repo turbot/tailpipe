@@ -3,8 +3,9 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"strings"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
@@ -138,7 +139,7 @@ func getPartition(partitions []string, name string) ([]string, error) {
 	return res, nil
 }
 
-func getPartitionMatchPatterns(partitions []string, name string, parts []string, tablePattern string, partitionPattern string) (string, string, error) {
+func getPartitionMatchPatterns(partitions []string, name string, parts []string, tablePattern string, partitionPattern string) (string, string, error) { //nolint:staticcheck // TODO is tablePattern required as input?
 	// '*' is not valid for a single part arg
 	if parts[0] == "*" {
 		return "", "", fmt.Errorf("invalid partition name: %s", name)
@@ -150,8 +151,8 @@ func getPartitionMatchPatterns(partitions []string, name string, parts []string,
 
 		// so there IS a table with this name - set partitionPattern to *
 		if table == name {
-			tablePattern = name
-			partitionPattern = "*"
+			tablePattern = name    //nolint:staticcheck // required for this logic
+			partitionPattern = "*" //nolint:staticcheck // required for this logic
 			return tablePattern, partitionPattern, nil
 		}
 	}

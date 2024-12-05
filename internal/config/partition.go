@@ -2,12 +2,13 @@ package config
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"strings"
 )
 
 type Partition struct {
@@ -60,8 +61,7 @@ func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider
 	return nil
 }
 
-func getDefaultConnection(alias string) *TailpipeConnection {
-	// TODO: think about default connections https://github.com/turbot/tailpipe/issues/31
+func getDefaultConnection(alias string) *TailpipeConnection { //nolint: unused // TODO: think about default connections https://github.com/turbot/tailpipe/issues/31
 	return &TailpipeConnection{
 		Plugin: alias,
 	}

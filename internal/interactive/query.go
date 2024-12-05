@@ -7,9 +7,9 @@ import (
 
 func RunInteractiveQuery(ctx context.Context) error {
 	return fmt.Errorf("not implemented quite yet, watch this space")
-	c, err := NewInteractiveClient()
-	if err != nil {
-		return err
-	}
-	return c.Run(ctx)
+	// c, err := NewInteractiveClient()
+	// if err != nil {
+	// 	return err
+	// }
+	// return c.Run(ctx)
 }

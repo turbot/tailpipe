@@ -4,11 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/turbot/go-kit/files"
-	"github.com/turbot/tailpipe/internal/filepaths"
-	"log"
 	"log/slog"
 	"os"
+
+	"github.com/turbot/go-kit/files"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 const (
@@ -122,7 +122,7 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 	// Validate the schema of the collection state table
 	rows, err = db.Query(fmt.Sprintf(`PRAGMA table_info('%s');`, collectionStateTableName))
 	if err != nil {
-		log.Fatalf("Failed to get table schema: %v", err)
+		return nil, fmt.Errorf("failed to get table schema: %w", err)
 	}
 	defer rows.Close()
 
@@ -139,7 +139,7 @@ func (r *Repository) validateDb() (db *sql.DB, err error) {
 		var pk bool
 		var dfltValue sql.NullString
 		if err := rows.Scan(&cid, &colName, &colType, &notnull, &dfltValue, &pk); err != nil {
-			log.Fatalf("Failed to scan table schema: %v", err)
+			return nil, fmt.Errorf("Failed to scan table schema: %v", err)
 		}
 		expectedType, exists := expectedSchema[colName]
 		if !exists || colType != expectedType {
