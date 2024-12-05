@@ -45,7 +45,8 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 	var statusString string
 	statusString, err = doCompaction(ctx)
 	if err == nil {
-		fmt.Println(statusString)
+		fmt.Println(statusString) //nolint:forbidigo // ui
+		fmt.Println(statusString) //nolint:forbidigo // ui
 	}
 
 	// if there was an error, defer block will show

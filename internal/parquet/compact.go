@@ -115,6 +115,9 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 	now := time.Now()
 	compactedFileName := fmt.Sprintf("snap_%s_%06d.parquet", now.Format("20060102150405"), now.Nanosecond()/1000)
 
+	if !filepath.IsAbs(inputPath) {
+		return fmt.Errorf("inputPath must be an absolute path")
+	}
 	// define temp and output file paths
 	tempOutputFile := filepath.Join(inputPath, compactedFileName+".tmp")
 	outputFile := filepath.Join(inputPath, compactedFileName)
@@ -128,6 +131,7 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 	}()
 
 	// compact files using duckdb
+	//nolint:gosec // this is a trusted source
 	query := fmt.Sprintf(`
 		copy (
 			select * from read_parquet('%s/*.parquet')
