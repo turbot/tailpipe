@@ -263,18 +263,18 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 }
 
 func (c *Collector) StatusString() string {
+	// TODO K we need to test multiple executions https://github.com/turbot/tailpipe/issues/71
 	var str strings.Builder
-	str.WriteString("Collection complete\n")
+	str.WriteString("Collection complete.\n\n")
 	str.WriteString(c.status.String())
 	str.WriteString("\n")
 	// print out the execution status
 	for _, e := range c.executions {
-		switch e.state {
-		case ExecutionState_ERROR:
+		if e.state == ExecutionState_ERROR {
 			str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", e.id, e.error))
-		case ExecutionState_COMPLETE:
-			str.WriteString(fmt.Sprintf("Execution %s complete\n", e.id))
 		}
+		//case ExecutionState_COMPLETE:
+		//	str.WriteString(fmt.Sprintf("Execution %s complete\n", e.id))
 	}
 	return str.String()
 }

@@ -3,9 +3,8 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"strings"
-
 	"golang.org/x/exp/maps"
+	"strings"
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
@@ -16,8 +15,6 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
-	"golang.org/x/exp/maps"
-	"strings"
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
@@ -96,11 +93,11 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if err == nil {
-		fmt.Println(collectStatus)
+		fmt.Println(collectStatus) //nolint:forbidigo // ui output
 		if compactStatus != "" {
-			fmt.Println(compactStatus)
+			fmt.Println(compactStatus) //nolint:forbidigo // ui output
 		}
-		fmt.Println(collectTiming)
+		fmt.Println(collectTiming) //nolint:forbidigo //ui output
 	}
 }
 

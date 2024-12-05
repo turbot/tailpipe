@@ -34,5 +34,5 @@ func (s *status) setChunksWritten(chunksWritten int32) {
 }
 
 func (s *status) String() string {
-	return fmt.Sprintf("artifacts discovered: %d, artifacts downloaded: %d, artifacts extracted: %d, rows enriched: %d, rows converted: %d, errors: %d", s.ArtifactsDiscovered, s.ArtifactsDownloaded, s.ArtifactsExtracted, s.RowsEnriched, s.RowsConverted, s.Errors)
+	return fmt.Sprintf("Artifacts discovered: %d. Artifacts downloaded: %d. Artifacts extracted: %d. Rows enriched: %d. Rows converted: %d. Errors: %d.", s.ArtifactsDiscovered, s.ArtifactsDownloaded, s.ArtifactsExtracted, s.RowsEnriched, s.RowsConverted, s.Errors)
 }
