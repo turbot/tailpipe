@@ -6,7 +6,7 @@ import (
 )
 
 // newWorkerFunc is a ctro for new workser - we pass this to the fileJobPool to create new workers
-type newWorkerFunc[T any] func(jobChan chan fileJob[T], errorChan chan jobGroupError, sourceDir, destDir string) (worker, error)
+type newWorkerFunc[T any] func(chan fileJob[T], chan jobGroupError, string, string, *FileRootProvider) (worker, error)
 
 // worker is the interface that all workers must implement
 type worker interface {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -240,8 +241,8 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	}
 }
 
-// Close cleans up the collector - closes the file watcher
-func (c *Collector) Close(ctx context.Context) {
+// WaitForCompletion waits for all collections to complete, then cleans up the collector - closes the file watcher
+func (c *Collector) WaitForCompletion(ctx context.Context) {
 	slog.Info("closing collector - wait for executions to complete")
 
 	// wait for any ongoing partitions to complete
@@ -258,22 +259,34 @@ func (c *Collector) Close(ctx context.Context) {
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
 
-	// TODO #temp
 	c.spinner.Stop()
+}
 
-	fmt.Println("Collection complete") //nolint:forbidigo // ui
-	fmt.Println(c.status.String())     //nolint:forbidigo // ui
+func (c *Collector) StatusString() string {
+	// TODO K we need to test multiple executions https://github.com/turbot/tailpipe/issues/71
+	var str strings.Builder
+	str.WriteString("Collection complete.\n\n")
+	str.WriteString(c.status.String())
+	str.WriteString("\n")
 	// print out the execution status
 	for _, e := range c.executions {
-		switch e.state {
-		case ExecutionState_ERROR:
-			fmt.Printf("Execution %s failed: %s\n", e.id, e.error) //nolint:forbidigo // ui
-		case ExecutionState_COMPLETE:
-			fmt.Printf("Execution %s complete\n", e.id) //nolint:forbidigo // ui
+		if e.state == ExecutionState_ERROR {
+			str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", e.id, e.error))
 		}
-
-		fmt.Println(e.getTiming().String()) //nolint:forbidigo // ui
+		//case ExecutionState_COMPLETE:
+		//	str.WriteString(fmt.Sprintf("Execution %s complete\n", e.id))
 	}
+	return str.String()
+}
+
+func (c *Collector) TimingString() string {
+	var str strings.Builder
+	// print out the execution status
+	for _, e := range c.executions {
+		str.WriteString(e.getTiming().String())
+		str.WriteString("\n")
+	}
+	return str.String()
 }
 
 // waitForExecution waits for the parquet writer to complete the conversion of the JSONL files to parquet

@@ -48,6 +48,10 @@ func connectCmd() *cobra.Command {
 }
 
 func runConnectCmd(cmd *cobra.Command, _ []string) {
+	// TODO K cancellation
+	//ctx, cancel := context.WithCancel(cmd.Context())
+	//contexthelpers.StartCancelHandler(cancel)
+
 	ctx := cmd.Context()
 	var err error
 	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
@@ -55,7 +59,6 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = helpers.ToError(r)
-			error_helpers.ShowError(ctx, err)
 		}
 		setExitCodeForConnectError(err)
 
