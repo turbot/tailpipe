@@ -48,7 +48,7 @@ func connectCmd() *cobra.Command {
 }
 
 func runConnectCmd(cmd *cobra.Command, _ []string) {
-	// TODO K cancellation
+	// TODO K cancellation?
 	//ctx, cancel := context.WithCancel(cmd.Context())
 	//contexthelpers.StartCancelHandler(cancel)
 
@@ -61,9 +61,7 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 			err = helpers.ToError(r)
 		}
 		setExitCodeForConnectError(err)
-
 		displayOutput(ctx, databaseFilePath, err)
-
 	}()
 
 	// first build the filters
