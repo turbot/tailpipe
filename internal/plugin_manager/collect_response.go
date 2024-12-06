@@ -6,13 +6,13 @@ import (
 )
 
 type CollectResponse struct {
-	ExecutionId     string
-	PartitionSchema *schema.RowSchema
+	ExecutionId string
+	Schema      *schema.RowSchema
 }
 
 func CollectResponseFromProto(resp *proto.CollectResponse) *CollectResponse {
 	return &CollectResponse{
-		ExecutionId:     resp.ExecutionId,
-		PartitionSchema: schema.RowSchemaFromProto(resp.Schema),
+		ExecutionId: resp.ExecutionId,
+		Schema:      schema.RowSchemaFromProto(resp.Schema),
 	}
 }

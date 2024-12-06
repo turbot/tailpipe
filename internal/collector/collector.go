@@ -109,7 +109,9 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
-
+	// set the schema on the parquet writer - NOTE: this may be dynamic (i.e. empty) or partial, in which case, we
+	// will need to infer the schema from the first JSONL file
+	c.parquetWriter.SetSchema(collectResponse.Schema)
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
 	e := newExecution(executionId, partition)
@@ -136,7 +138,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	// create jobPayload
 	payload := parquet.JobPayload{
 		Partition:            partition,
-		Schema:               collectResponse.PartitionSchema,
+		SchemaFunc:           c.parquetWriter.GetSchema,
 		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
 	}
 
