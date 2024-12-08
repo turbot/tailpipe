@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
 )
 
 /*
@@ -95,7 +95,7 @@ func (w *Writer) SetSchema(rowSchema *schema.RowSchema) {
 }
 
 func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
-	jsonFileName := plugin.ExecutionIdToFileName(executionId, chunkNumber)
+	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// Open DuckDB connection
