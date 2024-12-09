@@ -94,7 +94,6 @@ func New(ctx context.Context) (*Collector, error) {
 }
 
 func (c *Collector) Collect(ctx context.Context, partition *config.Partition) error {
-	// TODO #temp
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
 
@@ -187,6 +186,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		// set the conversion start time if it hasn't been set
 		execution.conversionTiming.TryStart(constants.TimingConvert)
 
+		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {
 			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}

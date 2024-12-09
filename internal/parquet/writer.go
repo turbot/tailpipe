@@ -6,6 +6,7 @@ import (
 	"log"
 	"log/slog"
 	"path/filepath"
+	"sync"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
@@ -26,6 +27,7 @@ type Writer struct {
 	// the job pool
 	jobPool   *fileJobPool[JobPayload]
 	schema    *schema.RowSchema
+	schemaMut sync.RWMutex
 	sourceDir string
 }
 
@@ -61,15 +63,39 @@ func (w *Writer) StartJobGroup(executionId string, payload JobPayload) error {
 // therefore we only need to pass the chunkNumber number
 func (w *Writer) AddJob(executionID string, chunks ...int) error {
 	// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
-	if w.schema.Mode == schema.ModeDynamic || w.schema.Mode == schema.ModePartial {
-		s, err := w.inferSchema(executionID, chunks[0])
-		if err != nil {
-			return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
-		}
-		w.SetSchema(s)
+	err := w.inferSchemaIfNeeded(executionID, chunks)
+	if err != nil {
+		return err
 	}
 
 	return w.jobPool.AddChunk(executionID, chunks...)
+}
+
+func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
+	//  determine if we have a full schema yet and if not infer from the chunk
+	// NOTE: schema mode will be MUTATED once we infer it
+
+	// first get read lock
+	w.schemaMut.RLock()
+	m := w.schema.Mode
+	w.schemaMut.RUnlock()
+
+	// do we have the full schema?
+	if m != schema.ModeFull {
+		// get write lock
+		w.schemaMut.Lock()
+		// check again if schema is still not full (to avoid race condition)
+		if w.schema.Mode != schema.ModeFull {
+			// do the inference
+			s, err := w.inferSchema(executionID, chunks[0])
+			if err != nil {
+				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
+			}
+			w.SetSchema(s)
+		}
+		w.schemaMut.Unlock()
+	}
+	return nil
 }
 
 func (w *Writer) GetChunksWritten(id string) (int32, error) {
@@ -114,7 +140,10 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 	}
 	defer rows.Close()
 
-	var res = &schema.RowSchema{}
+	var res = &schema.RowSchema{
+		// NOTE: set the mode to full to indicate that we have inferred the schema
+		Mode: schema.ModeFull,
+	}
 
 	// Read the results
 	for rows.Next() {
@@ -138,7 +167,7 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 
 	// now if a partial schema was provided by the plugin override the inferred schema
 	if w.schema.Mode == schema.ModePartial {
-		// build a mpa of the partial schema columns
+		// build a map of the partial schema columns
 		var partialSchemaMap = make(map[string]*schema.ColumnSchema)
 		for _, c := range w.schema.Columns {
 			partialSchemaMap[c.ColumnName] = c
