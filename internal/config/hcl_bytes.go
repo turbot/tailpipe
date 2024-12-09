@@ -9,6 +9,14 @@ type HclBytes struct {
 	Range hcl.Range
 }
 
+func HclBytesForRange(sourceHcl []byte, r hcl.Range) *HclBytes {
+	//  get the bytes for the attribute (note: clone the byte buffer)
+	hclForRange := append([]byte{}, sourceHcl[r.Start.Byte:r.End.Byte]...)
+	return &HclBytes{
+		Hcl:   hclForRange,
+		Range: r,
+	}
+}
 func (h *HclBytes) Merge(other *HclBytes) {
 	if len(h.Hcl) == 0 {
 		h.Hcl = other.Hcl

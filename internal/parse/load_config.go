@@ -120,17 +120,17 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 
 	// load the file data
 	fileData, diags := parse.LoadFileData(configPaths...)
-	if diags.HasErrors() {
+	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 
 	// parse the files
 	body, diags := parse.ParseHclFiles(fileData)
-	if diags.HasErrors() {
+	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 	content, diags := body.Content(parse.TpConfigBlockSchema)
-	if diags.HasErrors() {
+	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
 
@@ -142,11 +142,11 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	// we may need to decode more than once as we gather dependencies as we go
 	// continue decoding as long as the number of unresolved blocks decreases
 	prevUnresolvedBlocks := 0
-	var config *config.TailpipeConfig
+	var tailpipeConfig *config.TailpipeConfig
 
 	for attempts := 0; ; attempts++ {
-		config, diags = decodeTailpipeConfig(parseCtx)
-		if diags.HasErrors() {
+		tailpipeConfig, diags = decodeTailpipeConfig(parseCtx)
+		if diags != nil && diags.HasErrors() {
 			return nil, error_helpers.HclDiagsToError("Failed to decode all config files", diags)
 		}
 
@@ -165,6 +165,6 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 		prevUnresolvedBlocks = unresolvedBlocks
 	}
 
-	return config, nil
+	return tailpipeConfig, nil
 
 }

@@ -29,17 +29,25 @@ func decodeTailpipeConfig(parseCtx *ConfigParseContext) (*config.TailpipeConfig,
 	// now clear dependencies from run context - they will be rebuilt
 	parseCtx.ClearDependencies()
 
-	var config = config.NewTailpipeConfig()
+	var tailpipeConfig = config.NewTailpipeConfig()
 	for _, block := range blocksToDecode {
 		resource, res := decodeBlock(block, parseCtx)
 		diags = append(diags, res.Diags...)
 		if !res.Success() || resource == nil {
 			continue
 		}
-		config.Add(resource) //nolint: errcheck // TODO find a way to handle this error
+		err := tailpipeConfig.Add(resource)
+		if err != nil {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  fmt.Sprintf("failed to add resource %s to config", resource.Name()),
+				Detail:   err.Error(),
+				Subject:  hclhelpers.BlockRangePointer(block),
+			})
+		}
 
 	}
-	return config, diags
+	return tailpipeConfig, diags
 }
 
 func decodeBlock(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.HclResource, *parse.DecodeResult) {
@@ -68,7 +76,8 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	res := parse.NewDecodeResult()
 	// get shell resource
 	resource, diags := resourceForBlock(block)
-	if diags.HasErrors() {
+	if diags != nil && diags.HasErrors() {
+		res.HandleDecodeDiags(diags)
 		return nil, res
 	}
 
@@ -77,8 +86,6 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 		return decodePartition(block, parseCtx, resource)
 	case schema.BlockTypeConnection:
 		return decodeConnection(block, parseCtx, resource)
-	case schema.BlockTypePlugin:
-		return decodePartition(block, parseCtx, resource)
 	default:
 		// TODO what resources does this include?
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
@@ -94,40 +101,38 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	syntaxBody := block.Body.(*hclsyntax.Body)
 
 	attrs := syntaxBody.Attributes
+	blocks := syntaxBody.Blocks
 
-	// TODO K decode plugin block
-	// TODO K use handleUnknownAttributes?
 	var unknownAttrs []*hcl.Attribute
 	for _, attr := range attrs {
 		unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
 	}
 
-	unknown, diags := handleUnknownAttributes(block, parseCtx, unknownAttrs)
-	// now set unknown hcl
-	target.SetConfigHcl(unknown)
-
-	blocks := syntaxBody.Blocks
+	var unknownBlocks []*hcl.Block
 	for _, block := range blocks {
+		// TODO K decode plugin block
 		switch block.Type {
 		case "source":
 			// decode source block
-			source, res := decodeSource(block, parseCtx)
-			res.HandleDecodeDiags(diags)
-			if !diags.HasErrors() {
+			source, sourceRes := decodeSource(block, parseCtx)
+			res.Merge(sourceRes)
+
+			if !res.Diags.HasErrors() {
 				target.Source = *source
 			}
 		default:
-			diagnostics := hcl.Diagnostics{&hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  fmt.Sprintf("unexpected block type %s", block.Type),
-				Subject:  hclhelpers.BlockRangePointer(block.AsHCLBlock()),
-			},
-			}
-			res.HandleDecodeDiags(diagnostics)
+			unknownBlocks = append(unknownBlocks, block.AsHCLBlock())
 		}
 	}
 
+	// convert the unknown blocks and attributes to the raw hcl bytes
+	unknown, diags := handleUnknownHcl(block, parseCtx, unknownAttrs, unknownBlocks)
 	res.HandleDecodeDiags(diags)
+	if !res.Diags.HasErrors() {
+		// now set unknown hcl
+		target.SetConfigHcl(unknown)
+	}
+
 	return target, res
 }
 
@@ -149,24 +154,31 @@ func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource m
 	}
 	hclBytes := &config.HclBytes{}
 	for _, attr := range syntaxBody.Attributes {
-		hclBytes.Merge(extractHclForAttribute(parseCtx.FileData[block.DefRange.Filename], attr.AsHCLAttribute()))
+		hclBytes.Merge(config.HclBytesForRange(parseCtx.FileData[block.DefRange.Filename], attr.Range()))
 	}
 	target.Hcl = hclBytes.Hcl
 	target.HclRange = hclhelpers.NewRange(hclBytes.Range)
 	return target, res
 }
 
-func handleUnknownAttributes(block *hcl.Block, parseCtx *ConfigParseContext, unknownAttrs []*hcl.Attribute) (*config.HclBytes, hcl.Diagnostics) {
+func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAttrs []*hcl.Attribute, unknownBlocks []*hcl.Block) (*config.HclBytes, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
 	unknown := &config.HclBytes{}
 	for _, attr := range unknownAttrs {
 		//	get the hcl bytes for the file
 		hclBytes := parseCtx.FileData[block.DefRange.Filename]
 		// extract the unknown hcl
-		u := extractHclForAttribute(hclBytes, attr)
+		u := config.HclBytesForRange(hclBytes, attr.Range)
 		// if we succeded in extracting the unknown hcl, add it to the list
 		unknown.Merge(u)
-
+	}
+	for _, block := range unknownBlocks {
+		//	get the hcl bytes for the file
+		hclBytes := parseCtx.FileData[block.DefRange.Filename]
+		// extract the unknown hcl
+		u := config.HclBytesForRange(hclBytes, hclhelpers.BlockRangeWithLabels(block))
+		// if we succeded in extracting the unknown hcl, add it to the list
+		unknown.Merge(u)
 	}
 	return unknown, diags
 }
@@ -181,13 +193,18 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 	if len(attrs) == 0 {
 		return source, res
 	}
+	var blocks []*hcl.Block
+	for _, block := range block.Body.Blocks {
+		blocks = append(blocks, block.AsHCLBlock())
+	}
 
 	// special case for connection
 	if connectionAttr, ok := attrs["connection"]; ok {
 		//try to evaluate expression
 		val, diags := connectionAttr.Expr.Value(parseCtx.EvalCtx)
 		res.HandleDecodeDiags(diags)
-		if res.Diags.HasErrors() {
+		// we failed, possibly as result of dependency error - give up for now
+		if !res.Success() {
 			return source, res
 		}
 		var conn = &config.TailpipeConnection{}
@@ -207,7 +224,7 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 	delete(attrs, "connection")
 
 	// get the unknown hcl
-	unknown, diags := handleUnknownAttributes(block.AsHCLBlock(), parseCtx, maps.Values(attrs))
+	unknown, diags := handleUnknownHcl(block.AsHCLBlock(), parseCtx, maps.Values(attrs), blocks)
 	res.HandleDecodeDiags(diags)
 	if res.Diags.HasErrors() {
 		return source, res
