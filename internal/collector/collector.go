@@ -327,6 +327,12 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 			return fmt.Errorf("failed to get chunksWritten written: %w", err)
 		}
 
+		// if no chunks have been written, we are done
+		if e.chunkCount == 0 {
+			slog.Warn("waitForExecution - no chunks to write", "execution", e.id)
+			return nil
+		}
+
 		slog.Debug("waitForExecution", "execution", e.id, "chunk written", chunksWritten, "total chunks", e.chunkCount)
 
 		if chunksWritten < e.chunkCount {
@@ -334,7 +340,6 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 			// not all chunks have been written
 			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
 		}
-
 		// so we are done writing chunks - now update the db to add a view to this data
 		// Open a DuckDB connection
 		db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())

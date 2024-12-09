@@ -132,9 +132,11 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 	defer db.Close()
 
 	// Use DuckDB to describe the schema of the JSONL file
-	query := fmt.Sprintf(`DESCRIBE (SELECT * FROM read_json_auto('%s'));`, filePath)
+	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
 
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, filePath)
+
+	//rows, err := db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
 	}
@@ -147,8 +149,8 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 
 	// Read the results
 	for rows.Next() {
-		var name, dataType, nullability string
-		err := rows.Scan(&name, &dataType, &nullability)
+		var name, dataType string
+		err := rows.Scan(&name, &dataType)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
