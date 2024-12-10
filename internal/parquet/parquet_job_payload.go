@@ -8,6 +8,6 @@ import (
 
 type JobPayload struct {
 	Partition            *config.Partition
-	Schema               *schema.RowSchema
+	SchemaFunc           func() *schema.RowSchema
 	UpdateActiveDuration func(duration time.Duration)
 }

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/turbot/go-kit/helpers"
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 )
@@ -52,11 +52,11 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPaylo
 	startTime := time.Now()
 
 	// build the source filename
-	jsonFileName := plugin.ExecutionIdToFileName(job.groupId, job.chunkNumber)
+	jsonFileName := table.ExecutionIdToFileName(job.groupId, job.chunkNumber)
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
-
+	s := job.payload.SchemaFunc()
 	// process the jobGroup
-	err := w.convertFile(jsonFilePath, job.payload.Partition, job.payload.Schema)
+	err := w.convertFile(jsonFilePath, job.payload.Partition, s)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)

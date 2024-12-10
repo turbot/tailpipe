@@ -3,7 +3,7 @@ package collector
 import (
 	"fmt"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
 )
 
 type status struct {
@@ -29,8 +29,10 @@ func (s *status) SetRowsConverted(rowsConverted int64) {
 }
 
 func (s *status) setChunksWritten(chunksWritten int32) {
+	// TODO K this assumes a fixed chunk size which will not be the case for direct artefact-json conversion tables
+	// https://github.com/turbot/tailpipe/issues/75
 	// convert to rows written (clamp at rows enriched to allow for partial final chunk)
-	s.RowsConverted = min(int64(chunksWritten)*plugin.JSONLChunkSize, s.RowsEnriched)
+	s.RowsConverted = min(int64(chunksWritten)*table.JSONLChunkSize, s.RowsEnriched)
 }
 
 func (s *status) String() string {

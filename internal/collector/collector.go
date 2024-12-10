@@ -94,7 +94,6 @@ func New(ctx context.Context) (*Collector, error) {
 }
 
 func (c *Collector) Collect(ctx context.Context, partition *config.Partition) error {
-	// TODO #temp
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
 
@@ -109,7 +108,9 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
-
+	// set the schema on the parquet writer - NOTE: this may be dynamic (i.e. empty) or partial, in which case, we
+	// will need to infer the schema from the first JSONL file
+	c.parquetWriter.SetSchema(collectResponse.Schema)
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
 	e := newExecution(executionId, partition)
@@ -136,7 +137,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	// create jobPayload
 	payload := parquet.JobPayload{
 		Partition:            partition,
-		Schema:               collectResponse.PartitionSchema,
+		SchemaFunc:           c.parquetWriter.GetSchema,
 		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
 	}
 
@@ -185,6 +186,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		// set the conversion start time if it hasn't been set
 		execution.conversionTiming.TryStart(constants.TimingConvert)
 
+		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {
 			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}
@@ -325,6 +327,12 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 			return fmt.Errorf("failed to get chunksWritten written: %w", err)
 		}
 
+		// if no chunks have been written, we are done
+		if e.chunkCount == 0 {
+			slog.Warn("waitForExecution - no chunks to write", "execution", e.id)
+			return nil
+		}
+
 		slog.Debug("waitForExecution", "execution", e.id, "chunk written", chunksWritten, "total chunks", e.chunkCount)
 
 		if chunksWritten < e.chunkCount {
@@ -332,7 +340,6 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 			// not all chunks have been written
 			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
 		}
-
 		// so we are done writing chunks - now update the db to add a view to this data
 		// Open a DuckDB connection
 		db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
