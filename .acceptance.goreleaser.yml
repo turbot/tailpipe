@@ -15,7 +15,7 @@ builds:
 
     hooks:
       pre:
-        - ./scripts/download_duckdb_extensions.sh linux amd64
+        - ./scripts/download_json_extension.sh linux amd64
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
