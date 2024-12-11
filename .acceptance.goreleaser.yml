@@ -21,11 +21,8 @@ builds:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
 
 archives:
-  - files:
+  - id: homebrew
+    format: tar.gz
+    name_template: "{{ .ProjectName }}.{{ .Os }}.{{ .Arch }}"
+    files:
       - none*
-    format: zip
-    id: homebrew
-    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
-    format_overrides:
-      - goos: linux
-        format: tar.gz
