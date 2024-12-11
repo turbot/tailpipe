@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	pplugin "github.com/turbot/pipe-fittings/plugin"
-
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
+	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/filepaths"
+	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe/internal/config"
@@ -29,9 +29,8 @@ type PluginManager struct {
 	// map of running plugins, keyed by plugin name
 	Plugins     map[string]*PluginClient
 	pluginMutex sync.RWMutex
-	// TODO #design should this be a list?
-	obs        Observer
-	pluginPath string
+	obs         Observer
+	pluginPath  string
 }
 
 func New() *PluginManager {
@@ -84,7 +83,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	collectResponse, err := pluginClient.Collect(req)
 	if err != nil {
-		return nil, fmt.Errorf("error starting collection for plugin %s: %w", pluginClient.Name, err)
+		return nil, fmt.Errorf("error starting collection for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
@@ -237,8 +236,8 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 			return
 		case err := <-errChan:
 			if err != nil {
-
-				fmt.Printf("Error reading from plugin stream: %v\n", err) //nolint:forbidigo // TODO #error WHAT TO DO HERE? send error to observers
+				// TODO #error x WHAT TO DO HERE? send error to observers
+				fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo
 				return
 			}
 		case protoEvent := <-pluginEventChan:
@@ -249,7 +248,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 				return
 			}
 			p.obs.Notify(protoEvent)
-			// TODO #error should we quit if we get an error event?
+			// TODO #error should we stop polling if we get an error event?
 			// if this is a completion event (or other error event???), stop polling
 			if protoEvent.GetCompleteEvent() != nil {
 				close(pluginEventChan)

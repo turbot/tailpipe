@@ -2,7 +2,11 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"time"
+
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
 	"github.com/turbot/go-kit/helpers"
@@ -10,8 +14,6 @@ import (
 	"github.com/turbot/pipe-fittings/contexthelpers"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"os"
-	"time"
 )
 
 func compactCmd() *cobra.Command {
@@ -42,17 +44,30 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 		}
 	}()
 
-	var statusString string
-	statusString, err = doCompaction(ctx)
+	status, err := doCompaction(ctx)
+	if errors.Is(err, context.Canceled) {
+		// clear error so we don't show it with normal error reporting
+		err = nil
+	}
+
 	if err == nil {
-		fmt.Println(statusString) //nolint:forbidigo // ui
+		// print the final status
+		statusString := status.VerboseString()
+		if statusString == "" {
+			statusString = "No files to compact."
+		}
+		if ctx.Err() != nil {
+			// instead show the status as cancelled
+			statusString = "Compaction cancelled: " + statusString
+		}
+
 		fmt.Println(statusString) //nolint:forbidigo // ui
 	}
 
-	// if there was an error, defer block will show
+	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context) (string, error) {
+func doCompaction(ctx context.Context) (parquet.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -66,10 +81,10 @@ func doCompaction(ctx context.Context) (string, error) {
 	s.Suffix = " compacting parquet files"
 
 	// define func to update the spinner suffix with the number of files compacted
-	var total parquet.CompactionCounts
-	updateTotals := func(counts parquet.CompactionCounts) {
-		total.Update(counts)
-		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", total.Source, total.Dest)
+	var status parquet.CompactionStatus
+	updateTotals := func(counts parquet.CompactionStatus) {
+		status.Update(counts)
+		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", status.Source, status.Dest)
 	}
 
 	// do compaction
@@ -77,19 +92,7 @@ func doCompaction(ctx context.Context) (string, error) {
 	err := parquet.CompactDataFiles(ctx, updateTotals)
 	s.Stop()
 
-	if err != nil && ctx.Err() == nil {
-		return "", err
-	}
-
-	// print the final status
-	statusString := total.String()
-	if statusString == "" {
-		statusString = "No files to compact."
-	}
-	if ctx.Err() != nil {
-		statusString = "Compaction cancelled: " + statusString
-	}
-	return statusString, nil
+	return status, err
 }
 
 func setExitCodeForCompactError(err error) {

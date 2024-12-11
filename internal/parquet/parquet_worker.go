@@ -78,6 +78,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	//defer slog.Debug("worker.convertFile - done", "error", err)
 
 	// TODO should this also handle CSV - configure the worker?
+
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
 		return fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
@@ -99,6 +100,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// Create a query to write to partitioned parquet files
+
 	// TODO review to ensure we are safe from SQL injection
 	// https://github.com/turbot/tailpipe/issues/67
 

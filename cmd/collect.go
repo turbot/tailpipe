@@ -1,9 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"strings"
 
 	"github.com/danwakefield/fnmatch"
@@ -15,12 +15,11 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"golang.org/x/exp/maps"
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
 // to reference this use: collect --config-path <path to tailpipe>/internal/parse/test_data/configs --partition aws_cloudtrail_log.cloudtrail_logs
-
-// TODO #errors think about error handling and return codes https://github.com/turbot/tailpipe/issues/35
 
 func collectCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -53,52 +52,44 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	partitions, err := getPartitionConfig(args)
+	err = collectAndCompact(ctx, args)
+	if errors.Is(err, context.Canceled) {
+		// clear error so we don't show it with normal error reporting
+		err = nil
+		fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
+	}
+}
+
+func collectAndCompact(ctx context.Context, args []string) error {
+	// collect the data
+	statusString, timingString, err := doCollect(ctx, args)
 	if err != nil {
-		// TODO #errors think about error handling and return codes https://github.com/turbot/tailpipe/issues/35
-		error_helpers.FailOnError(fmt.Errorf("failed to get partition config: %w", err))
+		return err
 	}
-	if len(partitions) == 0 {
-		error_helpers.FailOnError(fmt.Errorf("no partitions found matching args %s", strings.Join(args, " ")))
-	}
-	// now we have the partitions, we can start collecting
-
-	// create a collector
-	c, err := collector.New(ctx)
-	if err != nil {
-		error_helpers.FailOnError(fmt.Errorf("failed to create collector: %w", err))
-	}
-
-	var errList []error
-	for _, col := range partitions {
-		if err := c.Collect(ctx, col); err != nil {
-			errList = append(errList, err)
-		}
-	}
-	if len(errList) > 0 {
-		err = errors.Join(errList...)
-		error_helpers.FailOnError(fmt.Errorf("collection error: %w", err))
-	}
-
-	// now wait for all partitions to complete and close the collector
-	c.WaitForCompletion(ctx)
-
-	collectStatus := c.StatusString()
-	collectTiming := c.TimingString()
-	var compactStatus string
 
 	// compact the data
-	if err == nil && viper.GetBool(pconstants.ArgCompact) {
-		compactStatus, err = doCompaction(ctx)
+	var compactStatusString string
+	if viper.GetBool(pconstants.ArgCompact) {
+		compactStatus, err := doCompaction(ctx)
+		// if the context was cancelled, we don't want to return an error
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return fmt.Errorf("compaction error: %w", err)
+		}
+		compactStatusString = compactStatus.BriefString()
+		if ctx.Err() != nil {
+			// instead show the status as cancelled
+			compactStatusString = "Compaction cancelled: " + compactStatusString
+		}
 	}
 
-	if err == nil {
-		fmt.Println(collectStatus) //nolint:forbidigo // ui output
-		if compactStatus != "" {
-			fmt.Println(compactStatus) //nolint:forbidigo // ui output
-		}
-		fmt.Println(collectTiming) //nolint:forbidigo //ui output
+	// now show the result
+	fmt.Println(statusString) //nolint:forbidigo // ui output
+	if compactStatusString != "" {
+		fmt.Println(compactStatusString) //nolint:forbidigo // ui output
 	}
+	fmt.Println(timingString) //nolint:forbidigo //ui output
+
+	return nil
 }
 
 func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
@@ -130,6 +121,42 @@ func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
 	}
 
 	return partitions, nil
+}
+
+func doCollect(ctx context.Context, args []string) (string, string, error) {
+	partitions, err := getPartitionConfig(args)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to get partition config: %w", err)
+
+	}
+	if len(partitions) == 0 {
+		return "", "", fmt.Errorf("no partitions found matching args %s", strings.Join(args, " "))
+	}
+
+	// now we have the partitions, we can start collecting
+
+	// create a collector
+	c, err := collector.New(ctx)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create collector: %w", err)
+	}
+	// stop the spinner
+	defer c.Close()
+
+	var errList []error
+	for _, col := range partitions {
+		if err := c.Collect(ctx, col); err != nil {
+			errList = append(errList, err)
+		}
+	}
+	if len(errList) > 0 {
+		err = errors.Join(errList...)
+		return "", "", fmt.Errorf("collection error: %w", err)
+	}
+
+	// now wait for all partitions to complete and close the collector
+	c.WaitForCompletion(ctx)
+	return c.StatusString(), c.TimingString(), nil
 }
 
 func getPartition(partitions []string, name string) ([]string, error) {
