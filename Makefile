@@ -2,10 +2,13 @@ OUTPUT_DIR?=/usr/local/bin
 PACKAGE_NAME          := github.com/turbot/tailpipe
 GOLANG_CROSS_VERSION  ?= v1.23.2
 
+# sed 's/[\/_]/-/g': Replaces both slashes (/) and underscores (_) with hyphens (-).
+# sed 's/[^a-zA-Z0-9.-]//g': Removes any character that isn’t alphanumeric, a dot (.), or a hyphen (-).
+# This is to ensure that the branch name is a valid semver pre-release identifier.
 .PHONY: build
 build:
 	$(eval TIMESTAMP := $(shell date +%Y%m%d%H%M%S))
-	$(eval GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | sed 's/[\/]/-/g'))
+	$(eval GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD | sed 's/[\/_]/-/g' | sed 's/[^a-zA-Z0-9.-]//g'))
 
 	go build -o $(OUTPUT_DIR) -ldflags "-X main.version=0.0.0-dev-$(GIT_BRANCH).$(TIMESTAMP)" .
 
