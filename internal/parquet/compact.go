@@ -16,21 +16,21 @@ import (
 	"time"
 )
 
-type CompactionCounts struct {
+type CompactionStatus struct {
 	Source      int
 	Dest        int
 	Uncompacted int
 }
 
-func (total *CompactionCounts) Update(counts CompactionCounts) {
+func (total *CompactionStatus) Update(counts CompactionStatus) {
 	total.Source += counts.Source
 	total.Dest += counts.Dest
 	total.Uncompacted += counts.Uncompacted
 }
 
-func (total *CompactionCounts) String() string {
+func (total *CompactionStatus) VerboseString() string {
 	if total.Source == 0 && total.Dest == 0 && total.Uncompacted == 0 {
-		return ""
+		return "No files to compact."
 	}
 
 	uncompactedString := ""
@@ -51,7 +51,20 @@ func (total *CompactionCounts) String() string {
 	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
 }
 
-func CompactDataFiles(ctx context.Context, updateFunc func(CompactionCounts)) error {
+func (total *CompactionStatus) BriefString() string {
+	if total.Source == 0 {
+		return ""
+	}
+
+	uncompactedString := ""
+	if total.Uncompacted > 0 {
+		uncompactedString = fmt.Sprintf(" (%d files did not need compaction.)", total.Uncompacted)
+	}
+
+	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
+}
+
+func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus)) error {
 	// get the root data directory
 	baseDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -68,7 +81,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionCounts)) er
 
 }
 
-func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionCounts)) error {
+func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionStatus)) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", dirPath, err)
@@ -93,7 +106,7 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateF
 	numFiles := len(parquetFiles)
 	if numFiles < 2 {
 		// nothing to compact - update the totals anyway so we include uncompacted files in the overall total
-		updateFunc(CompactionCounts{Uncompacted: numFiles})
+		updateFunc(CompactionStatus{Uncompacted: numFiles})
 		return nil
 	}
 
@@ -106,7 +119,7 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateF
 	}
 
 	// update the totals
-	updateFunc(CompactionCounts{Source: len(parquetFiles), Dest: 1})
+	updateFunc(CompactionStatus{Source: len(parquetFiles), Dest: 1})
 
 	return nil
 }

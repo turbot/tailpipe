@@ -93,6 +93,11 @@ func New(ctx context.Context) (*Collector, error) {
 	return c, nil
 }
 
+func (c *Collector) Close() {
+	close(c.Events)
+	c.spinner.Stop()
+}
+
 func (c *Collector) Collect(ctx context.Context, partition *config.Partition) error {
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
@@ -179,7 +184,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.executionsLock.RUnlock()
 		if !ok {
 			slog.Error("Event_ChunkWrittenEvent - execution not found", "execution", executionId)
-			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
+			// TODO #errors x what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 			return
 		}
 
@@ -194,17 +199,16 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		err := c.parquetWriter.AddJob(executionId, chunkNumber)
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
-			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
+			// TODO #errors x what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 		}
 		// store collection state data
 		if len(ev.CollectionState) > 0 {
 			err = c.collectionStateRepository.Save(execution.partition, string(ev.CollectionState))
 			if err != nil {
 				slog.Error("failed to save collection state data", "error", err)
-				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
+				// TODO #errors x what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 			}
 		}
-
 	case *proto.Event_CompleteEvent:
 		ev := e.GetCompleteEvent()
 		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
@@ -231,14 +235,17 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		// TODO #errors what to do with an error here?  https://github.com/turbot/tailpipe/issues/35
+		// TODO #errors x what to do with an error here?  https://github.com/turbot/tailpipe/issues/35
 		go func() {
 			err := c.waitForExecution(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
-				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/35
 			}
 		}()
+
+	case *proto.Event_ErrorEvent:
+		slog.Error("Event_ErrorEvent", "error", e.GetErrorEvent().Error)
+		// TODO #errors x what to do with an error here?
 
 	}
 }
@@ -250,7 +257,7 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 	// wait for any ongoing partitions to complete
 	err := c.waitForExecutions(ctx)
 	if err != nil {
-		// TODO #errors  https://github.com/turbot/tailpipe/issues/35
+		// TODO #errors x https://github.com/turbot/tailpipe/issues/35
 		slog.Error("error waiting for executions to complete", "error", err)
 	}
 
@@ -260,8 +267,6 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
-
-	c.spinner.Stop()
 }
 
 func (c *Collector) StatusString() string {
@@ -273,6 +278,10 @@ func (c *Collector) StatusString() string {
 	// print out the execution status
 	for _, e := range c.executions {
 		if e.state == ExecutionState_ERROR {
+			// if no rows were converted, just show the error
+			if e.totalRows == 0 {
+				str.Reset()
+			}
 			str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", e.id, e.error))
 		}
 		//case ExecutionState_COMPLETE:
@@ -306,19 +315,24 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	e, ok := c.executions[ce.ExecutionId]
 	c.executionsLock.Unlock()
 	if !ok {
-
 		slog.Error("waitForExecution - execution not found", "execution", ce.ExecutionId)
 		return fmt.Errorf("execution not found: %s", ce.ExecutionId)
-
 	}
 	e.totalRows = ce.RowCount
 	e.chunkCount = ce.ChunkCount
 
 	if ce.ChunkCount == 0 && ce.RowCount == 0 {
 		slog.Debug("waitForExecution - no chunks/rows to write", "execution", ce.ExecutionId)
-		e.done(nil)
+		var err error
+		if ce.Error != "" {
+			slog.Warn("waitForExecution - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
+			err = errors.New(ce.Error)
+		}
+		e.done(err)
 		return nil
 	}
+
+	// so there was no error
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		// check chunk count - ask the parquet writer how many chunks have been written

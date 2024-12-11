@@ -45,7 +45,6 @@ func createAndDropEmptyView(ctx context.Context, db *sql.DB) {
 func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...string) error {
 	// TODO #SQL use params to avoid injection
 
-	// TODO #err - this is getting called even if the parquet conversion failed and so this is also failing
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	// Path to the Parquet directory
 	// hive structure is <workspace>/tp_table=<table_name>/tp_partition=<partition>/tp_index=<index>/tp_date=<date>.parquet
