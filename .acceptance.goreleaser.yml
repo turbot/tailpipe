@@ -1,7 +1,6 @@
 before:
   hooks:
     - go mod tidy
-    - go clean -testcache && go test -timeout 30s ./...
 builds:
   - id: tailpipe-linux-amd64
     binary: tailpipe
