@@ -25,6 +25,19 @@ release-dry-run:
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot --parallelism=1
 
+.PHONY: release-acceptance
+release-acceptance:
+	@docker run \
+		--rm \
+		-e CGO_ENABLED=1 \
+		-v /var/run/docker.sock:/var/run/docker.sock \
+		-v `pwd`:/go/src/tailpipe \
+		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
+		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
+		-w /go/src/tailpipe \
+		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+		--clean --skip=validate --skip=publish --snapshot --parallelism=1 --config=.acceptance.goreleaser.yml
+
 .PHONY: release
 release:
 	@if [ ! -f ".release-env" ]; then \

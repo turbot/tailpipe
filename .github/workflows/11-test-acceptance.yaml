@@ -54,7 +54,7 @@ jobs:
       - name: Build
         run: |-
           cd tailpipe
-          make release-dry-run
+          make release-acceptance
 
       - name: Move build artifacts
         run: |
@@ -62,7 +62,6 @@ jobs:
           sudo chown -R runner:docker $GITHUB_WORKSPACE/tailpipe/dist
           mkdir ~/artifacts
           mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.linux.amd64.tar.gz ~/artifacts/linux.tar.gz
-          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.darwin.amd64.tar.gz ~/artifacts/darwin.tar.gz
 
       - name: List Build Artifacts
         run: ls -l ~/artifacts
@@ -72,13 +71,6 @@ jobs:
         with:
           name: build-artifact-linux
           path: ~/artifacts/linux.tar.gz
-          if-no-files-found: error
-
-      - name: Save MacOS Build Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: build-artifact-darwin
-          path: ~/artifacts/darwin.tar.gz
           if-no-files-found: error
 
   # TODO - Update the acceptance test job with the correct test suite
