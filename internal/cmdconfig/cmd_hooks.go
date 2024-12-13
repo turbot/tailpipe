@@ -9,6 +9,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/turbot/go-kit/files"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
@@ -140,6 +141,10 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	if loader.ConfiguredProfile != nil {
 		cmdconfig.SetDefaultsFromConfig(loader.ConfiguredProfile.ConfigMap(cmd))
 	}
+
+	// now env vars have been processed, set the default filepaths.PipesInstallDir
+	filepaths.PipesInstallDir, err = files.Tildefy("~/.pipes")
+	error_helpers.FailOnError(err)
 
 	// load the connection config and HCL options
 	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(ctx)
