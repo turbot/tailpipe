@@ -95,7 +95,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 }
 
 // Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*DescribeResponse, error) {
+func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 

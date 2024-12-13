@@ -700,7 +700,7 @@ func showPluginListOutput(pluginList []plugin.PluginListItem, outputFormat strin
 }
 
 func showPluginListAsTable(pluginList []plugin.PluginListItem) {
-	headers := []string{"Installed", "Version", "Partitions"}
+	headers := []string{"INSTALLED", "VERSION", "PARTITIONS"}
 	var rows [][]string
 	// List installed plugins in a table
 	if len(pluginList) != 0 {
@@ -710,7 +710,7 @@ func showPluginListAsTable(pluginList []plugin.PluginListItem) {
 	} else {
 		rows = append(rows, []string{"", "", ""})
 	}
-	querydisplay.ShowWrappedTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
+	querydisplay.ShowTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
 	fmt.Printf("\n") //nolint:forbidigo // ui output
 }
 
@@ -755,11 +755,10 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-func showPluginShowOutput(resp *plugin_manager.DescribeResponse, outputFormat string) error {
+func showPluginShowOutput(resp *plugin_manager.PluginDescribeResponse, outputFormat string) error {
 	switch outputFormat {
-	case pconstants.OutputFormatTable:
-		showPluginShowAsTable(resp)
-		return nil
+	case pconstants.OutputFormatPretty:
+		return showPluginShowAsPlainText(resp)
 	case pconstants.OutputFormatJSON:
 		return showPluginShowAsJSON(resp)
 	default:
@@ -767,23 +766,32 @@ func showPluginShowOutput(resp *plugin_manager.DescribeResponse, outputFormat st
 	}
 }
 
-func showPluginShowAsTable(resp *plugin_manager.DescribeResponse) {
-	fmt.Println("table output not implemented") //nolint:forbidigo // TODO: implement
-	//headers := []string{"Installed", "Version", "Partitions"}
-	//var rows [][]string
-	//// Show installed plugins in a table
-	//if len(pluginShow) != 0 {
-	//	for _, item := range pluginShow {
-	//		rows = append(rows, []string{item.Name, item.Version.String(), strings.Join(item.Partitions, ",")})
-	//	}
-	//} else {
-	//	rows = append(rows, []string{"", "", ""})
-	//}
-	//querydisplay.ShowWrappedTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
-	//fmt.Printf("\n")
+func showPluginShowAsPlainText(pluginShow *plugin_manager.PluginDescribeResponse) error {
+	// Format TableSchemas
+	var tablesOutput []string
+	for table, schema := range pluginShow.TableSchemas {
+		tablesOutput = append(tablesOutput, fmt.Sprintf("%s: %s", table, schema))
+	}
+	tablesString := strings.Join(tablesOutput, "\n")
+
+	// Format Sources
+	var sourcesOutput []string
+	for source, metadata := range pluginShow.Sources {
+		sourcesOutput = append(sourcesOutput, fmt.Sprintf("%s: %s", source, metadata))
+	}
+	sourcesString := strings.Join(sourcesOutput, "\n")
+
+	// Print the plain output
+	fmt.Println("Tables:")
+	fmt.Println(tablesString)
+	fmt.Println()
+	fmt.Println("Sources:")
+	fmt.Println(sourcesString)
+
+	return nil
 }
 
-func showPluginShowAsJSON(pluginShow *plugin_manager.DescribeResponse) error {
+func showPluginShowAsJSON(pluginShow *plugin_manager.PluginDescribeResponse) error {
 
 	jsonOutput, err := json.MarshalIndent(pluginShow, "", "  ")
 	if err != nil {
