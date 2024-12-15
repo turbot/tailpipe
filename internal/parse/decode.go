@@ -147,6 +147,48 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	return target, res
 }
 
+func decodeTable(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
+	res := parse.NewDecodeResult()
+
+	target := resource.(*config.Table)
+	syntaxBody := block.Body.(*hclsyntax.Body)
+
+	attrs := syntaxBody.Attributes
+	blocks := syntaxBody.Blocks
+
+	var unknownAttrs []*hcl.Attribute
+	for _, attr := range attrs {
+		unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
+	}
+
+	var unknownBlocks []*hcl.Block
+	for _, block := range blocks {
+		// TODO K decode plugin block
+		switch block.Type {
+		case "source":
+			// decode source block
+			source, sourceRes := decodeSource(block, parseCtx)
+			res.Merge(sourceRes)
+
+			if !res.Diags.HasErrors() {
+				target.Source = *source
+			}
+		default:
+			unknownBlocks = append(unknownBlocks, block.AsHCLBlock())
+		}
+	}
+
+	// convert the unknown blocks and attributes to the raw hcl bytes
+	unknown, diags := handleUnknownHcl(block, parseCtx, unknownAttrs, unknownBlocks)
+	res.HandleDecodeDiags(diags)
+	if !res.Diags.HasErrors() {
+		// now set unknown hcl
+		target.SetConfigHcl(unknown)
+	}
+
+	return target, res
+}
+
 func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
 	res := parse.NewDecodeResult()
 
@@ -257,6 +299,7 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 	factoryFuncs := map[string]func(*hcl.Block, string) (modconfig.HclResource, hcl.Diagnostics){
 		schema.BlockTypePartition:  config.NewPartition,
 		schema.BlockTypeConnection: config.NewTailpipeConnection,
+		schema.BlockTypeTable:      config.NewTable,
 		//schema.BlockTypePlugin: config.NewPlugin,
 	}
 
