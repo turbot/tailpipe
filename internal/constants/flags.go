@@ -25,12 +25,14 @@ type PluginOutputMode enumflag.Flag
 
 const (
 	PluginOutputModeJson PluginOutputMode = iota
-	PluginOutputModeTable
+	PluginOutputModePretty
+	PluginOutputModePlain
 )
 
 var PluginOutputModeIds = map[PluginOutputMode][]string{
-	PluginOutputModeJson:  {constants.OutputFormatJSON},
-	PluginOutputModeTable: {constants.OutputFormatTable},
+	PluginOutputModeJson:   {constants.OutputFormatJSON},
+	PluginOutputModePretty: {constants.OutputFormatPretty},
+	PluginOutputModePlain:  {constants.OutputFormatPlain},
 }
 
 type ConnectOutputMode enumflag.Flag
