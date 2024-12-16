@@ -3,6 +3,7 @@ package cmd
 import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
@@ -46,6 +47,7 @@ func rootCommand() *cobra.Command {
 		connectCmd(),
 		pluginCmd(),
 		compactCmd(),
+		sourceCmd(),
 	)
 
 	// disable auto completion generation, since we don't want to support
