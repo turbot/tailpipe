@@ -87,7 +87,7 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 			Version: plugin.LocalPluginVersionString(),
 		}
 		// check if this plugin is recorded in plugin versions
-		installation, _ := pluginVersions[fullPluginName]
+		installation := pluginVersions[fullPluginName]
 
 		// if not a local plugin, get the semver version
 		if !detectLocalPlugin(installation, pluginBinary) {

@@ -32,24 +32,6 @@ import (
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
-type installedPlugin struct {
-	Name       string   `json:"name"`
-	Version    string   `json:"version"`
-	Partitions []string `json:"partitions"`
-}
-
-type failedPlugin struct {
-	Name        string   `json:"name"`
-	Reason      string   `json:"reason"`
-	Connections []string `json:"connections"`
-}
-
-type pluginJsonOutput struct {
-	Installed []installedPlugin `json:"installed"`
-	Failed    []failedPlugin    `json:"failed"`
-	Warnings  []string          `json:"warnings"`
-}
-
 // Plugin management commands
 func pluginCmd() *cobra.Command {
 	var cmd = &cobra.Command{
@@ -729,7 +711,6 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	printer, err := printers.GetPrinter[*display.PluginResource](cmd)
 	error_helpers.FailOnError(err)
 
-
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
@@ -745,7 +726,6 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		return
 	}
-
 
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
