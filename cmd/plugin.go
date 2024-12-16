@@ -37,10 +37,10 @@ func pluginCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "plugin [command]",
 		Args:  cobra.NoArgs,
-		Short: "Steampipe plugin management",
-		Long: `Steampipe plugin management.
+		Short: "Tailpipe plugin management",
+		Long: `Tailpipe plugin management.
 
-Plugins extend Steampipe to work with many different services and providers.
+Plugins extend Tailpipe to work with many different services and providers.
 Find plugins using the public registry at https://hub.tailpipe.io.
 
 Examples:
