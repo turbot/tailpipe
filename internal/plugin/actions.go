@@ -14,7 +14,6 @@ import (
 	"github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/pipe-fittings/statushooks"
 	"github.com/turbot/pipe-fittings/versionfile"
-	"github.com/turbot/tailpipe/internal/config"
 )
 
 // Remove removes an installed plugin
@@ -55,25 +54,20 @@ func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan 
 
 // PluginListItem is a struct representing an item in the list of plugins
 type PluginListItem struct {
-	Name       string
-	Version    *plugin.PluginVersionString
-	Partitions []string
-}
-
-func (i *PluginListItem) setPartitions(partitions map[string]*config.Partition) {
-	for _, partition := range partitions {
-		if partition.Plugin.Plugin == i.Name {
-			i.Partitions = append(i.Partitions, partition.ShortName)
-		}
-	}
+	Name    string
+	Version *plugin.PluginVersionString
 }
 
 // List returns all installed plugins
-func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion) ([]PluginListItem, error) {
+func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion, fileNameFilter *string) ([]PluginListItem, error) {
 	var items []PluginListItem
+	filter := "**/*.plugin"
+	if fileNameFilter != nil {
+		filter = fmt.Sprintf("**/*%s.plugin", *fileNameFilter)
+	}
 
 	pluginBinaries, err := files.ListFilesWithContext(ctx, filepaths.EnsurePluginDir(), &files.ListOptions{
-		Include: []string{"**/*.plugin"},
+		Include: []string{filter},
 		Flags:   files.AllRecursive,
 	})
 	if err != nil {
@@ -93,20 +87,17 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 			Version: plugin.LocalPluginVersionString(),
 		}
 		// check if this plugin is recorded in plugin versions
-		installation, found := pluginVersions[fullPluginName]
-		if found {
-			// if not a local plugin, get the semver version
-			if !detectLocalPlugin(installation, pluginBinary) {
-				item.Version, err = plugin.NewPluginVersionString(installation.Version)
-				if err != nil {
-					return nil, fmt.Errorf("could not evaluate plugin version %s: %w", installation.Version, err)
-				}
-			}
+		installation := pluginVersions[fullPluginName]
 
-			// find the partitions referring to this plugin
-			item.setPartitions(config.GlobalConfig.Partitions)
-			items = append(items, item)
+		// if not a local plugin, get the semver version
+		if !detectLocalPlugin(installation, pluginBinary) {
+			item.Version, err = plugin.NewPluginVersionString(installation.Version)
+			if err != nil {
+				return nil, fmt.Errorf("could not evaluate plugin version %s: %w", installation.Version, err)
+			}
 		}
+
+		items = append(items, item)
 	}
 
 	return items, nil
@@ -115,6 +106,9 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 // detectLocalPlugin returns true if the modTime of the `pluginBinary` is after the installation date as recorded in the installation data
 // this may happen when a plugin is installed from the registry, but is then compiled from source
 func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary string) bool {
+	if installation == nil {
+		return true
+	}
 	installDate, err := time.Parse(time.RFC3339, installation.InstallDate)
 	if err != nil {
 		log.Printf("[WARN] could not parse install date for %s: %s", installation.Name, installation.InstallDate)

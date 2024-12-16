@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
@@ -21,34 +21,16 @@ import (
 	"github.com/turbot/pipe-fittings/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
-	"github.com/turbot/pipe-fittings/querydisplay"
+	"github.com/turbot/pipe-fittings/printers"
 	"github.com/turbot/pipe-fittings/statushooks"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/display"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
-
-type installedPlugin struct {
-	Name       string   `json:"name"`
-	Version    string   `json:"version"`
-	Partitions []string `json:"partitions"`
-}
-
-type failedPlugin struct {
-	Name        string   `json:"name"`
-	Reason      string   `json:"reason"`
-	Connections []string `json:"connections"`
-}
-
-type pluginJsonOutput struct {
-	Installed []installedPlugin `json:"installed"`
-	Failed    []failedPlugin    `json:"failed"`
-	Warnings  []string          `json:"warnings"`
-}
 
 // Plugin management commands
 func pluginCmd() *cobra.Command {
@@ -165,7 +147,7 @@ Examples:
 }
 
 // variable used to assign the output mode flag
-var pluginOutputMode = constants.PluginOutputModeTable
+var pluginOutputMode = constants.PluginOutputModePretty
 
 // List plugins
 func pluginListCmd() *cobra.Command {
@@ -642,166 +624,6 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 	}
 }
 
-func isPluginNotFoundErr(err error) bool {
-	return strings.HasSuffix(err.Error(), "not found")
-}
-
-func resolveUpdatePluginsFromArgs(args []string) ([]string, error) {
-	plugins := append([]string{}, args...)
-
-	if len(plugins) == 0 && !(cmdconfig.Viper().GetBool("all")) {
-		// either plugin name(s) or "all" must be provided
-		return nil, fmt.Errorf("you need to provide at least one plugin to update or use the %s flag", pconstants.Bold("--all"))
-	}
-
-	if len(plugins) > 0 && cmdconfig.Viper().GetBool(pconstants.ArgAll) {
-		// we can't allow update and install at the same time
-		return nil, fmt.Errorf("%s cannot be used when updating specific plugins", pconstants.Bold("`--all`"))
-	}
-
-	return plugins, nil
-}
-
-func runPluginListCmd(cmd *cobra.Command, _ []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
-	outputFormat := viper.GetString(pconstants.ArgOutput)
-
-	utils.LogTime("runPluginListCmd list")
-	defer func() {
-		utils.LogTime("runPluginListCmd end")
-		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
-		}
-	}()
-
-	pluginList, err := plugin.List(ctx, config.GlobalConfig.PluginVersions)
-	error_helpers.FailOnError(err)
-
-	err = showPluginListOutput(pluginList, outputFormat)
-	if err != nil {
-		error_helpers.ShowError(ctx, err)
-	}
-
-}
-
-func showPluginListOutput(pluginList []plugin.PluginListItem, outputFormat string) error {
-	switch outputFormat {
-	case pconstants.OutputFormatTable:
-		showPluginListAsTable(pluginList)
-		return nil
-	case pconstants.OutputFormatJSON:
-		return showPluginListAsJSON(pluginList)
-	default:
-		return errors.New("invalid output format")
-	}
-}
-
-func showPluginListAsTable(pluginList []plugin.PluginListItem) {
-	headers := []string{"INSTALLED", "VERSION", "PARTITIONS"}
-	var rows [][]string
-	// List installed plugins in a table
-	if len(pluginList) != 0 {
-		for _, item := range pluginList {
-			rows = append(rows, []string{item.Name, item.Version.String(), strings.Join(item.Partitions, ",")})
-		}
-	} else {
-		rows = append(rows, []string{"", "", ""})
-	}
-	querydisplay.ShowTable(headers, rows, &querydisplay.ShowWrappedTableOptions{AutoMerge: false})
-	fmt.Printf("\n") //nolint:forbidigo // ui output
-}
-
-func showPluginListAsJSON(pluginList []plugin.PluginListItem) error {
-	output := pluginJsonOutput{}
-
-	for _, item := range pluginList {
-		installed := installedPlugin{
-			Name:       item.Name,
-			Version:    item.Version.String(),
-			Partitions: item.Partitions,
-		}
-		output.Installed = append(output.Installed, installed)
-	}
-
-	jsonOutput, err := json.MarshalIndent(output, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(jsonOutput)) //nolint:forbidigo // ui output
-	fmt.Println()                   //nolint:forbidigo // ui output
-	return nil
-}
-
-func runPluginShowCmd(cmd *cobra.Command, args []string) {
-	// we expect 1 argument, the plugin name
-	if len(args) != 1 {
-		error_helpers.ShowError(cmd.Context(), fmt.Errorf("you need to provide the name of a plugin"))
-		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
-		return
-	}
-
-	// now ask the plugin manager to make a describe call
-	pluginManager := plugin_manager.New()
-	describeResponse, err := pluginManager.Describe(cmd.Context(), args[0])
-	error_helpers.FailOnError(err)
-
-	err = showPluginShowOutput(describeResponse, viper.GetString(pconstants.ArgOutput))
-	if err != nil {
-		error_helpers.ShowError(cmd.Context(), err)
-		exitCode = pconstants.ExitCodePluginListFailure
-	}
-}
-
-func showPluginShowOutput(resp *plugin_manager.PluginDescribeResponse, outputFormat string) error {
-	switch outputFormat {
-	case pconstants.OutputFormatPretty:
-		return showPluginShowAsPlainText(resp)
-	case pconstants.OutputFormatJSON:
-		return showPluginShowAsJSON(resp)
-	default:
-		return errors.New("invalid output format")
-	}
-}
-
-func showPluginShowAsPlainText(pluginShow *plugin_manager.PluginDescribeResponse) error {
-	// Format TableSchemas
-	var tablesOutput []string
-	for table, schema := range pluginShow.TableSchemas {
-		tablesOutput = append(tablesOutput, fmt.Sprintf("%s: %s", table, schema))
-	}
-	tablesString := strings.Join(tablesOutput, "\n")
-
-	// Format Sources
-	var sourcesOutput []string
-	for source, metadata := range pluginShow.Sources {
-		sourcesOutput = append(sourcesOutput, fmt.Sprintf("%s: %s", source, metadata))
-	}
-	sourcesString := strings.Join(sourcesOutput, "\n")
-
-	// Print the plain output
-	fmt.Println("Tables:")
-	fmt.Println(tablesString)
-	fmt.Println()
-	fmt.Println("Sources:")
-	fmt.Println(sourcesString)
-
-	return nil
-}
-
-func showPluginShowAsJSON(pluginShow *plugin_manager.PluginDescribeResponse) error {
-
-	jsonOutput, err := json.MarshalIndent(pluginShow, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(jsonOutput)) //nolint:forbidigo // ui output
-	fmt.Println()                   //nolint:forbidigo // ui output
-	return nil
-}
-
 func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
@@ -843,4 +665,94 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 	}
 	statushooks.Done(ctx)
 	reports.Print()
+}
+
+func isPluginNotFoundErr(err error) bool {
+	return strings.HasSuffix(err.Error(), "not found")
+}
+
+func resolveUpdatePluginsFromArgs(args []string) ([]string, error) {
+	plugins := append([]string{}, args...)
+
+	if len(plugins) == 0 && !(cmdconfig.Viper().GetBool("all")) {
+		// either plugin name(s) or "all" must be provided
+		return nil, fmt.Errorf("you need to provide at least one plugin to update or use the %s flag", pconstants.Bold("--all"))
+	}
+
+	if len(plugins) > 0 && cmdconfig.Viper().GetBool(pconstants.ArgAll) {
+		// we can't allow update and install at the same time
+		return nil, fmt.Errorf("%s cannot be used when updating specific plugins", pconstants.Bold("`--all`"))
+	}
+
+	return plugins, nil
+}
+
+func runPluginListCmd(cmd *cobra.Command, _ []string) {
+	//setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
+	// outputFormat := viper.GetString(pconstants.ArgOutput)
+
+	utils.LogTime("runPluginListCmd list")
+	defer func() {
+		utils.LogTime("runPluginListCmd end")
+		if r := recover(); r != nil {
+			error_helpers.ShowError(ctx, helpers.ToError(r))
+			exitCode = pconstants.ExitCodeUnknownErrorPanic
+		}
+	}()
+
+	// Get Resource(s)
+	resources, err := display.ListPluginResources(ctx)
+	error_helpers.FailOnError(err)
+	printableResource := display.NewPrintableResource(resources)
+
+	// Get Printer
+	printer, err := printers.GetPrinter[*display.PluginResource](cmd)
+	error_helpers.FailOnError(err)
+
+	// Print
+	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
+	if err != nil {
+		error_helpers.ShowError(ctx, err)
+		exitCode = pconstants.ExitCodePluginListFailure
+	}
+}
+
+func runPluginShowCmd(cmd *cobra.Command, args []string) {
+	// we expect 1 argument, the plugin name
+	if len(args) != 1 {
+		error_helpers.ShowError(cmd.Context(), fmt.Errorf("you need to provide the name of a plugin"))
+		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
+		return
+	}
+
+	//setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
+
+	utils.LogTime("runPluginShowCmd start")
+	defer func() {
+		utils.LogTime("runPluginShowCmd end")
+		if r := recover(); r != nil {
+			error_helpers.ShowError(ctx, helpers.ToError(r))
+			exitCode = pconstants.ExitCodeUnknownErrorPanic
+		}
+	}()
+
+	// Get Resource(s)
+	resource, err := display.GetPluginResource(ctx, args[0])
+	error_helpers.FailOnError(err)
+	printableResource := display.NewPrintableResource(resource)
+
+	// Get Printer
+	printer, err := printers.GetPrinter[*display.PluginResource](cmd)
+	error_helpers.FailOnError(err)
+
+	// Print
+	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
+	if err != nil {
+		error_helpers.ShowError(ctx, err)
+		exitCode = pconstants.ExitCodePluginListFailure
+	}
 }

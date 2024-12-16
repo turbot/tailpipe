@@ -12,7 +12,7 @@ import (
 // Does not validate/check of available connections
 func GetInstalledPlugins(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion) (map[string]*plugin.PluginVersionString, error) {
 	installedPlugins := make(map[string]*plugin.PluginVersionString)
-	installedPluginsData, _ := List(ctx, pluginVersions)
+	installedPluginsData, _ := List(ctx, pluginVersions, nil)
 	for _, plugin := range installedPluginsData {
 		org, name, _ := ociinstaller.NewImageRef(plugin.Name).GetOrgNameAndStream()
 		pluginShortName := fmt.Sprintf("%s/%s", org, name)
