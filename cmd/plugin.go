@@ -729,6 +729,7 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	printer, err := printers.GetPrinter[*display.PluginResource](cmd)
 	error_helpers.FailOnError(err)
 
+
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
@@ -744,6 +745,7 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		return
 	}
+
 
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
