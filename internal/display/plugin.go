@@ -63,8 +63,8 @@ func ListPluginResources(ctx context.Context) ([]*PluginResource, error) {
 	return res, nil
 }
 
-func GetPluginResource(ctx context.Context, name string) ([]*PluginResource, error) {
-	var res []*PluginResource
+func GetPluginResource(ctx context.Context, name string) (*PluginResource, error) {
+
 	pluginManager := plugin_manager.New()
 
 	basicInfo, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, &name)
@@ -104,9 +104,7 @@ func GetPluginResource(ctx context.Context, name string) ([]*PluginResource, err
 
 	pr.setPartitions()
 
-	res = append(res, pr)
-
-	return res, nil
+	return pr, nil
 }
 
 func (r *PluginResource) setPartitions() {

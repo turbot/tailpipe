@@ -12,7 +12,7 @@ import (
 
 type SourceResource struct {
 	Name        string `json:"name"`
-	Description string `json:"description"`
+	Description string `json:"description,omitempty"`
 }
 
 // GetShowData implements the printers.Showable interface
@@ -67,10 +67,8 @@ func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 	return res, nil
 }
 
-func GetSourceResource(ctx context.Context, sourceName string) ([]*SourceResource, error) {
+func GetSourceResource(ctx context.Context, sourceName string) (*SourceResource, error) {
 	// TODO: #refactor simplify by obtaining correct plugin and then extracting it's source
-	var res []*SourceResource
-
 	allSources, err := ListSourceResources(ctx)
 	if err != nil {
 		return nil, err
@@ -78,10 +76,9 @@ func GetSourceResource(ctx context.Context, sourceName string) ([]*SourceResourc
 
 	for _, source := range allSources {
 		if source.Name == sourceName {
-			res = append(res, source)
-			return res, nil
+			return source, nil
 		}
 	}
 
-	return res, nil
+	return nil, fmt.Errorf("source %s not found", sourceName)
 }

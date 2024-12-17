@@ -11,7 +11,7 @@ type PrintableResource[T printers.Listable] struct {
 	Items []T
 }
 
-func NewPrintableResource[T printers.Listable](items []T) *PrintableResource[T] {
+func NewPrintableResource[T printers.Listable](items ...T) *PrintableResource[T] {
 	return &PrintableResource[T]{
 		Items: items,
 	}

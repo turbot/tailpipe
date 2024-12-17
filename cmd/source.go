@@ -80,7 +80,7 @@ func runSourceListCmd(cmd *cobra.Command, args []string) {
 	// Get Resources
 	resources, err := display.ListSourceResources(ctx)
 	error_helpers.FailOnError(err)
-	printableResource := display.NewPrintableResource(resources)
+	printableResource := display.NewPrintableResource(resources...)
 
 	// Get Printer
 	printer, err := printers.GetPrinter[*display.SourceResource](cmd)

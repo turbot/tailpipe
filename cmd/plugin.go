@@ -691,7 +691,6 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
-	// outputFormat := viper.GetString(pconstants.ArgOutput)
 
 	utils.LogTime("runPluginListCmd list")
 	defer func() {
@@ -705,7 +704,7 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	// Get Resource(s)
 	resources, err := display.ListPluginResources(ctx)
 	error_helpers.FailOnError(err)
-	printableResource := display.NewPrintableResource(resources)
+	printableResource := display.NewPrintableResource(resources...)
 
 	// Get Printer
 	printer, err := printers.GetPrinter[*display.PluginResource](cmd)
