@@ -1,5 +1,7 @@
 package config
 
+// TODO K rather not do this AND implement GetSubtype
+
 // global map or resources with subtypes - populated at init
 var resourcesWithSubtypes = map[string]struct{}{}
 

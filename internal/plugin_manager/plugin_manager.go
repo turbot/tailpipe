@@ -71,9 +71,10 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
+		TableName:       partition.TableName,
+		PartitionName:   partition.ShortName,
 		ExecutionId:     executionID,
 		OutputPath:      inboxPath,
-		PartitionData:   partition.ToProto(),
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
 	}
@@ -84,13 +85,17 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	if partition.CustomTable != nil {
 		req.CustomTable = partition.CustomTable.ToProto()
-
-		// TODO should this defaulting be done in the plugin???
+		// set the source format
 		// if source defines a format, this overrides the default format
 		if partition.Source.Format != nil {
-			req.CustomTable.SourceFormat = partition.Source.Format.ToProto()
+			req.SourceFormat = partition.Source.Format.ToProto()
+		} else if partition.CustomTable.DefaultSourceFormat != nil {
+			req.SourceFormat = partition.CustomTable.DefaultSourceFormat.ToProto()
 		}
-		// TODO validate we have at least a tp_timestamp mapping
+		if req.SourceFormat == nil {
+			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
+		}
+
 	}
 
 	collectResponse, err := pluginClient.Collect(req)

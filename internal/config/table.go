@@ -19,7 +19,7 @@ type Table struct {
 	modconfig.HclResourceImpl
 
 	// the default format for this table (todo make a map keyed by source name?)
-	DefaultFormat *Format `hcl:"format" cty:"format"`
+	DefaultSourceFormat *Format `hcl:"format" cty:"format"`
 
 	Columns []ColumnSchema `hcl:"column,block" cty:"columns"`
 
@@ -92,8 +92,7 @@ func (t *Table) ToProtoSchema() *proto.Schema {
 
 func (t *Table) ToProto() *proto.Table {
 	return &proto.Table{
-		Name:         t.ShortName,
-		SourceFormat: t.DefaultFormat.ToProto(),
-		Schema:       t.ToProtoSchema(),
+		Name:   t.ShortName,
+		Schema: t.ToProtoSchema(),
 	}
 }

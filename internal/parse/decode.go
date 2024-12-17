@@ -363,7 +363,7 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 
 	name := fmt.Sprintf("%s.%s", block.Type, strings.Join(block.Labels, "."))
 
-	parsedName, err := ParseResourcePropertyPath(name)
+	parsedName, err := ParseResourceName(name)
 	if err != nil {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,

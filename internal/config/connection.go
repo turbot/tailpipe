@@ -10,6 +10,7 @@ import (
 )
 
 func init() {
+	// we have a subtype - register it and ALSO implement GetSubType
 	registerResourceWithSubType(schema.BlockTypeConnection)
 }
 

@@ -7,7 +7,6 @@ import (
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/pipe-fittings/schema"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe/internal/constants"
 	"strings"
 )
@@ -56,14 +55,6 @@ func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl
 	// the unqualified name is the <type>.<name>
 	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.TableName, c.ShortName)
 	return c, nil
-}
-
-func (c *Partition) ToProto() *proto.ConfigData {
-	return &proto.ConfigData{
-		Target: c.Name(),
-		Hcl:    c.Config,
-		Range:  proto.RangeToProto(c.DeclRange),
-	}
 }
 
 func (c *Partition) SetConfigHcl(u *HclBytes) {

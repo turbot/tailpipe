@@ -1,11 +1,18 @@
 package config
 
 import (
+	"fmt"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
+	"github.com/turbot/pipe-fittings/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
+
+func init() {
+	// we have a subtype - register it and ALSO implement GetSubType
+	registerResourceWithSubType(schema.BlockTypeFormat)
+}
 
 type Format struct {
 	modconfig.HclResourceImpl
@@ -14,21 +21,29 @@ type Format struct {
 	Config *HclBytes `cty:"config"`
 }
 
+// GetSubType returns the subtype for the format block (the type).
+// The presence of this function indicates this resource supports 3 part names,
+// which affects how it is stored in the eval context
+func (c *Format) GetSubType() string {
+	return c.Type
+}
+
 func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
-	if len(block.Labels) != 1 {
+	if len(block.Labels) != 2 {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "'format' block requires 1 label: 'name'",
+			Summary:  "'format' block requires 1 labels: 'type' and 'name'",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}}
 	}
 	c := &Format{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
+		Type:            block.Labels[0],
 	}
 
 	// NOTE: as tailpipe does not have the concept of mods, the full name is format.<type>.<name> and
-	// the unqualified name is the short name
-	c.UnqualifiedName = c.ShortName
+	// the unqualified name is <type>.<name>
+	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Type, c.ShortName)
 	return c, nil
 }
 
