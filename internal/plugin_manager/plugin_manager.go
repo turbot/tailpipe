@@ -77,8 +77,20 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
 	}
+
 	if partition.Source.Connection != nil {
 		req.ConnectionData = partition.Source.Connection.ToProto()
+	}
+
+	if partition.CustomTable != nil {
+		req.CustomTable = partition.CustomTable.ToProto()
+
+		// TODO should this defaulting be done in the plugin???
+		// if source defines a format, this overrides the default format
+		if partition.Source.Format != nil {
+			req.CustomTable.SourceFormat = partition.Source.Format.ToProto()
+		}
+		// TODO validate we have at least a tp_timestamp mapping
 	}
 
 	collectResponse, err := pluginClient.Collect(req)

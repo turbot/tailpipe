@@ -3,7 +3,6 @@ package parse
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"strings"
 
@@ -50,32 +49,13 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	}
 	tailpipeConfig.PluginVersions = v.Plugins
 
-	//// load connections and  config from the installation folder -  load all spc files from config directory
-	//include := filehelpers.InclusionsFromExtensions(constants.ConnectionConfigExtensions)
-	//loadOptions := &loadConfigOptions{include: include}
-	//ew = loadConfig(ctx, filepaths.EnsureConfigDir(), tailpipeConfig, loadOptions)
-	//if ew.GetError() != nil {
-	//	return nil, ew
-	//}
-	//// merge the warning from this call
-	//errorsAndWarnings.AddWarning(ew.Warnings...)
-	//
-	//// now validate the config
-	warnings, errors := tailpipeConfig.Validate()
-	logValidationResult(warnings, errors)
+	// initialise all partitions - this populates the Plugin and CustomTable (where set) properties
+	tailpipeConfig.InitPartitions()
+
+	// now validate the config
+	ew.Error = tailpipeConfig.Validate()
 
 	return tailpipeConfig, errorsAndWarnings
-}
-
-func logValidationResult(warnings []string, errors []string) {
-	if len(warnings) > 0 {
-		error_helpers.ShowWarning(buildValidationLogString(warnings, "warning"))
-		log.Printf("[TRACE] %s", buildValidationLogString(warnings, "warning"))
-	}
-	if len(errors) > 0 {
-		error_helpers.ShowWarning(buildValidationLogString(errors, "error"))
-		log.Printf("[TRACE] %s", buildValidationLogString(errors, "error"))
-	}
 }
 
 func buildValidationLogString(items []string, validationType string) string {
@@ -142,10 +122,9 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	// we may need to decode more than once as we gather dependencies as we go
 	// continue decoding as long as the number of unresolved blocks decreases
 	prevUnresolvedBlocks := 0
-	var tailpipeConfig *config.TailpipeConfig
 
 	for attempts := 0; ; attempts++ {
-		tailpipeConfig, diags = decodeTailpipeConfig(parseCtx)
+		diags = decodeTailpipeConfig(parseCtx)
 		if diags != nil && diags.HasErrors() {
 			return nil, error_helpers.HclDiagsToError("Failed to decode all config files", diags)
 		}
@@ -165,6 +144,6 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 		prevUnresolvedBlocks = unresolvedBlocks
 	}
 
-	return tailpipeConfig, nil
+	return parseCtx.tailpipeConfig, nil
 
 }

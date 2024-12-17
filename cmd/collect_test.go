@@ -41,7 +41,7 @@ func Test_getPartition(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "Table name",
+			name: "TableName name",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 				name:       "aws_s3_cloudtrail_log",
@@ -49,7 +49,7 @@ func Test_getPartition(t *testing.T) {
 			want: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 		},
 		{
-			name: "Table name (exists) with wildcard",
+			name: "TableName name (exists) with wildcard",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 				name:       "aws_s3_cloudtrail_log.*",
@@ -57,7 +57,7 @@ func Test_getPartition(t *testing.T) {
 			want: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 		},
 		{
-			name: "Table name (exists) with ?",
+			name: "TableName name (exists) with ?",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 				name:       "aws_s3_cloudtrail_log.p?",
@@ -65,7 +65,7 @@ func Test_getPartition(t *testing.T) {
 			want: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 		},
 		{
-			name: "Table name (exists) with non matching partition wildacard",
+			name: "TableName name (exists) with non matching partition wildacard",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 				name:       "aws_s3_cloudtrail_log.d*?",
@@ -73,7 +73,7 @@ func Test_getPartition(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "Table name (does not exist)) with wildcard",
+			name: "TableName name (does not exist)) with wildcard",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 				name:       "foo.*",
@@ -89,7 +89,7 @@ func Test_getPartition(t *testing.T) {
 			want: []string{"aws_s3_cloudtrail_log.p1", "aws_elb_access_log.p1"},
 		},
 		{
-			name: "Table wildcard, partition short name, exists",
+			name: "TableName wildcard, partition short name, exists",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2", "aws_elb_access_log.p1", "aws_elb_access_log.p2"},
 				name:       "*.p1",
@@ -105,7 +105,7 @@ func Test_getPartition(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "Table wildcard, partition short name, does not exist",
+			name: "TableName wildcard, partition short name, does not exist",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2", "aws_elb_access_log.p1", "aws_elb_access_log.p2"},
 				name:       "*.p3",

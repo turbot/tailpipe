@@ -5,8 +5,13 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
+	"github.com/turbot/pipe-fittings/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
+
+func init() {
+	registerResourceWithSubType(schema.BlockTypeConnection)
+}
 
 type TailpipeConnection struct {
 	modconfig.HclResourceImpl

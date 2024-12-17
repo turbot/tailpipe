@@ -27,7 +27,6 @@ import (
 	"github.com/turbot/pipe-fittings/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/display"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -259,19 +258,20 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	showProgress := viper.GetBool(pconstants.ArgProgress)
 	installReports := make(pplugin.PluginInstallReports, 0, len(plugins))
 
-	if len(plugins) == 0 {
-		if len(config.GlobalConfig.Plugins) == 0 {
-			error_helpers.ShowError(ctx, errors.New("no plugins installed"))
-			exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
-			return
-		}
-
-		// get the list of plugins to install
-		for imageRef := range config.GlobalConfig.Plugins {
-			ref := pociinstaller.NewImageRef(imageRef)
-			plugins = append(plugins, ref.GetFriendlyName())
-		}
-	}
+	// TODO K implement when we have plugin blocks
+	//if len(plugins) == 0 {
+	//	if len(config.GlobalConfig.Plugins) == 0 {
+	//		error_helpers.ShowError(ctx, errors.New("no plugins installed"))
+	//		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
+	//		return
+	//	}
+	//
+	//	// get the list of plugins to install
+	//	for imageRef := range config.GlobalConfig.Plugins {
+	//		ref := pociinstaller.NewImageRef(imageRef)
+	//		plugins = append(plugins, ref.GetFriendlyName())
+	//	}
+	//}
 
 	state, err := installationstate.Load()
 	if err != nil {

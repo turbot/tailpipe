@@ -1,0 +1,41 @@
+
+partition "my_csv_log" "test"{
+    source "file_system"  {
+        paths = ["/Users/kai/tailpipe_data/logs"]
+        extensions = [".csv"]
+
+        # format MUST be set for a custom table
+        format = format.csv_logs
+    }
+}
+
+
+# define a custom table 'my_log'
+table  "my_csv_log" {
+    format = format.csv_default_logs
+    # the partition to use
+    column "tp_timestamp" {
+        source =  "time_local"
+    }
+    column "tp_index" {
+        source = "account_id"
+    }
+    column "org_id" {
+        source = "org"
+    }
+    column "user_id" {
+        type = "varchar"
+    }
+}
+
+
+
+format "csv_default_logs" {
+    type              = "delimited"
+}
+
+format "csv_logs" {
+    type              = "delimited"
+    delimiter         = "\t"
+    header            = false
+}

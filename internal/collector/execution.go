@@ -41,7 +41,7 @@ func newExecution(executionId string, part *config.Partition) *execution {
 	e := &execution{
 		id:        executionId,
 		partition: part.UnqualifiedName,
-		table:     part.Table,
+		table:     part.TableName,
 		plugin:    part.Plugin.Alias,
 		state:     ExecutionState_PENDING,
 	}

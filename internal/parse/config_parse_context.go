@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+	"github.com/turbot/tailpipe/internal/config"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/cty_helpers"
@@ -9,7 +10,6 @@ import (
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/pipe-fittings/schema"
-	"github.com/turbot/tailpipe/internal/config"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -22,6 +22,9 @@ type ConfigParseContext struct {
 
 	// map of all resources, keyed by full name
 	resourceMap map[string]modconfig.HclResource
+
+	// the config which is being generated
+	tailpipeConfig *config.TailpipeConfig
 }
 
 func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceName) (resource modconfig.HclResource, found bool) {
@@ -35,6 +38,7 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 		ParseContext:   parseContext,
 		resourceValues: make(map[string]map[string]cty.Value),
 		resourceMap:    make(map[string]modconfig.HclResource),
+		tailpipeConfig: config.NewTailpipeConfig(),
 	}
 
 	// we load workspaces separately
@@ -151,7 +155,7 @@ func (c *ConfigParseContext) AddDependencies(block *hcl.Block, name string, depe
 	for _, dep := range dependencies {
 		// each dependency object may have multiple traversals
 		for _, t := range dep.Traversals {
-			parsedPropertyPath, err := config.ParseResourcePropertyPath(hclhelpers.TraversalAsString(t))
+			parsedPropertyPath, err := ParseResourcePropertyPath(hclhelpers.TraversalAsString(t))
 
 			if err != nil {
 				diags = append(diags, &hcl.Diagnostic{
@@ -186,7 +190,7 @@ func (c *ConfigParseContext) AddDependencies(block *hcl.Block, name string, depe
 
 // overriden resourceNameFromDependency func
 func resourceNameFromDependency(propertyPath string) (string, error) {
-	parsedPropertyPath, err := config.ParseResourcePropertyPath(propertyPath)
+	parsedPropertyPath, err := ParseResourcePropertyPath(propertyPath)
 
 	if err != nil {
 		return "", err
