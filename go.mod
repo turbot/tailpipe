@@ -27,6 +27,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.1.0
 	github.com/charmbracelet/lipgloss v0.13.0
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
+	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.7.4
 	github.com/gertd/go-pluralize v0.2.1
@@ -37,6 +38,7 @@ require (
 	github.com/rivo/tview v0.0.0-20240818110301-fd649dbf1223
 	github.com/sethvargo/go-retry v0.2.4
 	github.com/thediveo/enumflag/v2 v2.0.5
+	golang.org/x/sync v0.8.0
 	golang.org/x/term v0.25.0
 )
 
@@ -201,7 +203,6 @@ require (
 	golang.org/x/mod v0.21.0 // indirect
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sync v0.8.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect

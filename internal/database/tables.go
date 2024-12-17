@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
@@ -130,4 +131,29 @@ func getDirNames(folderPath string) ([]string, error) {
 	}
 
 	return dirNames, nil
+}
+
+func GetRowCount(ctx context.Context, tableName string) (int64, error) {
+	// Open a DuckDB connection
+	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	if err != nil {
+		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
+	}
+	defer db.Close()
+
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get row count: %w", err)
+	}
+	defer rows.Close()
+
+	var count int64
+	if rows.Next() {
+		err = rows.Scan(&count)
+		if err != nil {
+			return 0, fmt.Errorf("failed to scan row count: %w", err)
+		}
+	}
+	return count, nil
 }
