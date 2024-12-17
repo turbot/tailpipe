@@ -3,6 +3,7 @@ package display
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"path"
 	"path/filepath"
@@ -39,7 +40,7 @@ type TableResourceFiles struct {
 // GetShowData implements the printers.Showable interface
 func (r *TableResource) GetShowData() *printers.RowData {
 
-	statusString := fmt.Sprintf("\n  %d local file(s)\n  %s local", r.Local.FileCount, humanize.Bytes(uint64(r.Local.FileSize)))
+	statusString := fmt.Sprintf("\n  %d local file(s)\n  %s local", r.Local.FileCount, humanizeBytes(r.Local.FileSize))
 
 	res := printers.NewRowData(
 		printers.NewFieldValue("Name", r.Name),
@@ -56,7 +57,7 @@ func (r *TableResource) GetListData() *printers.RowData {
 	res := printers.NewRowData(
 		printers.NewFieldValue("NAME", r.Name),
 		printers.NewFieldValue("PLUGIN", r.Plugin),
-		printers.NewFieldValue("LOCAL SIZE", humanize.Bytes(uint64(r.Local.FileSize))),
+		printers.NewFieldValue("LOCAL SIZE", humanizeBytes(r.Local.FileSize)),
 		printers.NewFieldValue("FILES", humanize.Comma(r.Local.FileCount)),
 		printers.NewFieldValue("ROWS", humanize.Comma(r.Local.RowCount)),
 	)
@@ -208,4 +209,8 @@ func (r *TableResource) getColumnsRenderFunc() printers.RenderFunc {
 
 		return strings.Join(lines, "\n")
 	}
+}
+
+func humanizeBytes(bytes int64) string {
+	return humanize.Bytes(uint64(math.Max(float64(bytes), 0)))
 }

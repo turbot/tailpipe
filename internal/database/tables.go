@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"github.com/turbot/tailpipe/internal/config"
@@ -141,7 +142,11 @@ func GetRowCount(ctx context.Context, tableName string) (int64, error) {
 	}
 	defer db.Close()
 
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName)
+	var tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+	if !tableNameRegex.MatchString(tableName) {
+		return 0, fmt.Errorf("invalid table name")
+	}
+	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get row count: %w", err)
