@@ -67,18 +67,12 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 
 	pluginManager := plugin_manager.New()
 
-	basicInfo, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, &name)
+	desc, err := pluginManager.Describe(ctx, name)
 	if err != nil {
-		return nil, fmt.Errorf("unable to obtain plugin list: %w", err)
+		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
 
-	if len(basicInfo) == 0 {
-		return nil, fmt.Errorf("plugin %s not found", name)
-	}
-
-	p := basicInfo[0]
-
-	desc, err := pluginManager.Describe(ctx, p.Name)
+	installedInfo, err := plugin.Get(ctx, config.GlobalConfig.PluginVersions, desc.Name)
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
@@ -96,8 +90,8 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 	slices.Sort(tables)
 
 	pr := &PluginResource{
-		Name:    p.Name,
-		Version: p.Version.String(),
+		Name:    desc.Name,
+		Version: installedInfo.Version.String(),
 		Sources: sources,
 		Tables:  tables,
 	}

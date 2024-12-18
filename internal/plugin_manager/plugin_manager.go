@@ -109,8 +109,11 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
+	res := DescribeResponseFromProto(describeResponse)
+	res.Name = pluginDef.Plugin
+
 	// just return - the observer is responsible for waiting for completion
-	return DescribeResponseFromProto(describeResponse), nil
+	return res, nil
 }
 
 func (p *PluginManager) Close() {

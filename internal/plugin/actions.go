@@ -52,15 +52,15 @@ func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan 
 	return image, err
 }
 
-// PluginListItem is a struct representing an item in the list of plugins
-type PluginListItem struct {
+// PluginNameVersion is a struct representing an item in the list of plugins
+type PluginNameVersion struct {
 	Name    string
 	Version *plugin.PluginVersionString
 }
 
 // List returns all installed plugins
-func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion, fileNameFilter *string) ([]PluginListItem, error) {
-	var items []PluginListItem
+func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion, fileNameFilter *string) ([]PluginNameVersion, error) {
+	var items []PluginNameVersion
 	filter := "**/*.plugin"
 	if fileNameFilter != nil {
 		filter = fmt.Sprintf("**/*%s.plugin", *fileNameFilter)
@@ -82,7 +82,7 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 			return nil, err
 		}
 		// for local plugin
-		item := PluginListItem{
+		item := PluginNameVersion{
 			Name:    fullPluginName,
 			Version: plugin.LocalPluginVersionString(),
 		}
@@ -101,6 +101,34 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 	}
 
 	return items, nil
+}
+
+// Get returns one installed plugin
+func Get(_ context.Context, pluginVersions map[string]*versionfile.InstalledVersion, imageRef string) (*PluginNameVersion, error) {
+	pluginBinary := filepaths.PluginInstallDir(imageRef)
+
+	parent := filepath.Dir(pluginBinary)
+	fullPluginName, err := filepath.Rel(filepaths.EnsurePluginDir(), parent)
+	if err != nil {
+		return nil, err
+	}
+	// for local plugin
+	item := PluginNameVersion{
+		Name:    fullPluginName,
+		Version: plugin.LocalPluginVersionString(),
+	}
+	// check if this plugin is recorded in plugin versions
+	installation := pluginVersions[fullPluginName]
+
+	// if not a local plugin, get the semver version
+	if !detectLocalPlugin(installation, pluginBinary) {
+		item.Version, err = plugin.NewPluginVersionString(installation.Version)
+		if err != nil {
+			return nil, fmt.Errorf("could not evaluate plugin version %s: %w", installation.Version, err)
+		}
+	}
+
+	return &item, nil
 }
 
 // detectLocalPlugin returns true if the modTime of the `pluginBinary` is after the installation date as recorded in the installation data
