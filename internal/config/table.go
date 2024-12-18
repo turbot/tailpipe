@@ -6,7 +6,6 @@ import (
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
 type ColumnSchema struct {
@@ -23,12 +22,10 @@ type Table struct {
 
 	Columns []ColumnSchema `hcl:"column,block" cty:"columns"`
 
-	// one of :
-	// "full"    - all columns specified - use this to exclude columns
-	// "dynamic" - no columns specified - all will be inferred (this value will never be set as it's implicit if no columns are specified)
-	// "partial" -the default - some columns specified explicitly, the rest will be inferred
-	//
-	Mode schema.Mode `hcl:"mode,optional"`
+	// should we include ALL source fields in addition to any defined columns, or ONLY include the columns defined
+	AutoMapSourceFields bool `hcl:"automap_source_fields,optional" cty:"automap_source_fields"`
+	// should we exclude any source fields from the output (only applicable if automap_source_fields is true)
+	ExcludeSourceFields []string `hcl:"exclude_source_fields,optional" cty:"exclude_source_fields"`
 }
 
 func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -41,43 +38,21 @@ func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Dia
 	}
 	c := &Table{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
+		// default to automap source fields
+		AutoMapSourceFields: true,
 	}
 
 	// NOTE: as tailpipe does not have the concept of mods, the full name is table.<name> and
 	// the unqualified name AND the short name is <name>
 	c.UnqualifiedName = c.ShortName
-	// default the schem mode to partial
-	c.Mode = schema.ModePartial
+
 	return c, nil
-}
-
-func (t *Table) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider) hcl.Diagnostics {
-	// validate the schema mode
-	switch t.Mode {
-	case schema.ModeFull, schema.ModePartial:
-	// ok
-	case schema.ModeDynamic:
-		if len(t.Columns) > 0 {
-			return hcl.Diagnostics{&hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  "table with mode 'dynamic' cannot have any columns specified",
-				Subject:  hclhelpers.BlockRangePointer(block),
-			}}
-		}
-	default:
-		return hcl.Diagnostics{&hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  "table mode must be one of 'full', 'partial' or 'dynamic'",
-			Subject:  hclhelpers.BlockRangePointer(block),
-		}}
-	}
-
-	return nil
 }
 
 func (t *Table) ToProtoSchema() *proto.Schema {
 	var res = &proto.Schema{
-		Mode: string(t.Mode),
+		AutomapSourceFields: t.AutoMapSourceFields,
+		ExcludeSourceFields: t.ExcludeSourceFields,
 	}
 	for _, col := range t.Columns {
 		res.Columns = append(res.Columns, &proto.ColumnSchema{

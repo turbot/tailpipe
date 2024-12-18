@@ -87,6 +87,9 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 		res = decodeConnection(block, parseCtx, resource)
 	case schema.BlockTypeFormat:
 		res = decodeFormat(block, parseCtx, resource)
+	// TODO K to support inline Format we need to manually parse the table block
+	//case schema.BlockTypeTable:
+
 	default:
 		// TODO what resources does this include?
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)

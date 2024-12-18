@@ -83,19 +83,18 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		req.ConnectionData = partition.Source.Connection.ToProto()
 	}
 
+	if partition.Source.Format != nil {
+		req.SourceFormat = partition.Source.Format.ToProto()
+	}
 	if partition.CustomTable != nil {
 		req.CustomTable = partition.CustomTable.ToProto()
-		// set the source format
-		// if source defines a format, this overrides the default format
-		if partition.Source.Format != nil {
-			req.SourceFormat = partition.Source.Format.ToProto()
-		} else if partition.CustomTable.DefaultSourceFormat != nil {
+		// set the default source format if the source dow not provide one
+		if req.SourceFormat == nil && partition.CustomTable.DefaultSourceFormat != nil {
 			req.SourceFormat = partition.CustomTable.DefaultSourceFormat.ToProto()
 		}
 		if req.SourceFormat == nil {
 			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
 		}
-
 	}
 
 	collectResponse, err := pluginClient.Collect(req)

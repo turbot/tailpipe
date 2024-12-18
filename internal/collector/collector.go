@@ -71,10 +71,6 @@ func New(ctx context.Context) (*Collector, error) {
 	}
 
 	c.parquetWriter = parquetWriter
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to create colleciton state path: %w", err)
-	}
 	c.collectionStateRepository, err = collection_state.NewRepository()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collection state repository: %w", err)

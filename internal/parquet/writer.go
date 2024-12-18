@@ -75,17 +75,18 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
+	var autoMap bool
 	// first get read lock
 	w.schemaMut.RLock()
-	m := w.schema.Mode
+	autoMap = w.schema.AutoMapSourceFields
 	w.schemaMut.RUnlock()
 
 	// do we have the full schema?
-	if m != schema.ModeFull {
+	if autoMap {
 		// get write lock
 		w.schemaMut.Lock()
 		// check again if schema is still not full (to avoid race condition)
-		if w.schema.Mode != schema.ModeFull {
+		if w.schema.AutoMapSourceFields {
 			// do the inference
 			s, err := w.inferSchema(executionID, chunks[0])
 			if err != nil {
@@ -147,8 +148,8 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 	defer rows.Close()
 
 	var res = &schema.RowSchema{
-		// NOTE: set the mode to full to indicate that we have inferred the schema
-		Mode: schema.ModeFull,
+		// NOTE: set autoMap to false as we have inferred the schema
+		AutoMapSourceFields: false,
 	}
 
 	// Read the results
@@ -171,18 +172,15 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 		return nil, fmt.Errorf("failed during rows iteration: %w", err)
 	}
 
-	// now if a partial schema was provided by the plugin override the inferred schema
-	if w.schema.Mode == schema.ModePartial {
-		// build a map of the partial schema columns
-		var partialSchemaMap = make(map[string]*schema.ColumnSchema)
-		for _, c := range w.schema.Columns {
-			partialSchemaMap[c.ColumnName] = c
-		}
-		for _, c := range res.Columns {
-			if _, ok := partialSchemaMap[c.ColumnName]; ok {
-				slog.Info("Overriding inferred schema with partial schema", "columnName", c.ColumnName, "type", partialSchemaMap[c.ColumnName].Type)
-				c.Type = partialSchemaMap[c.ColumnName].Type
-			}
+	// build a map of the partial schema columns
+	var partialSchemaMap = make(map[string]*schema.ColumnSchema)
+	for _, c := range w.schema.Columns {
+		partialSchemaMap[c.ColumnName] = c
+	}
+	for _, c := range res.Columns {
+		if _, ok := partialSchemaMap[c.ColumnName]; ok {
+			slog.Info("Overriding inferred schema with partial schema", "columnName", c.ColumnName, "type", partialSchemaMap[c.ColumnName].Type)
+			c.Type = partialSchemaMap[c.ColumnName].Type
 		}
 	}
 
