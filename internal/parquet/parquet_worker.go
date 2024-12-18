@@ -99,6 +99,11 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	// render query
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
+	// if the partition includes a filter, add a WHERE clause
+	// TODO add validation
+	if partition.Filter != "" {
+		selectQuery += fmt.Sprintf(" WHERE %s", partition.Filter)
+	}
 	// Create a query to write to partitioned parquet files
 
 	// TODO review to ensure we are safe from SQL injection

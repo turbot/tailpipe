@@ -105,9 +105,20 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 
 	var unknownAttrs []*hcl.Attribute
 	for _, attr := range attrs {
-		unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
+		switch attr.Name {
+		case "filter":
+			//try to evaluate expression
+			val, diags := attr.Expr.Value(parseCtx.EvalCtx)
+			res.HandleDecodeDiags(diags)
+			// we failed, possibly as result of dependency error - give up for now
+			if !res.Success() {
+				return nil, res
+			}
+			target.Filter = val.AsString()
+		default:
+			unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
+		}
 	}
-
 	var unknownBlocks []*hcl.Block
 	for _, block := range blocks {
 		// TODO K decode plugin block

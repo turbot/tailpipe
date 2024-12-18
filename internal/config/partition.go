@@ -27,6 +27,8 @@ type Partition struct {
 	Config []byte
 	// the config location
 	ConfigRange hcl.Range
+	// an option filter in the format of a SQL where clause
+	Filter string
 }
 
 func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
