@@ -7,6 +7,7 @@ import (
 )
 
 type PluginDescribeResponse struct {
+	Name         string                       `json:"name"`
 	TableSchemas schema.SchemaMap             `json:"tables"`
 	Sources      row_source.SourceMetadataMap `json:"sources"`
 }
