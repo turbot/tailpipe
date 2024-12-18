@@ -3,10 +3,7 @@ package display
 import (
 	"context"
 	"fmt"
-	"math"
-	"os"
 	"path"
-	"path/filepath"
 	"slices"
 	"strings"
 
@@ -16,6 +13,7 @@ import (
 	"github.com/turbot/pipe-fittings/sanitize"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
@@ -32,9 +30,8 @@ type TableResource struct {
 }
 
 type TableResourceFiles struct {
-	FileSize  int64 `json:"file_size"`
-	FileCount int64 `json:"file_count"`
-	RowCount  int64 `json:"row_count,omitempty"`
+	FileMetadata
+	RowCount int64 `json:"row_count,omitempty"`
 }
 
 // GetShowData implements the printers.Showable interface
@@ -170,31 +167,14 @@ func (r *TableResource) setPartitions() {
 }
 
 func (r *TableResource) setFileInformation() error {
-	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-	tableDir := path.Join(dataDir, fmt.Sprintf("tp_table=%s", r.Name))
-
-	// if tableDir doesn't exist - nothing collected so short-circuit
-	if _, err := os.Stat(tableDir); os.IsNotExist(err) {
-		return nil
+	metadata, err := getFileMetadata(path.Join(config.GlobalWorkspaceProfile.GetDataDir(), fmt.Sprintf("%s=%s", constants.TpTable, r.Name)))
+	if err != nil {
+		return fmt.Errorf("unable to obtain file metadata: %w", err)
 	}
 
-	// Get File Information
-	err := filepath.Walk(tableDir, func(filePath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+	r.Local.FileMetadata = metadata
 
-		if info.IsDir() {
-			return nil
-		}
-
-		r.Local.FileCount++
-		r.Local.FileSize += info.Size()
-
-		return nil
-	})
-
-	return err
+	return nil
 }
 
 func (r *TableResource) getColumnsRenderFunc() printers.RenderFunc {
@@ -209,8 +189,4 @@ func (r *TableResource) getColumnsRenderFunc() printers.RenderFunc {
 
 		return strings.Join(lines, "\n")
 	}
-}
-
-func humanizeBytes(bytes int64) string {
-	return humanize.Bytes(uint64(math.Max(float64(bytes), 0)))
 }

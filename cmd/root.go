@@ -49,6 +49,7 @@ func rootCommand() *cobra.Command {
 		compactCmd(),
 		sourceCmd(),
 		tableCmd(),
+		partitionCmd(),
 	)
 
 	// disable auto completion generation, since we don't want to support
