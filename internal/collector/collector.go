@@ -132,9 +132,11 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 			case <-ctx.Done():
 				return
 			case <-time.After(250 * time.Millisecond):
-				chunksWritten, _ := c.parquetWriter.GetChunksWritten(executionId)
-				c.status.setChunksWritten(chunksWritten)
-				c.setStatusMessage()
+				rowCount, err := c.parquetWriter.GetRowCount(executionId)
+				if err == nil {
+					c.status.SetRowsConverted(rowCount)
+					c.setStatusMessage()
+				}
 			}
 		}
 	}()

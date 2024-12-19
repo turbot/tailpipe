@@ -1,11 +1,13 @@
 package parquet
 
 import (
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/turbot/go-kit/helpers"
@@ -13,6 +15,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
@@ -56,11 +59,15 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPaylo
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 	s := job.payload.SchemaFunc()
 	// process the jobGroup
-	err := w.convertFile(jsonFilePath, job.payload.Partition, s)
+	rowCount, err := w.convertFile(jsonFilePath, job.payload.Partition, s)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
 	}
+	// update the row count
+	// increment the completion count
+	// HACK - this breaks the abstraction of file job but will do for now
+	atomic.AddInt64(job.rowCount, rowCount)
 
 	// delete JSON file (configurable?)
 	if err := os.Remove(jsonFilePath); err != nil {
@@ -73,25 +80,23 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPaylo
 }
 
 // convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.RowSchema) (err error) {
+func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.RowSchema) (int64, error) {
 	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "partitionName", partitionName)
 	//defer slog.Debug("worker.convertFile - done", "error", err)
 
-	// TODO should this also handle CSV - configure the worker?
-
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
-		return fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
+		return 0, fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
 	}
 	// verify file exists
 	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
-		return fmt.Errorf("file does not exist: %s", jsonlFilePath)
+		return 0, fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
 	// determine the root based on the partition
 
 	if err := os.MkdirAll(filepath.Dir(w.destDir), 0755); err != nil {
-		return fmt.Errorf("failed to create parquet folder: %w", err)
+		return 0, fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
 	// get the query format - from cache if possible
@@ -116,12 +121,31 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "%s_{i}");`,
 		selectQuery, w.destDir, strings.Join(partitionColumns, ","), fileRoot)
 
-	_, err = w.db.Exec(exportQuery)
+	_, err := w.db.Exec(exportQuery)
 	if err != nil {
-		return fmt.Errorf("failed to export data to parquet: %w", err)
+		return 0, fmt.Errorf("failed to export data to parquet: %w", err)
 	}
 
-	return nil
+	// now read row count
+	return getRowCount(w.db.DB, w.destDir, fileRoot, partition.Table)
+}
+
+func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
+	// Build the query
+	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, database.GetParquetFileGlob(destDir, table, fileRoot))
+
+	// Execute the query and scan the result directly
+	var rowCount int64
+	err := db.QueryRow(rowCountQuery).Scan(&rowCount)
+	if err != nil {
+		// if this is an IO error caused by no files being found, return 0
+		if strings.Contains(err.Error(), "No files found") {
+			return 0, nil
+		}
+		return 0, fmt.Errorf("failed to query row count: %w", err)
+	}
+
+	return rowCount, nil
 }
 
 func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.RowSchema) interface{} {

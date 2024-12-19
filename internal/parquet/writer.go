@@ -102,6 +102,10 @@ func (w *Writer) GetChunksWritten(id string) (int32, error) {
 	return w.jobPool.GetChunksWritten(id)
 }
 
+func (w *Writer) GetRowCount(id string) (int64, error) {
+	return w.jobPool.GetRowCount(id)
+}
+
 func (w *Writer) JobGroupComplete(executionId string) error {
 	return w.jobPool.JobGroupComplete(executionId)
 }

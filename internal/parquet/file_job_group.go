@@ -15,6 +15,8 @@ type jobGroup[T any] struct {
 	nextChunkIndex int
 	// the number of chunks processed so far
 	completionCount int32
+	// the number of rows written
+	rowCount int64
 
 	// sync.Cond to wait for the next chunkNumber to be available
 	chunkWrittenSignal *sync.Cond

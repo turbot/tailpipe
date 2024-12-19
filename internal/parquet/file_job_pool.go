@@ -135,6 +135,16 @@ func (w *fileJobPool[T]) GetChunksWritten(id string) (int32, error) {
 	return job.completionCount, nil
 }
 
+func (w *fileJobPool[T]) GetRowCount(id string) (int64, error) {
+	w.jobGroupLock.RLock()
+	defer w.jobGroupLock.RUnlock()
+	job, ok := w.jobGroups[id]
+	if !ok {
+		return 0, fmt.Errorf("group id %s not found", id)
+	}
+	return job.rowCount, nil
+}
+
 func (w *fileJobPool[T]) JobGroupComplete(id string) error {
 	slog.Info("fileJobPool[T] - jobGroup complete", "execution id", id)
 	// get the jobGroup
@@ -181,6 +191,7 @@ func (w *fileJobPool[T]) scheduler(g *jobGroup[T]) {
 			groupId:         g.id,
 			chunkNumber:     nextChunk,
 			completionCount: &g.completionCount,
+			rowCount:        &g.rowCount,
 			payload:         g.payload,
 		}
 		// TODO #conversion is this costly to do thousands of times?
