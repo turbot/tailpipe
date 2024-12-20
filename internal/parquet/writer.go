@@ -75,7 +75,7 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
-	// TODO K test column exclusions
+	// TODO K test this https://github.com/turbot/tailpipe/issues/108
 
 	// first get read lock
 	w.schemaMut.RLock()
@@ -94,10 +94,7 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 			if err != nil {
 				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
 			}
-			err = w.schema.InitialiseFromInferredSchema(s)
-			if err != nil {
-				return fmt.Errorf("failed to initialise schema from inferred schema: %w", err)
-			}
+			w.schema.InitialiseFromInferredSchema(s)
 		}
 		w.schemaMut.Unlock()
 	}
