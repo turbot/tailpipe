@@ -55,12 +55,16 @@ func (t *Table) ToProtoSchema() *proto.Schema {
 		ExcludeSourceFields: t.ExcludeSourceFields,
 	}
 	for _, col := range t.Columns {
-		res.Columns = append(res.Columns, &proto.ColumnSchema{
-			// source name and column name are the same in this case
+		s := &proto.ColumnSchema{
+			// default source to column name
 			SourceName: col.Name,
 			ColumnName: col.Name,
 			Type:       typehelpers.SafeString(col.Type),
-		})
+		}
+		if col.Source != nil {
+			s.SourceName = *col.Source
+		}
+		res.Columns = append(res.Columns, s)
 	}
 	return res
 }

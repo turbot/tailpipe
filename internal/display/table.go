@@ -158,7 +158,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 
 func (r *TableResource) setPartitions() {
 	for _, partition := range config.GlobalConfig.Partitions {
-		if partition.Table == r.Name {
+		if partition.TableName == r.Name {
 			r.Partitions = append(r.Partitions, partition.ShortName)
 		}
 	}

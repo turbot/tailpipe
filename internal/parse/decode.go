@@ -117,7 +117,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 			res.HandleDecodeDiags(diags)
 			// we failed, possibly as result of dependency error - give up for now
 			if !res.Success() {
-				return nil, res
+				return res
 			}
 			target.Filter = val.AsString()
 		default:

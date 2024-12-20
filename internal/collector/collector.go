@@ -336,7 +336,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 		// check chunk count - ask the parquet writer how many chunks have been written
 		chunksWritten, err := c.parquetWriter.GetChunksWritten(ce.ExecutionId)
 		if err != nil {
-			return fmt.Errorf("failed to get chunksWritten written: %w", err)
+			return err
 		}
 
 		// if no chunks have been written, we are done
@@ -381,7 +381,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 func (c *Collector) waitForExecutions(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
-	retryInterval := 5 * time.Second
+	retryInterval := 500 * time.Millisecond
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		c.executionsLock.RLock()

@@ -75,24 +75,29 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
-	var autoMap bool
+	// TODO K test column exclusions
+
 	// first get read lock
 	w.schemaMut.RLock()
-	autoMap = w.schema.AutoMapSourceFields
+	// is the schema complete (i.e. we are NOT automapping source columns and we have all types defined)
+	complete := w.schema.Complete()
 	w.schemaMut.RUnlock()
 
 	// do we have the full schema?
-	if autoMap {
+	if !complete {
 		// get write lock
 		w.schemaMut.Lock()
-		// check again if schema is still not full (to avoid race condition)
-		if w.schema.AutoMapSourceFields {
+		// check again if schema is still not full (to avoid race condition as another worker may have filled it)
+		if !w.schema.Complete() {
 			// do the inference
 			s, err := w.inferSchema(executionID, chunks[0])
 			if err != nil {
 				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
 			}
-			w.SetSchema(s)
+			err = w.schema.InitialiseFromInferredSchema(s)
+			if err != nil {
+				return fmt.Errorf("failed to initialise schema from inferred schema: %w", err)
+			}
 		}
 		w.schemaMut.Unlock()
 	}
@@ -178,7 +183,7 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 		partialSchemaMap[c.ColumnName] = c
 	}
 	for _, c := range res.Columns {
-		if _, ok := partialSchemaMap[c.ColumnName]; ok {
+		if columnDef, ok := partialSchemaMap[c.ColumnName]; ok && columnDef.Type != "" {
 			slog.Info("Overriding inferred schema with partial schema", "columnName", c.ColumnName, "type", partialSchemaMap[c.ColumnName].Type)
 			c.Type = partialSchemaMap[c.ColumnName].Type
 		}

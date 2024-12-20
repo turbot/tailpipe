@@ -46,7 +46,7 @@ func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 
 	partitions := config.GlobalConfig.Partitions
 	for _, p := range partitions {
-		name := fmt.Sprintf("%s.%s", p.Table, p.ShortName)
+		name := fmt.Sprintf("%s.%s", p.TableName, p.ShortName)
 		partition := &PartitionResource{
 			Name:        name,
 			Description: p.Description,
@@ -67,7 +67,7 @@ func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 func GetPartitionResource(ctx context.Context, partitionName string) (*PartitionResource, error) {
 	partitions := config.GlobalConfig.Partitions
 	for _, p := range partitions {
-		name := fmt.Sprintf("%s.%s", p.Table, p.ShortName)
+		name := fmt.Sprintf("%s.%s", p.TableName, p.ShortName)
 		if name == partitionName {
 			partition := &PartitionResource{
 				Name:        name,
