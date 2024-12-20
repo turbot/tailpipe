@@ -75,7 +75,7 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
-	// TODO K test this https://github.com/turbot/tailpipe/issues/108
+	// TODO #testing test this https://github.com/turbot/tailpipe/issues/108
 
 	// first get read lock
 	w.schemaMut.RLock()
@@ -90,7 +90,7 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 		// check again if schema is still not full (to avoid race condition as another worker may have filled it)
 		if !w.schema.Complete() {
 			// do the inference
-			s, err := w.inferSchema(executionID, chunks[0])
+			s, err := w.inferChunkSchema(executionID, chunks[0])
 			if err != nil {
 				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
 			}
@@ -127,7 +127,7 @@ func (w *Writer) SetSchema(rowSchema *schema.RowSchema) {
 	w.schema = rowSchema
 }
 
-func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
+func (w *Writer) inferChunkSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
@@ -172,18 +172,6 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 	// Check for any errors from iterating over rows
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed during rows iteration: %w", err)
-	}
-
-	// build a map of the partial schema columns
-	var partialSchemaMap = make(map[string]*schema.ColumnSchema)
-	for _, c := range w.schema.Columns {
-		partialSchemaMap[c.ColumnName] = c
-	}
-	for _, c := range res.Columns {
-		if columnDef, ok := partialSchemaMap[c.ColumnName]; ok && columnDef.Type != "" {
-			slog.Info("Overriding inferred schema with partial schema", "columnName", c.ColumnName, "type", partialSchemaMap[c.ColumnName].Type)
-			c.Type = partialSchemaMap[c.ColumnName].Type
-		}
 	}
 
 	return res, nil

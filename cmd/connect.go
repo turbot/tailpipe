@@ -48,7 +48,7 @@ func connectCmd() *cobra.Command {
 }
 
 func runConnectCmd(cmd *cobra.Command, _ []string) {
-	// TODO K cancellation?
+	// TODO #cancellation cancellation? https://github.com/turbot/tailpipe/issues/88
 	//ctx, cancel := context.WithCancel(cmd.Context())
 	//contexthelpers.StartCancelHandler(cancel)
 

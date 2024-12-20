@@ -182,7 +182,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.executionsLock.RUnlock()
 		if !ok {
 			slog.Error("Event_ChunkWrittenEvent - execution not found", "execution", executionId)
-			// TODO #errors x what to do with this error?  https://github.com/turbot/tailpipe/issues/35
+			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
 			return
 		}
 
@@ -197,14 +197,14 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		err := c.parquetWriter.AddJob(executionId, chunkNumber)
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
-			// TODO #errors x what to do with this error?  https://github.com/turbot/tailpipe/issues/35
+			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
 		}
 		// store collection state data
 		if len(ev.CollectionState) > 0 {
 			err = c.collectionStateRepository.Save(execution.partition, string(ev.CollectionState))
 			if err != nil {
 				slog.Error("failed to save collection state data", "error", err)
-				// TODO #errors x what to do with this error?  https://github.com/turbot/tailpipe/issues/35
+				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
 			}
 		}
 	case *proto.Event_CompleteEvent:
@@ -233,7 +233,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		// TODO #errors x what to do with an error here?  https://github.com/turbot/tailpipe/issues/35
+		// TODO #errors x what to do with an error here?  https://github.com/turbot/tailpipe/issues/106
 		go func() {
 			err := c.waitForExecution(ctx, completedEvent)
 			if err != nil {
@@ -242,9 +242,17 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		}()
 
 	case *proto.Event_ErrorEvent:
-		slog.Error("Event_ErrorEvent", "error", e.GetErrorEvent().Error)
-		// TODO #errors x what to do with an error here?
-
+		ev := e.GetErrorEvent()
+		// set the error on the execution
+		c.executionsLock.RLock()
+		execution, ok := c.executions[ev.ExecutionId]
+		c.executionsLock.RUnlock()
+		if !ok {
+			slog.Error("Error Event - execution not found", "execution", ev.ExecutionId)
+			return
+		}
+		execution.state = ExecutionState_ERROR
+		execution.error = fmt.Errorf("plugin error: %s", ev.Error)
 	}
 }
 
@@ -255,7 +263,7 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 	// wait for any ongoing partitions to complete
 	err := c.waitForExecutions(ctx)
 	if err != nil {
-		// TODO #errors x https://github.com/turbot/tailpipe/issues/35
+		// TODO #errors x https://github.com/turbot/tailpipe/issues/106
 		slog.Error("error waiting for executions to complete", "error", err)
 	}
 
@@ -268,7 +276,7 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 }
 
 func (c *Collector) StatusString() string {
-	// TODO K we need to test multiple executions https://github.com/turbot/tailpipe/issues/71
+	// TODO #testing we need to test multiple executions https://github.com/turbot/tailpipe/issues/71
 	var str strings.Builder
 	str.WriteString("Collection complete.\n\n")
 	str.WriteString(c.status.String())

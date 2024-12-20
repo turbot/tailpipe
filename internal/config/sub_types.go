@@ -1,6 +1,6 @@
 package config
 
-// TODO K rather not do this AND implement GetSubtype
+// TODO rather not do this AND implement GetSubtype https://github.com/turbot/tailpipe/issues/110
 
 // global map or resources with subtypes - populated at init
 var resourcesWithSubtypes = map[string]struct{}{}

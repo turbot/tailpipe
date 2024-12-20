@@ -135,8 +135,8 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 func (p *PluginManager) Close() {
 	p.pluginMutex.Lock()
 	defer p.pluginMutex.Unlock()
-	for _, plugin := range p.Plugins {
-		plugin.client.Kill()
+	for _, plg := range p.Plugins {
+		plg.client.Kill()
 	}
 }
 
@@ -211,7 +211,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 	return client, nil
 }
 
-// TODO #config #debug this is currently provided for debug purposes only
+// for debug purposes, plugin start timeout can be set via an environment variable TAILPIPE_PLUGIN_START_TIMEOUT
 func (p *PluginManager) getPluginStartTimeout() time.Duration {
 	pluginStartTimeout := 1 * time.Minute
 	pluginStartTimeoutStr := os.Getenv(constants.EnvPluginStartTimeout)
