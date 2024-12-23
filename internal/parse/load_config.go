@@ -3,10 +3,6 @@ package parse
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"strings"
-
-	"github.com/gertd/go-pluralize"
 	"github.com/spf13/viper"
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
@@ -17,6 +13,7 @@ import (
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
+	"log/slog"
 )
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
@@ -56,22 +53,6 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	ew.Error = tailpipeConfig.Validate()
 
 	return tailpipeConfig, errorsAndWarnings
-}
-
-func buildValidationLogString(items []string, validationType string) string {
-	count := len(items)
-	if count == 0 {
-		return ""
-	}
-	var str strings.Builder
-	str.WriteString(fmt.Sprintf("connection config has has %d validation %s:\n",
-		count,
-		pluralize.NewClient().Pluralize(validationType, count, false),
-	))
-	for _, w := range items {
-		str.WriteString(fmt.Sprintf("\t %s\n", w))
-	}
-	return str.String()
 }
 
 // load config from the given folder and update TailpipeConfig
