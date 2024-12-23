@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
-
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
@@ -187,7 +185,7 @@ func pluginShowCmd() *cobra.Command {
 		Use:  "show <plugin>",
 		Args: cobra.ExactArgs(1),
 		Run:  runPluginShowCmd,
-		// TODO improve descriptions
+		// TODO improve descriptions https://github.com/turbot/tailpipe/issues/111
 		Short: "Show details of a plugin",
 		Long:  `Show the tables and sources provided by plugin`,
 	}
@@ -258,20 +256,6 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	plugins := append([]string{}, args...)
 	showProgress := viper.GetBool(pconstants.ArgProgress)
 	installReports := make(pplugin.PluginInstallReports, 0, len(plugins))
-
-	if len(plugins) == 0 {
-		if len(config.GlobalConfig.Plugins) == 0 {
-			error_helpers.ShowError(ctx, errors.New("no plugins installed"))
-			exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
-			return
-		}
-
-		// get the list of plugins to install
-		for imageRef := range config.GlobalConfig.Plugins {
-			ref := pociinstaller.NewImageRef(imageRef)
-			plugins = append(plugins, ref.GetFriendlyName())
-		}
-	}
 
 	state, err := installationstate.Load()
 	if err != nil {

@@ -2,11 +2,12 @@ package config
 
 import (
 	"github.com/hashicorp/hcl/v2"
+	"github.com/turbot/pipe-fittings/hclhelpers"
 )
 
 type HclBytes struct {
-	Hcl   []byte
-	Range hcl.Range
+	Hcl   []byte           `cty:"hcl"`
+	Range hclhelpers.Range `cty:"range"`
 }
 
 func HclBytesForRange(sourceHcl []byte, r hcl.Range) *HclBytes {
@@ -14,7 +15,7 @@ func HclBytesForRange(sourceHcl []byte, r hcl.Range) *HclBytes {
 	hclForRange := append([]byte{}, sourceHcl[r.Start.Byte:r.End.Byte]...)
 	return &HclBytes{
 		Hcl:   hclForRange,
-		Range: r,
+		Range: hclhelpers.NewRange(r),
 	}
 }
 func (h *HclBytes) Merge(other *HclBytes) {

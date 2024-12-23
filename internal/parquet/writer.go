@@ -75,23 +75,26 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
+	// TODO #testing test this https://github.com/turbot/tailpipe/issues/108
+
 	// first get read lock
 	w.schemaMut.RLock()
-	m := w.schema.Mode
+	// is the schema complete (i.e. we are NOT automapping source columns and we have all types defined)
+	complete := w.schema.Complete()
 	w.schemaMut.RUnlock()
 
 	// do we have the full schema?
-	if m != schema.ModeFull {
+	if !complete {
 		// get write lock
 		w.schemaMut.Lock()
-		// check again if schema is still not full (to avoid race condition)
-		if w.schema.Mode != schema.ModeFull {
+		// check again if schema is still not full (to avoid race condition as another worker may have filled it)
+		if !w.schema.Complete() {
 			// do the inference
-			s, err := w.inferSchema(executionID, chunks[0])
+			s, err := w.inferChunkSchema(executionID, chunks[0])
 			if err != nil {
 				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
 			}
-			w.SetSchema(s)
+			w.schema.InitialiseFromInferredSchema(s)
 		}
 		w.schemaMut.Unlock()
 	}
@@ -124,7 +127,7 @@ func (w *Writer) SetSchema(rowSchema *schema.RowSchema) {
 	w.schema = rowSchema
 }
 
-func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
+func (w *Writer) inferChunkSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
@@ -147,8 +150,8 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 	defer rows.Close()
 
 	var res = &schema.RowSchema{
-		// NOTE: set the mode to full to indicate that we have inferred the schema
-		Mode: schema.ModeFull,
+		// NOTE: set autoMap to false as we have inferred the schema
+		AutoMapSourceFields: false,
 	}
 
 	// Read the results
@@ -169,21 +172,6 @@ func (w *Writer) inferSchema(executionId string, chunkNumber int) (*schema.RowSc
 	// Check for any errors from iterating over rows
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("failed during rows iteration: %w", err)
-	}
-
-	// now if a partial schema was provided by the plugin override the inferred schema
-	if w.schema.Mode == schema.ModePartial {
-		// build a map of the partial schema columns
-		var partialSchemaMap = make(map[string]*schema.ColumnSchema)
-		for _, c := range w.schema.Columns {
-			partialSchemaMap[c.ColumnName] = c
-		}
-		for _, c := range res.Columns {
-			if _, ok := partialSchemaMap[c.ColumnName]; ok {
-				slog.Info("Overriding inferred schema with partial schema", "columnName", c.ColumnName, "type", partialSchemaMap[c.ColumnName].Type)
-				c.Type = partialSchemaMap[c.ColumnName].Type
-			}
-		}
 	}
 
 	return res, nil

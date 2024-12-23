@@ -1,6 +1,7 @@
 package parquet
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -131,6 +132,14 @@ func (w *fileJobPool[T]) GetChunksWritten(id string) (int32, error) {
 	job, ok := w.jobGroups[id]
 	if !ok {
 		return 0, fmt.Errorf("group id %s not found", id)
+	}
+
+	// if the job has errors, terminate
+	job.errorsLock.RLock()
+	defer job.errorsLock.RUnlock()
+	if len(job.errors) > 0 {
+		err := errors.Join(job.errors...)
+		return -1, fmt.Errorf("job group %s has errors: %w", id, err)
 	}
 	return job.completionCount, nil
 }

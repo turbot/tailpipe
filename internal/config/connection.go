@@ -5,12 +5,17 @@ import (
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
+	"github.com/turbot/pipe-fittings/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
+func init() {
+	// we have a subtype - register it and ALSO implement GetSubType
+	registerResourceWithSubType(schema.BlockTypeConnection)
+}
+
 type TailpipeConnection struct {
 	modconfig.HclResourceImpl
-	// TODO K rather than plugin - just use a name which in practice will be the plugin name
 	Plugin string `cty:"plugin"`
 	Hcl    []byte `cty:"hcl"`
 	// the hcl range for the connection - use our version so we can sty serialise it

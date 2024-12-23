@@ -71,14 +71,30 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
+		TableName:       partition.TableName,
+		PartitionName:   partition.ShortName,
 		ExecutionId:     executionID,
 		OutputPath:      inboxPath,
-		PartitionData:   partition.ToProto(),
 		SourceData:      partition.Source.ToProto(),
 		CollectionState: []byte(collectionState),
 	}
+
 	if partition.Source.Connection != nil {
 		req.ConnectionData = partition.Source.Connection.ToProto()
+	}
+
+	if partition.Source.Format != nil {
+		req.SourceFormat = partition.Source.Format.ToProto()
+	}
+	if partition.CustomTable != nil {
+		req.CustomTable = partition.CustomTable.ToProto()
+		// set the default source format if the source dow not provide one
+		if req.SourceFormat == nil && partition.CustomTable.DefaultSourceFormat != nil {
+			req.SourceFormat = partition.CustomTable.DefaultSourceFormat.ToProto()
+		}
+		if req.SourceFormat == nil {
+			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
+		}
 	}
 
 	collectResponse, err := pluginClient.Collect(req)
@@ -119,8 +135,8 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 func (p *PluginManager) Close() {
 	p.pluginMutex.Lock()
 	defer p.pluginMutex.Unlock()
-	for _, plugin := range p.Plugins {
-		plugin.client.Kill()
+	for _, plg := range p.Plugins {
+		plg.client.Kill()
 	}
 }
 
@@ -195,7 +211,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 	return client, nil
 }
 
-// TODO #config #debug this is currently provided for debug purposes only
+// for debug purposes, plugin start timeout can be set via an environment variable TAILPIPE_PLUGIN_START_TIMEOUT
 func (p *PluginManager) getPluginStartTimeout() time.Duration {
 	pluginStartTimeout := 1 * time.Minute
 	pluginStartTimeoutStr := os.Getenv(constants.EnvPluginStartTimeout)

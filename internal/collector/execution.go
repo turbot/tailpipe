@@ -41,7 +41,7 @@ func newExecution(executionId string, part *config.Partition) *execution {
 	e := &execution{
 		id:        executionId,
 		partition: part.UnqualifiedName,
-		table:     part.Table,
+		table:     part.TableName,
 		plugin:    part.Plugin.Alias,
 		state:     ExecutionState_PENDING,
 	}
@@ -66,7 +66,8 @@ func (e *execution) done(err error) {
 	if err != nil {
 		e.state = ExecutionState_ERROR
 		e.error = err
-	} else {
+	} else if e.state != ExecutionState_ERROR {
+		// if state has not already been set to error, set to complete
 		e.state = ExecutionState_COMPLETE
 	}
 	e.executionTiming.End = time.Now()

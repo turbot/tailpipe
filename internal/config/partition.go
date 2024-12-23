@@ -2,31 +2,38 @@ package config
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/hclhelpers"
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/plugin"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/pipe-fittings/schema"
+	"github.com/turbot/tailpipe/internal/constants"
+	"strings"
 )
+
+func init() {
+	registerResourceWithSubType(schema.BlockTypePartition)
+}
 
 type Partition struct {
 	modconfig.HclResourceImpl
 
-	// Type of the partition
-	Table string `hcl:"type,label"`
+	// the name of the table this partition is for - this is the first label in the partition block
+	TableName string
+
+	// if the partition of for a custom table, this will be set to the custom table config
+	CustomTable *Table `cty:"table"`
 
 	// Plugin used for this partition
-	Plugin *plugin.Plugin
+	Plugin *plugin.Plugin `cty:"-"`
 
 	// Source of the data for this partition
-	Source Source `hcl:"source,block"`
+	Source Source `cty:"source"`
 
 	// any partition-type specific config data for the partition
-	Config []byte
+	Config []byte `cty:"config"`
 	// the config location
-	ConfigRange hcl.Range
+	ConfigRange hclhelpers.Range `cty:"config_range"`
 	// an option filter in the format of a SQL where clause
 	Filter string
 }
@@ -41,40 +48,13 @@ func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl
 	}
 	c := &Partition{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
-		Table:           block.Labels[0],
+		TableName:       block.Labels[0],
 	}
 
 	// NOTE: as tailpipe does not have the concept of mods, the full name is partition.<type>.<name> and
 	// the unqualified name is the <type>.<name>
-	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.Table, c.ShortName)
+	c.UnqualifiedName = fmt.Sprintf("%s.%s", c.TableName, c.ShortName)
 	return c, nil
-}
-
-func (c *Partition) OnDecoded(block *hcl.Block, _ modconfig.ModResourcesProvider) hcl.Diagnostics {
-	// if plugin is not set, deduce it from the type
-	if c.Plugin == nil {
-		c.Plugin = plugin.NewPlugin(c.inferPluginName())
-	}
-	// TODO  default connections https://github.com/turbot/tailpipe/issues/31
-	// if the connection is not set, set it to the default connection
-	//if c.Connection == nil {
-	//	c.Connection = getDefaultConnection(c.Plugin.Alias)
-	//}
-	return nil
-}
-
-func getDefaultConnection(alias string) *TailpipeConnection { //nolint: unused // TODO: think about default connections https://github.com/turbot/tailpipe/issues/31
-	return &TailpipeConnection{
-		Plugin: alias,
-	}
-}
-
-func (c *Partition) ToProto() *proto.ConfigData {
-	return &proto.ConfigData{
-		Target: c.Name(),
-		Hcl:    c.Config,
-		Range:  proto.RangeToProto(c.DeclRange),
-	}
 }
 
 func (c *Partition) SetConfigHcl(u *HclBytes) {
@@ -85,6 +65,10 @@ func (c *Partition) SetConfigHcl(u *HclBytes) {
 	c.ConfigRange = u.Range
 }
 
-func (c *Partition) inferPluginName() string {
-	return strings.Split(c.Table, "_")[0]
+func (c *Partition) InferPluginName() string {
+	if c.CustomTable != nil {
+		return constants.CorePluginName
+	}
+	// otherwise just use the first segment of the table name
+	return strings.Split(c.TableName, "_")[0]
 }

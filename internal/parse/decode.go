@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -11,10 +12,9 @@ import (
 	"github.com/turbot/pipe-fittings/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/zclconf/go-cty/cty/gocty"
-	"golang.org/x/exp/maps"
 )
 
-func decodeTailpipeConfig(parseCtx *ConfigParseContext) (*config.TailpipeConfig, hcl.Diagnostics) {
+func decodeTailpipeConfig(parseCtx *ConfigParseContext) hcl.Diagnostics {
 	var diags hcl.Diagnostics
 	blocksToDecode, err := parseCtx.BlocksToDecode()
 	// build list of blocks to decode
@@ -23,20 +23,19 @@ func decodeTailpipeConfig(parseCtx *ConfigParseContext) (*config.TailpipeConfig,
 			Severity: hcl.DiagError,
 			Summary:  "failed to determine required dependency order",
 			Detail:   err.Error()})
-		return nil, diags
+		return diags
 	}
 
 	// now clear dependencies from run context - they will be rebuilt
 	parseCtx.ClearDependencies()
 
-	var tailpipeConfig = config.NewTailpipeConfig()
 	for _, block := range blocksToDecode {
 		resource, res := decodeBlock(block, parseCtx)
 		diags = append(diags, res.Diags...)
 		if !res.Success() || resource == nil {
 			continue
 		}
-		err := tailpipeConfig.Add(resource)
+		err := parseCtx.tailpipeConfig.Add(resource)
 		if err != nil {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
@@ -47,7 +46,7 @@ func decodeTailpipeConfig(parseCtx *ConfigParseContext) (*config.TailpipeConfig,
 		}
 
 	}
-	return tailpipeConfig, diags
+	return diags
 }
 
 func decodeBlock(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.HclResource, *parse.DecodeResult) {
@@ -83,18 +82,24 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 
 	switch block.Type {
 	case schema.BlockTypePartition:
-		return decodePartition(block, parseCtx, resource)
+		res = decodePartition(block, parseCtx, resource)
 	case schema.BlockTypeConnection:
-		return decodeConnection(block, parseCtx, resource)
+		res = decodeConnection(block, parseCtx, resource)
+	case schema.BlockTypeFormat:
+		res = decodeFormat(block, parseCtx, resource)
+	// TODO #parsing to support inline Format we need to manually parse the table block https://github.com/turbot/tailpipe/issues/109
+	//case schema.BlockTypeTable:
+
 	default:
 		// TODO what resources does this include?
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
 		res.HandleDecodeDiags(diags)
-		return resource, res
 	}
+
+	return resource, res
 }
 
-func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
+func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
 	res := parse.NewDecodeResult()
 
 	target := resource.(*config.Partition)
@@ -112,7 +117,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 			res.HandleDecodeDiags(diags)
 			// we failed, possibly as result of dependency error - give up for now
 			if !res.Success() {
-				return nil, res
+				return res
 			}
 			target.Filter = val.AsString()
 		default:
@@ -121,14 +126,12 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	}
 	var unknownBlocks []*hcl.Block
 	for _, block := range blocks {
-		// TODO K decode plugin block
 		switch block.Type {
-		case "source":
+		case schema.BlockTypeSource:
 			// decode source block
 			source, sourceRes := decodeSource(block, parseCtx)
 			res.Merge(sourceRes)
-
-			if !res.Diags.HasErrors() {
+			if res.Success() {
 				target.Source = *source
 			}
 		default:
@@ -136,18 +139,22 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 		}
 	}
 
+	if !res.Success() {
+		return res
+	}
+
 	// convert the unknown blocks and attributes to the raw hcl bytes
 	unknown, diags := handleUnknownHcl(block, parseCtx, unknownAttrs, unknownBlocks)
 	res.HandleDecodeDiags(diags)
-	if !res.Diags.HasErrors() {
+	if res.Success() {
 		// now set unknown hcl
 		target.SetConfigHcl(unknown)
 	}
 
-	return target, res
+	return res
 }
 
-func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) (modconfig.HclResource, *parse.DecodeResult) {
+func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
 	res := parse.NewDecodeResult()
 
 	target := resource.(*config.TailpipeConnection)
@@ -161,15 +168,15 @@ func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource m
 			Detail:   fmt.Sprintf("unexpected block body type %T - expected *hclsyntax.Body", block.Body),
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}})
-		return nil, res
+		return res
 	}
 	hclBytes := &config.HclBytes{}
 	for _, attr := range syntaxBody.Attributes {
 		hclBytes.Merge(config.HclBytesForRange(parseCtx.FileData[block.DefRange.Filename], attr.Range()))
 	}
 	target.Hcl = hclBytes.Hcl
-	target.HclRange = hclhelpers.NewRange(hclBytes.Range)
-	return target, res
+	target.HclRange = hclBytes.Range
+	return res
 }
 
 func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAttrs []*hcl.Attribute, unknownBlocks []*hcl.Block) (*config.HclBytes, hcl.Diagnostics) {
@@ -199,45 +206,54 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 	source := &config.Source{}
 	source.Type = block.Labels[0]
 
-	attrs, diags := block.Body.JustAttributes()
+	var unknownBlocks []*hcl.Block
+	for _, block := range block.Body.Blocks {
+		unknownBlocks = append(unknownBlocks, block.AsHCLBlock())
+	}
+	attrMap, diags := block.Body.JustAttributes()
 	res.HandleDecodeDiags(diags)
-	if len(attrs) == 0 {
+	if !res.Success() {
+		return nil, res
+	}
+
+	if len(attrMap)+len(unknownBlocks) == 0 {
 		return source, res
 	}
-	var blocks []*hcl.Block
-	for _, block := range block.Body.Blocks {
-		blocks = append(blocks, block.AsHCLBlock())
+
+	var unknownAttrs []*hcl.Attribute
+	for attrName, attr := range attrMap {
+		switch attrName {
+
+		case schema.AttributeConnection:
+			target := &config.TailpipeConnection{}
+			connRes := resourceFromExpression(parseCtx, block.AsHCLBlock(), attr.Expr, target)
+			res.Merge(connRes)
+			if res.Success() {
+				source.Connection = target
+			}
+		case schema.AttributeFormat:
+			target := &config.Format{}
+			formatRes := resourceFromExpression(parseCtx, block.AsHCLBlock(), attr.Expr, target)
+			res.Merge(formatRes)
+			if res.Success() {
+				source.Format = target
+			}
+
+		default:
+			unknownAttrs = append(unknownAttrs, attr)
+		}
+
 	}
 
-	// special case for connection
-	if connectionAttr, ok := attrs["connection"]; ok {
-		//try to evaluate expression
-		val, diags := connectionAttr.Expr.Value(parseCtx.EvalCtx)
-		res.HandleDecodeDiags(diags)
-		// we failed, possibly as result of dependency error - give up for now
-		if !res.Success() {
-			return source, res
-		}
-		var conn = &config.TailpipeConnection{}
-		err := gocty.FromCtyValue(val, conn)
-		if err != nil {
-			// failed to decode connection
-			res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  "failed to decode connection",
-				Detail:   fmt.Sprintf("failed to decode connection: %s", err.Error()),
-				Subject:  hclhelpers.BlockRangePointer(block.AsHCLBlock()),
-			}})
-			return source, res
-		}
-		source.Connection = conn
+	// if we failed for any reason (including dependency errors) give up fdor now
+	if !res.Success() {
+		return source, res
 	}
-	delete(attrs, "connection")
 
 	// get the unknown hcl
-	unknown, diags := handleUnknownHcl(block.AsHCLBlock(), parseCtx, maps.Values(attrs), blocks)
+	unknown, diags := handleUnknownHcl(block.AsHCLBlock(), parseCtx, unknownAttrs, unknownBlocks)
 	res.HandleDecodeDiags(diags)
-	if res.Diags.HasErrors() {
+	if !res.Success() {
 		return source, res
 	}
 
@@ -248,16 +264,94 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 
 }
 
+func resourceFromExpression(parseCtx *ConfigParseContext, block *hcl.Block, expr hcl.Expression, target any) *parse.DecodeResult {
+	var res = parse.NewDecodeResult()
+	//try to evaluate expression
+	val, diags := expr.Value(parseCtx.EvalCtx)
+
+	res.HandleDecodeDiags(diags)
+	// we failed, possibly as result of dependency error - give up for now
+	if !res.Success() {
+		return res
+	}
+
+	err := gocty.FromCtyValue(val, target)
+	if err != nil {
+		// failed to decode connection
+		res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "failed to decode expression",
+			Detail:   fmt.Sprintf("failed to decode expression: %s", err.Error()),
+			Subject:  hclhelpers.BlockRangePointer(block),
+		}})
+	}
+	return res
+}
+
+func decodeFormat(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
+	res := parse.NewDecodeResult()
+	format := resource.(*config.Format)
+
+	attrMap, diags := block.Body.JustAttributes()
+	res.HandleDecodeDiags(diags)
+	if !res.Success() {
+		return res
+	}
+	var unknownAttrs []*hcl.Attribute
+	for attrName, attr := range attrMap {
+		switch attrName {
+		case schema.AttributeType:
+			var ty string
+			connRes := resourceFromExpression(parseCtx, block, attr.Expr, &ty)
+			res.Merge(connRes)
+			if res.Success() {
+				format.Type = ty
+			}
+		default:
+			unknownAttrs = append(unknownAttrs, attr)
+		}
+	}
+
+	syntaxBody, ok := block.Body.(*hclsyntax.Body)
+	if !ok {
+		// unexpected
+		res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "failed to decode format block",
+			Detail:   fmt.Sprintf("unexpected block body type %T - expected *hclsyntax.Body", block.Body),
+			Subject:  hclhelpers.BlockRangePointer(block),
+		}})
+		return res
+	}
+
+	var unknownBlocks []*hcl.Block
+	for _, b := range syntaxBody.Blocks {
+		unknownBlocks = append(unknownBlocks, b.AsHCLBlock())
+	}
+	if len(unknownAttrs)+len(unknownBlocks) == 0 {
+		return res
+	}
+
+	// get the unknown hcl
+	unknown, diags := handleUnknownHcl(block, parseCtx, unknownAttrs, unknownBlocks)
+	res.HandleDecodeDiags(diags)
+	if !res.Success() {
+		return res
+	}
+
+	// set the unknown hcl on the source
+	format.SetConfigHcl(unknown)
+
+	return res
+}
+
 // return a shell resource for the given block
 func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics) {
-	// all blocks must have 2 labels - subtype and name - this is enforced by schema
-	subType := block.Labels[0]
-	blockName := block.Labels[1]
-	fullName := config.BuildResourceName(block.Type, subType, blockName)
 	factoryFuncs := map[string]func(*hcl.Block, string) (modconfig.HclResource, hcl.Diagnostics){
 		schema.BlockTypePartition:  config.NewPartition,
 		schema.BlockTypeConnection: config.NewTailpipeConnection,
-		//schema.BlockTypePlugin: config.NewPlugin,
+		schema.BlockTypeTable:      config.NewTable,
+		schema.BlockTypeFormat:     config.NewFormat,
 	}
 
 	factoryFunc, ok := factoryFuncs[block.Type]
@@ -269,7 +363,19 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 		},
 		}
 	}
-	return factoryFunc(block, fullName)
+
+	name := fmt.Sprintf("%s.%s", block.Type, strings.Join(block.Labels, "."))
+
+	parsedName, err := ParseResourceName(name)
+	if err != nil {
+		return nil, hcl.Diagnostics{&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("failed to parse resource name %s", name),
+			Detail:   err.Error(),
+			Subject:  hclhelpers.BlockRangePointer(block),
+		}}
+	}
+	return factoryFunc(block, parsedName.ToResourceName())
 }
 
 func handleDecodeResult(resource modconfig.HclResource, res *parse.DecodeResult, block *hcl.Block, parseCtx *ConfigParseContext) {
@@ -285,7 +391,7 @@ func handleDecodeResult(resource modconfig.HclResource, res *parse.DecodeResult,
 	}
 
 	// failure :(
-	if len(res.Depends) > 0 {
+	if len(res.Depends) > 0 && resource != nil {
 		moreDiags := parseCtx.AddDependencies(block, resource.Name(), res.Depends)
 		res.AddDiags(moreDiags)
 	}
