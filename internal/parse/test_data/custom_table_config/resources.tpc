@@ -30,12 +30,11 @@ table  "my_csv_log" {
 
 
 
-format "csv_default_logs" {
-    type              = "delimited"
+format "delimited" "csv_default_logs" {
+
 }
 
-format "csv_logs" {
-    type              = "delimited"
+format  "delimited" "csv_logs" {
     delimiter         = "\t"
     header            = false
 }
