@@ -13,7 +13,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v0.10.0-rc.0
-	github.com/turbot/pipe-fittings v1.5.2
+	github.com/turbot/pipe-fittings v1.7.0
 	// main
 	github.com/turbot/tailpipe-plugin-sdk v0.0.0-20240418033256-15206bee92ce
 	github.com/zclconf/go-cty v1.14.4
@@ -90,6 +90,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.17.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
@@ -112,7 +113,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
-	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gosuri/uilive v0.0.4 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -139,12 +139,12 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.5.9 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/karrick/gows v0.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
+	github.com/magefile/mage v1.15.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
@@ -169,11 +169,9 @@ require (
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
-	github.com/satyrius/gonx v1.4.0 // indirect
 	github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
@@ -186,6 +184,7 @@ require (
 	github.com/tkrajina/go-reflector v0.5.6 // indirect
 	github.com/turbot/pipes-sdk-go v0.9.1 // indirect
 	github.com/turbot/steampipe-plugin-code v0.7.0 // indirect
+	github.com/turbot/steampipe-plugin-sdk/v5 v5.8.0 // indirect
 	github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
