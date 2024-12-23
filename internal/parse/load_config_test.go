@@ -7,7 +7,6 @@ import (
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/pipe-fittings/utils"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"path/filepath"
 	"reflect"
@@ -119,7 +118,7 @@ func TestLoadTailpipeConfig(t *testing.T) {
 							},
 							BlockType: "partition",
 						},
-						Mode: schema.ModePartial,
+						//Mode: schema.ModePartial,
 						Columns: []config.ColumnSchema{
 							{
 								Name:   "tp_timestamp",

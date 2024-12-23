@@ -24,8 +24,8 @@ type Format struct {
 // GetSubType returns the subtype for the format block (the type).
 // The presence of this function indicates this resource supports 3 part names,
 // which affects how it is stored in the eval context
-func (c *Format) GetSubType() string {
-	return c.Type
+func (f *Format) GetSubType() string {
+	return f.Type
 }
 
 func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -47,17 +47,17 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	return c, nil
 }
 
-func (s *Format) ToProto() *proto.ConfigData {
+func (f *Format) ToProto() *proto.ConfigData {
 	res := &proto.ConfigData{
-		Target: s.Type,
+		Target: f.Type,
 	}
-	if s.Config != nil {
-		res.Hcl = s.Config.Hcl
-		res.Range = proto.RangeToProto(s.Config.Range.HclRange())
+	if f.Config != nil {
+		res.Hcl = f.Config.Hcl
+		res.Range = proto.RangeToProto(f.Config.Range.HclRange())
 	}
 	return res
 }
 
-func (s *Format) SetConfigHcl(u *HclBytes) {
-	s.Config = u
+func (f *Format) SetConfigHcl(u *HclBytes) {
+	f.Config = u
 }

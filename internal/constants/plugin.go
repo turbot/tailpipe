@@ -1,6 +1,6 @@
 package constants
 
 const (
-	CorePluginName     = "custom"
+	CorePluginName     = "core"
 	TailpipeHubOCIBase = "hub.tailpipe.io/"
 )

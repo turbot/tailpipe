@@ -2,7 +2,6 @@ package parse
 
 import (
 	"fmt"
-	"github.com/turbot/tailpipe/internal/config"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/cty_helpers"
@@ -10,6 +9,7 @@ import (
 	"github.com/turbot/pipe-fittings/modconfig"
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/pipe-fittings/schema"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/zclconf/go-cty/cty"
 )
 
