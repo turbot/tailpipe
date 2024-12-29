@@ -20,9 +20,9 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/filepaths"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
+	"github.com/turbot/tailpipe-plugin-core/sources"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
-	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	// refer to artifact source so sdk sources are registered
@@ -44,7 +44,8 @@ func New() *PluginManager {
 	}
 }
 
-// AddObserver adds an observer to the plugin manager
+// AddObserver adds a
+// n observer to the plugin manager
 func (p *PluginManager) AddObserver(o Observer) {
 	p.obs = o
 }
@@ -60,7 +61,10 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	var sourcePluginReattach *proto.SourcePluginReattach
 	// identify which plugin provides the source
-	sourcePlugin := p.determineSourcePlugin(partition)
+	sourcePlugin, err := p.determineSourcePlugin(partition)
+	if err != nil {
+		return nil, fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+	}
 	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
 	// and then pass reattach info
 	if sourcePlugin.Plugin != tablePlugin.Plugin {
@@ -113,6 +117,9 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		if req.SourceFormat == nil {
 			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
 		}
+	}
+	if sourcePluginReattach != nil {
+		req.SourcePlugin = sourcePluginReattach
 	}
 
 	collectResponse, err := tablePluginClient.Collect(req)
@@ -168,6 +175,10 @@ func getExecutionId() string {
 }
 
 func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, error) {
+	if pluginDef.Alias == constants.CorePluginName {
+		// install if needed
+	}
+
 	p.pluginMutex.RLock()
 	// Plugins map is keyed by image ref
 	pluginImageRef := pluginDef.Plugin
@@ -296,15 +307,18 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 
 }
 
-func (p *PluginManager) determineSourcePlugin(partition *config.Partition) *pplugin.Plugin {
+func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
 	sourceType := partition.Source.Type
 
-	if row_source.Factory.ProvidesRowSource(sourceType) {
-		// this is a source type built into the sdk - the partition plugin will provide it
-		return partition.Plugin
+	coreSources, err := sources.DescribeSources()
+	if err != nil {
+		return nil, fmt.Errorf("error describing sources: %w", err)
+	}
+	if _, ok := coreSources[sourceType]; ok {
+		return pplugin.NewPlugin(constants.CorePluginName), nil
 	}
 
-	// assume the source type name is of form "<plugin>_<source>",. eg. aws_s3_bucket
+	// assume the source type name is of form "<plugin>_<source>", eg. aws_s3_bucket -> "aws"
 	pluginName := strings.Split(sourceType, "_")[0]
-	return pplugin.NewPlugin(pluginName)
+	return pplugin.NewPlugin(pluginName), nil
 }
