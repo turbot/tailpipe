@@ -13,10 +13,6 @@ builds:
       - CC=x86_64-linux-gnu-gcc
       - CXX=x86_64-linux-gnu-g++
 
-    hooks:
-      pre:
-        - ./scripts/download_json_extension.sh linux amd64
-
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
 
