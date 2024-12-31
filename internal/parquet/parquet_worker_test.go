@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/turbot/go-kit/files"
+	"github.com/turbot/pipe-fittings/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
@@ -45,6 +47,7 @@ func teardown() {
 }
 
 func Test_buildViewQuery(t *testing.T) {
+	filepaths.PipesInstallDir, _ = files.Tildefy("~/.pipes")
 	if err := setup(); err != nil {
 		t.Fatalf("error setting up test: %s", err)
 	}
