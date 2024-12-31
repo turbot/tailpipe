@@ -287,7 +287,7 @@ func (c *Collector) StatusString() string {
 			if e.totalRows == 0 {
 				str.Reset()
 			}
-			str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", e.id, e.error))
+			str.WriteString(fmt.Sprintf("Execution failed: %s\n", e.error))
 		}
 		//case ExecutionState_COMPLETE:
 		//	str.WriteString(fmt.Sprintf("Execution %s complete\n", e.id))

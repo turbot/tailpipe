@@ -21,6 +21,7 @@ import (
 	"github.com/turbot/pipe-fittings/filepaths"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-core/sources"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe/internal/config"
@@ -31,7 +32,7 @@ import (
 
 type PluginManager struct {
 	// map of running plugins, keyed by plugin name
-	Plugins     map[string]*PluginClient
+	Plugins     map[string]*grpc.PluginClient
 	pluginMutex sync.RWMutex
 	obs         Observer
 	pluginPath  string
@@ -39,7 +40,7 @@ type PluginManager struct {
 
 func New() *PluginManager {
 	return &PluginManager{
-		Plugins:    make(map[string]*PluginClient),
+		Plugins:    make(map[string]*grpc.PluginClient),
 		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
 	}
 }
@@ -72,7 +73,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		if err != nil {
 			return nil, fmt.Errorf("error starting plugin %s required for source %s: %w", sourcePlugin.Alias, partition.Source.Type, err)
 		}
-		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.client.ReattachConfig())
+		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 	}
 
 	// TODO #design consider the flow
@@ -161,7 +162,7 @@ func (p *PluginManager) Close() {
 	p.pluginMutex.Lock()
 	defer p.pluginMutex.Unlock()
 	for _, plg := range p.Plugins {
-		plg.client.Kill()
+		plg.Client.Kill()
 	}
 }
 
@@ -174,9 +175,9 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000)) //nolint:gosec // TODO use math/rand/v2 for security
 }
 
-func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, error) {
+func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
 	if pluginDef.Alias == constants.CorePluginName {
-		// install if needed
+		// TODO install if needed
 	}
 
 	p.pluginMutex.RLock()
@@ -201,7 +202,7 @@ func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, err
 	return client, nil
 }
 
-func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
+func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
 	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
 	pluginName := tp.Alias
 
@@ -228,7 +229,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 		StartTimeout: pluginStartTimeout,
 	})
 
-	client, err := NewPluginClient(c, pluginName)
+	client, err := grpc.NewPluginClient(c, pluginName)
 	if err != nil {
 		return nil, err
 
@@ -309,7 +310,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
 	sourceType := partition.Source.Type
-
+	// because we reference the core plugin, all sources it provides are registered with our source factory instance
 	coreSources, err := sources.DescribeSources()
 	if err != nil {
 		return nil, fmt.Errorf("error describing sources: %w", err)
