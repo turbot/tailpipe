@@ -71,7 +71,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	if sourcePlugin.Plugin != tablePlugin.Plugin {
 		sourcePluginClient, err := p.getPlugin(sourcePlugin)
 		if err != nil {
-			return nil, fmt.Errorf("error starting plugin %s required for source %s: %w", sourcePlugin.Alias, partition.Source.Type, err)
+			return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
 		}
 		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 	}
@@ -208,7 +208,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 
 	pluginPath, err := filepaths.GetPluginPath(tp.Plugin, tp.Alias)
 	if err != nil {
-		return nil, fmt.Errorf("error getting plugin path for plugin %s: %w", tp.Alias, err)
+		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
 	}
 
 	// create the plugin map
