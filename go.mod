@@ -2,9 +2,11 @@ module github.com/turbot/tailpipe
 
 go 1.23.2
 
-replace github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
-
-replace github.com/turbot/pipe-fittings => ../pipe-fittings
+replace (
+	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
+	github.com/turbot/pipe-fittings => ../pipe-fittings
+	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+)
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
@@ -22,7 +24,9 @@ require (
 )
 
 require (
+	github.com/alecthomas/chroma v0.10.0
 	github.com/briandowns/spinner v1.23.0
+	github.com/c-bata/go-prompt v0.0.0-00010101000000-000000000000
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.1.0
 	github.com/charmbracelet/lipgloss v0.13.0
@@ -30,16 +34,17 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gdamore/tcell/v2 v2.7.4
-	github.com/gertd/go-pluralize v0.2.1
 	github.com/gosuri/uiprogress v0.0.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.1
+	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb v1.8.3
 	github.com/rivo/tview v0.0.0-20240818110301-fd649dbf1223
 	github.com/sethvargo/go-retry v0.2.4
 	github.com/thediveo/enumflag/v2 v2.0.5
 	golang.org/x/sync v0.8.0
 	golang.org/x/term v0.25.0
+	golang.org/x/text v0.19.0
 )
 
 require (
@@ -90,12 +95,14 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.2.4 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dlclark/regexp2 v1.4.0 // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.17.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
+	github.com/gertd/go-pluralize v0.2.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.5.0 // indirect
 	github.com/go-git/go-git/v5 v5.12.0 // indirect
@@ -137,7 +144,6 @@ require (
 	github.com/jackc/pgx/v5 v5.6.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
-	github.com/jedib0t/go-pretty/v6 v6.5.9 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/karrick/gows v0.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
@@ -149,6 +155,7 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mattn/go-tty v0.0.3 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
@@ -164,6 +171,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
+	github.com/pkg/term v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/xid v1.5.0 // indirect
@@ -203,7 +211,6 @@ require (
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
-	golang.org/x/text v0.19.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect

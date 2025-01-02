@@ -2,16 +2,13 @@ package cmdconfig
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"runtime/debug"
-	"strings"
 	"time"
 
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	"github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
@@ -158,14 +155,10 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 }
 
 // now validate  config values have appropriate values
-// (currently validates telemetry)
 func validateConfig() error_helpers.ErrorAndWarnings {
 	var res = error_helpers.ErrorAndWarnings{}
-	telemetry := viper.GetString(constants.ArgTelemetry)
-	if !helpers.StringSliceContains(constants.TelemetryLevels, telemetry) {
-		res.Error = fmt.Errorf(`invalid value of 'telemetry' (%s), must be one of: %s`, telemetry, strings.Join(constants.TelemetryLevels, ", "))
-		return res
-	}
+
+	// TODO #config validate
 
 	return res
 }

@@ -11,7 +11,6 @@ import (
 func configDefaults(cmd *cobra.Command) map[string]any {
 	defs := map[string]any{
 		// global general options
-		constants.ArgTelemetry:   constants.TelemetryInfo,
 		constants.ArgUpdateCheck: true,
 
 		// memory
@@ -31,6 +30,9 @@ func cmdSpecificDefaults() map[string]map[string]any {
 		"server": {
 			constants.ArgEnvironment: "release",
 		},
+		"query": {
+			constants.ArgAutoComplete: true,
+		},
 	}
 }
 
@@ -42,10 +44,8 @@ func dirEnvMappings() map[string]cmdconfig.EnvMapping {
 // a map of known environment variables to map to viper keys - these are set as part of InitGlobalConfig
 func envMappings() map[string]cmdconfig.EnvMapping {
 	return map[string]cmdconfig.EnvMapping{
-		app_specific.EnvTelemetry:         {ConfigVar: []string{constants.ArgTelemetry}, VarType: cmdconfig.EnvVarTypeString},
-		app_specific.EnvUpdateCheck:       {ConfigVar: []string{constants.ArgUpdateCheck}, VarType: cmdconfig.EnvVarTypeBool},
-		app_specific.EnvMemoryMaxMb:       {ConfigVar: []string{constants.ArgMemoryMaxMb}, VarType: cmdconfig.EnvVarTypeInt},
-		app_specific.EnvMemoryMaxMbPlugin: {ConfigVar: []string{constants.ArgMemoryMaxMbPlugin}, VarType: cmdconfig.EnvVarTypeInt},
-		app_specific.EnvConfigPath:        {ConfigVar: []string{constants.ArgConfigPath}, VarType: cmdconfig.EnvVarTypeString},
+		app_specific.EnvUpdateCheck: {ConfigVar: []string{constants.ArgUpdateCheck}, VarType: cmdconfig.EnvVarTypeBool},
+		app_specific.EnvMemoryMaxMb: {ConfigVar: []string{constants.ArgMemoryMaxMb}, VarType: cmdconfig.EnvVarTypeInt},
+		app_specific.EnvConfigPath:  {ConfigVar: []string{constants.ArgConfigPath}, VarType: cmdconfig.EnvVarTypeString},
 	}
 }

@@ -8,17 +8,9 @@ import (
 
 	"github.com/turbot/pipe-fittings/querydisplay"
 	"github.com/turbot/pipe-fittings/queryresult"
-	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
-func ExecuteQuery(ctx context.Context, query string) (int, error) {
-	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
-	if err != nil {
-		return 0, err
-	}
-
-	defer db.Close()
+func ExecuteQuery(ctx context.Context, query string, db *sql.DB) (int, error) {
 
 	// Run the query
 	rows, err := db.QueryContext(ctx, query)
@@ -35,8 +27,8 @@ func ExecuteQuery(ctx context.Context, query string) (int, error) {
 	// show output
 	_, rowErrors := querydisplay.ShowOutput(ctx, result)
 	if rowErrors > 0 {
-		// TODO find a way to return the error
-		return rowErrors, fmt.Errorf("Error: query execution failed")
+		// TODO #errors find a way to return the error
+		return rowErrors, fmt.Errorf("query execution failed")
 	}
 	return 0, nil
 }

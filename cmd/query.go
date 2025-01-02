@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 
@@ -47,22 +49,42 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = helpers.ToError(r)
-			error_helpers.ShowError(ctx, err)
 		}
-		setExitCodeForQueryError(err)
+		if err != nil {
+			error_helpers.ShowError(ctx, err)
+			setExitCodeForQueryError(err)
+		}
 	}()
+
+	// get a connection to the database
+	var db *sql.DB
+	db, err = openDatabaseConnection(ctx)
+	if err != nil {
+		return
+	}
+	defer db.Close()
 
 	// if an arg was passed, just execute the query
 	if len(args) == 0 {
-		err = interactive.RunInteractiveQuery(ctx)
+		err = interactive.RunInteractivePrompt(ctx, db)
 	} else {
-		failures, err = query.ExecuteQuery(ctx, args[0])
+		failures, err = query.ExecuteQuery(ctx, args[0], db)
 	}
 	if failures > 0 {
 		exitCode = pconstants.ExitCodeQueryExecutionFailed
 		error_helpers.FailOnError(err)
 	}
 
+}
+
+// generate a db file - this will respect any time/index filters specified in the command args
+func openDatabaseConnection(ctx context.Context) (*sql.DB, error) {
+	dbFilePath, err := generateDbFile(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Open a DuckDB connection
+	return sql.Open("duckdb", dbFilePath)
 }
 
 func setExitCodeForQueryError(err error) {

@@ -48,13 +48,9 @@ func connectCmd() *cobra.Command {
 }
 
 func runConnectCmd(cmd *cobra.Command, _ []string) {
-	// TODO #cancellation cancellation? https://github.com/turbot/tailpipe/issues/88
-	//ctx, cancel := context.WithCancel(cmd.Context())
-	//contexthelpers.StartCancelHandler(cancel)
-
-	ctx := cmd.Context()
 	var err error
-	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
+	var databaseFilePath string
+	ctx := cmd.Context()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -64,31 +60,36 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		displayOutput(ctx, databaseFilePath, err)
 	}()
 
+	databaseFilePath, err = generateDbFile(ctx)
+
+	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
+}
+
+func generateDbFile(ctx context.Context) (string, error) {
+	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
+
 	// first build the filters
 	filters, err := getFilters()
 	if err != nil {
-		err = fmt.Errorf("error building filters: %w", err)
-		return
+		return "", fmt.Errorf("error building filters: %w", err)
 	}
 
 	// if there are no filters, just copy the db file
 	if len(filters) == 0 {
 		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
-		return
+		return "", err
 	}
 
 	// Open a DuckDB connection (creates the file if it doesn't exist)
 	var db *sql.DB
 	db, err = sql.Open("duckdb", databaseFilePath)
 	if err != nil {
-		err = fmt.Errorf("failed to open DuckDB connection: %w", err)
-		return
+		return "", fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 	defer db.Close()
 
 	err = database.AddTableViews(ctx, db, filters...)
-
-	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
+	return databaseFilePath, err
 }
 
 func displayOutput(ctx context.Context, databaseFilePath string, err error) {
