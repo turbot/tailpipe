@@ -139,7 +139,7 @@ func getDirNames(folderPath string) ([]string, error) {
 	return dirNames, nil
 }
 
-func GetRowCount(ctx context.Context, tableName string) (int64, error) {
+func GetRowCount(ctx context.Context, tableName string, partitionName *string) (int64, error) {
 	// Open a DuckDB connection
 	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
 	if err != nil {
@@ -152,6 +152,9 @@ func GetRowCount(ctx context.Context, tableName string) (int64, error) {
 		return 0, fmt.Errorf("invalid table name")
 	}
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
+	if partitionName != nil {
+		query = fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE tp_partition = '%s'", tableName, *partitionName) // #nosec G201 // this is a controlled query tableName must match a regex
+	}
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get row count: %w", err)

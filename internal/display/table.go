@@ -91,14 +91,6 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 				return nil, fmt.Errorf("unable to obtain file information: %w", err)
 			}
 
-			if table.Local.FileCount > 0 {
-				rc, err := database.GetRowCount(ctx, t)
-				if err != nil {
-					return nil, fmt.Errorf("unable to obtain row count: %w", err)
-				}
-				table.Local.RowCount = rc
-			}
-
 			res = append(res, table)
 		}
 	}
@@ -142,14 +134,6 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 			return nil, fmt.Errorf("unable to obtain file information: %w", err)
 		}
 
-		if table.Local.FileCount > 0 {
-			rc, err := database.GetRowCount(ctx, tableName)
-			if err != nil {
-				return nil, fmt.Errorf("unable to obtain row count: %w", err)
-			}
-			table.Local.RowCount = rc
-		}
-
 		return table, nil
 	} else {
 		return nil, fmt.Errorf("table %s not found", tableName)
@@ -173,6 +157,15 @@ func (r *TableResource) setFileInformation() error {
 	}
 
 	r.Local.FileMetadata = metadata
+
+	if metadata.FileCount > 0 {
+		var rc int64
+		rc, err = database.GetRowCount(context.Background(), r.Name, nil)
+		if err != nil {
+			return fmt.Errorf("unable to obtain row count: %w", err)
+		}
+		r.Local.RowCount = rc
+	}
 
 	return nil
 }
