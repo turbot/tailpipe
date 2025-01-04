@@ -37,7 +37,7 @@ type Collector struct {
 	// lock for executions
 	executionsLock sync.RWMutex
 
-	parquetWriter             *parquet.Writer
+	parquetWriter             *parquet.ParquetWriter
 	collectionStateRepository *collection_state.Repository
 	spinner                   *spinner.Spinner
 	// the current plugin status - used to update the spinner
@@ -51,9 +51,6 @@ func New(ctx context.Context, pluginManager *plugin_manager.PluginManager) (*Col
 		return nil, fmt.Errorf("failed to create source path: %w", err)
 	}
 
-	// get the data dir - this will already have been created by the config loader
-	parquetPath := config.GlobalWorkspaceProfile.GetDataDir()
-
 	c := &Collector{
 		Events:        make(chan *proto.Event, eventBufferSize),
 		executions:    make(map[string]*execution),
@@ -64,13 +61,6 @@ func New(ctx context.Context, pluginManager *plugin_manager.PluginManager) (*Col
 	// create a plugin manager
 	c.pluginManager.AddObserver(c)
 
-	// create a parquet writer
-	parquetWriter, err := parquet.NewWriter(sourcePath, parquetPath, parquetWorkerCount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
-	}
-
-	c.parquetWriter = parquetWriter
 	c.collectionStateRepository, err = collection_state.NewRepository()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collection state repository: %w", err)
@@ -128,7 +118,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 			case <-ctx.Done():
 				return
 			case <-time.After(250 * time.Millisecond):
-				rowCount, err := c.parquetWriter.GetRowCount(executionId)
+				rowCount, err := c.parquetWriter.GetRowCount()
 				if err == nil {
 					c.status.SetRowsConverted(rowCount)
 					c.setStatusMessage()
@@ -137,15 +127,17 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 		}
 	}()
 
-	// create jobPayload
-	payload := parquet.JobPayload{
-		Partition:            partition,
-		SchemaFunc:           c.parquetWriter.GetSchema,
-		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
+	// get the data dir - this will already have been created by the config loader
+	parquetPath := config.GlobalWorkspaceProfile.GetDataDir()
+	// create a parquet writer
+	parquetWriter, err := parquet.NewWriter(executionId, partition, c.parquetWriter.GetSchema, e.conversionTiming.UpdateActiveDuration, c.sourcePath, parquetPath, parquetWorkerCount)
+	if err != nil {
+		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 
-	// start the parquet writer job
-	return c.parquetWriter.StartJobGroup(executionId, payload)
+	c.parquetWriter = parquetWriter
+
+	return nil
 }
 
 // Notify implements observer.Observer

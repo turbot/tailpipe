@@ -4,12 +4,12 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"log/slog"
 	"path/filepath"
-	"sync"
+	"time"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 /*
@@ -23,45 +23,30 @@ Compaction will then combine those files (per-day) into a single larger file.
 File changes will be done as temp files with instant (almost transactional) renaming operations
 - allowing DuckDB to use the files with minimal chance of locking / parse errors.
 */
-type Writer struct {
+type ParquetWriter struct {
 	// the job pool
-	jobPool   *fileJobPool[JobPayload]
-	schema    *schema.RowSchema
-	schemaMut sync.RWMutex
-	sourceDir string
+	jobPool *parquetJobPool
 }
 
-func NewWriter(sourceDir, destDir string, workers int) (*Writer, error) {
-	w := &Writer{
-		sourceDir: sourceDir,
-		jobPool:   newFileJobPool(workers, sourceDir, destDir, newParquetConversionWorker),
+func NewWriter(executionId string, partition *config.Partition, schemeFunc func() *schema.RowSchema, updateActiveDuration func(increment time.Duration), sourceDir, destDir string, workers int) (*ParquetWriter, error) {
+	w := &ParquetWriter{
+		sourceDir:   sourceDir,
+		destDir:     destDir,
+		workerCount: workers,
+		jobPool:     newParquetJobPool(executionId, partition, schemeFunc, updateActiveDuration, workers, sourceDir, destDir),
 	}
 
-	if err := w.Start(); err != nil {
-		w.Close()
-		return nil, fmt.Errorf("failed to start parquet writer: %w", err)
+	err := w.jobPool.StartExecution(executionId, partition, schemeFunc, updateActiveDuration)
+	if err != nil {
+		return nil, err
 	}
 	return w, nil
 }
 
-// Start the parquet Writer - spawn workers
-func (w *Writer) Start() error {
-	return w.jobPool.Start()
-
-}
-
-// StartJobGroup schedules a jobGroup to be processed
-// it adds an entry to the jobGroups map and starts a goroutine to schedule the jobGroup
-func (w *Writer) StartJobGroup(executionId string, payload JobPayload) error {
-	slog.Info("parquet.Writer.StartJobGroup", "jobGroupId", executionId, "partitionName", payload.Partition.UnqualifiedName)
-
-	return w.jobPool.StartJobGroup(executionId, payload)
-}
-
-// AddJob adds available jobs to a jobGroup
-// this is making the assumption that all files for a jobGroup are have a filename of format <execution_id>_<chunkNumber>.jsonl
+// AddJob adds available jobs to a parquetJobPool
+// this is making the assumption that all files for a parquetJobPool are have a filename of format <execution_id>_<chunkNumber>.jsonl
 // therefore we only need to pass the chunkNumber number
-func (w *Writer) AddJob(executionID string, chunks ...int) error {
+func (w *ParquetWriter) AddJob(executionID string, chunks ...int) error {
 	// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 	err := w.inferSchemaIfNeeded(executionID, chunks)
 	if err != nil {
@@ -71,7 +56,7 @@ func (w *Writer) AddJob(executionID string, chunks ...int) error {
 	return w.jobPool.AddChunk(executionID, chunks...)
 }
 
-func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
+func (w *ParquetWriter) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
@@ -101,33 +86,33 @@ func (w *Writer) inferSchemaIfNeeded(executionID string, chunks []int) error {
 	return nil
 }
 
-func (w *Writer) GetChunksWritten(id string) (int32, error) {
+func (w *ParquetWriter) GetChunksWritten(id string) (int32, error) {
 	return w.jobPool.GetChunksWritten(id)
 }
 
-func (w *Writer) GetRowCount(id string) (int64, error) {
-	return w.jobPool.GetRowCount(id)
+func (w *ParquetWriter) GetRowCount() (int64, error) {
+	return w.jobPool.GetRowCount()
 }
 
-func (w *Writer) JobGroupComplete(executionId string) error {
+func (w *ParquetWriter) JobGroupComplete(executionId string) error {
 	return w.jobPool.JobGroupComplete(executionId)
 }
 
-func (w *Writer) Close() {
+func (w *ParquetWriter) Close() {
 	w.jobPool.Close()
 }
 
-func (w *Writer) GetSchema() *schema.RowSchema {
+func (w *ParquetWriter) GetSchema() *schema.RowSchema {
 	return w.schema
 }
 
 // SetSchema - NOTE: this may be dynamic (i.e. empty) or partial, in which case, we
 // will need to infer the schema from the first JSONL file
-func (w *Writer) SetSchema(rowSchema *schema.RowSchema) {
+func (w *ParquetWriter) SetSchema(rowSchema *schema.RowSchema) {
 	w.schema = rowSchema
 }
 
-func (w *Writer) inferChunkSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
+func (w *ParquetWriter) inferChunkSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
