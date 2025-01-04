@@ -10,13 +10,15 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/cmdconfig"
-	"github.com/turbot/pipe-fittings/constants"
+	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/filepaths"
+	pparse "github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/pipe-fittings/task"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"
@@ -30,9 +32,9 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	utils.LogTime("cmdhook.preRunHook start")
 	defer utils.LogTime("cmdhook.preRunHook end")
 
-	viper.Set(constants.ConfigKeyActiveCommand, cmd)
-	viper.Set(constants.ConfigKeyActiveCommandArgs, args)
-	viper.Set(constants.ConfigKeyIsTerminalTTY, isatty.IsTerminal(os.Stdout.Fd()))
+	viper.Set(pconstants.ConfigKeyActiveCommand, cmd)
+	viper.Set(pconstants.ConfigKeyActiveCommandArgs, args)
+	viper.Set(pconstants.ConfigKeyIsTerminalTTY, isatty.IsTerminal(os.Stdout.Fd()))
 
 	ctx := cmd.Context()
 
@@ -74,7 +76,7 @@ func postRunHook(_ *cobra.Command, _ []string) error {
 }
 
 func setMemoryLimit() {
-	maxMemoryBytes := viper.GetInt64(constants.ArgMemoryMaxMb) * 1024 * 1024
+	maxMemoryBytes := viper.GetInt64(pconstants.ArgMemoryMaxMb) * 1024 * 1024
 	if maxMemoryBytes > 0 {
 		// set the max memory
 		debug.SetMemoryLimit(maxMemoryBytes)
@@ -86,7 +88,7 @@ func setMemoryLimit() {
 //
 // runScheduledTasks skips running tasks if this instance is the plugin manager
 func runScheduledTasks(ctx context.Context, cmd *cobra.Command, args []string) chan struct{} {
-	updateCheck := viper.GetBool(constants.ArgUpdateCheck)
+	updateCheck := viper.GetBool(pconstants.ArgUpdateCheck)
 	// for now the only scheduled task we support is update check so if that is disabled, do nothing
 	if !updateCheck {
 		return nil
@@ -114,8 +116,12 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// ensure config folders exist
 	filepaths.EnsureConfigDir()
 
+	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
+	parseOpts := []pparse.ParseHclOpt{
+		pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+	}
 	// load workspace profile from the configured install dir
-	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TpWorkspaceProfile]()
+	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TpWorkspaceProfile](parseOpts...)
 	error_helpers.FailOnError(err)
 
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
@@ -127,7 +133,7 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	err = database.EnsureDatabaseFile(ctx)
 	error_helpers.FailOnError(err)
 
-	var cmd = viper.Get(constants.ConfigKeyActiveCommand).(*cobra.Command)
+	var cmd = viper.Get(pconstants.ConfigKeyActiveCommand).(*cobra.Command)
 
 	// set-up viper with defaults from the env and default workspace profile
 	cmdconfig.BootstrapViper(loader, cmd, cmdconfig.WithConfigDefaults(configDefaults(cmd)), cmdconfig.WithDirectoryEnvMappings(dirEnvMappings()))
