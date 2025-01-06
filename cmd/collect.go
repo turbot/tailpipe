@@ -15,6 +15,7 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/plugin_manager"
 	"golang.org/x/exp/maps"
 )
 
@@ -62,7 +63,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 func collectAndCompact(ctx context.Context, args []string) error {
 	// collect the data
-	statusString, timingString, err := doCollect(ctx, args)
+	statusStrings, timingStrings, err := doCollect(ctx, args)
 	if err != nil {
 		return err
 	}
@@ -83,31 +84,85 @@ func collectAndCompact(ctx context.Context, args []string) error {
 	}
 
 	// now show the result
-	fmt.Println(statusString) //nolint:forbidigo // ui output
+	for i, statusString := range statusStrings {
+		fmt.Println(statusString) //nolint:forbidigo // ui output
+		if len(timingStrings) > i {
+			fmt.Println(timingStrings[i]) //nolint:forbidigo // ui output
+		}
+	}
 	if compactStatusString != "" {
 		fmt.Println(compactStatusString) //nolint:forbidigo // ui output
 	}
-	fmt.Println(timingString) //nolint:forbidigo //ui output
 
 	return nil
 }
 
-func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
+func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
+	partitions, err := getPartitions(args)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get partition config: %w", err)
+	}
+
+	// now we have the partitions, we can start collecting
+
+	// start the plugin manager
+	pluginManager := plugin_manager.New()
+	defer pluginManager.Close()
+
+	// collect each partition serially
+	statusStrings := make([]string, 0, len(partitions))
+	timingStrings := make([]string, 0, len(partitions))
+	var errList []error
+	for _, partition := range partitions {
+		statusString, timingString, err := collectPartition(ctx, partition, pluginManager)
+		if err != nil {
+			errList = append(errList, err)
+		} else {
+			statusStrings = append(statusStrings, statusString)
+			timingStrings = append(timingStrings, timingString)
+		}
+	}
+
+	if len(errList) > 0 {
+		err = errors.Join(errList...)
+		return nil, nil, fmt.Errorf("collection error: %w", err)
+	}
+
+	return statusStrings, timingStrings, nil
+}
+
+func collectPartition(ctx context.Context, col *config.Partition, pluginManager *plugin_manager.PluginManager) (string, string, error) {
+	c, err := collector.New(ctx, pluginManager)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create collector: %w", err)
+	}
+	defer c.Close()
+	if err := c.Collect(ctx, col); err != nil {
+		return "", "", err
+	}
+	// now wait for all collection to complete and close the collector
+	c.WaitForCompletion(ctx)
+	return c.StatusString(), c.TimingString(), nil
+}
+
+func getPartitions(args []string) ([]*config.Partition, error) {
 	// we have loaded tailpipe config by this time
 	tailpipeConfig := config.GlobalConfig
 
 	// if no partitions specified, return all
-	if len(partitionNames) == 0 {
+	if len(args) == 0 {
 		return maps.Values(tailpipeConfig.Partitions), nil
 	}
 
 	var errorList []error
 	var partitions []*config.Partition
 
-	for _, name := range partitionNames {
-		partitionNames, err := getPartition(maps.Keys(tailpipeConfig.Partitions), name)
+	for _, arg := range args {
+		partitionNames, err := getPartitionsForArg(maps.Keys(tailpipeConfig.Partitions), arg)
 		if err != nil {
 			errorList = append(errorList, err)
+		} else if len(partitionNames) == 0 {
+			errorList = append(errorList, fmt.Errorf("partition not found: %s", arg))
 		} else {
 			for _, partitionName := range partitionNames {
 				partitions = append(partitions, tailpipeConfig.Partitions[partitionName])
@@ -123,49 +178,13 @@ func getPartitionConfig(partitionNames []string) ([]*config.Partition, error) {
 	return partitions, nil
 }
 
-func doCollect(ctx context.Context, args []string) (string, string, error) {
-	partitions, err := getPartitionConfig(args)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to get partition config: %w", err)
-
-	}
-	if len(partitions) == 0 {
-		return "", "", fmt.Errorf("no partitions found matching args %s", strings.Join(args, " "))
-	}
-
-	// now we have the partitions, we can start collecting
-
-	// create a collector
-	c, err := collector.New(ctx)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create collector: %w", err)
-	}
-	// stop the spinner
-	defer c.Close()
-
-	var errList []error
-	for _, col := range partitions {
-		if err := c.Collect(ctx, col); err != nil {
-			errList = append(errList, err)
-		}
-	}
-	if len(errList) > 0 {
-		err = errors.Join(errList...)
-		return "", "", fmt.Errorf("collection error: %w", err)
-	}
-
-	// now wait for all partitions to complete and close the collector
-	c.WaitForCompletion(ctx)
-	return c.StatusString(), c.TimingString(), nil
-}
-
-func getPartition(partitions []string, name string) ([]string, error) {
+func getPartitionsForArg(partitions []string, arg string) ([]string, error) {
 	var tablePattern, partitionPattern string
-	parts := strings.Split(name, ".")
+	parts := strings.Split(arg, ".")
 	switch len(parts) {
 	case 1:
 		var err error
-		tablePattern, partitionPattern, err = getPartitionMatchPatterns(partitions, name, parts, tablePattern, partitionPattern)
+		tablePattern, partitionPattern, err = getPartitionMatchPatterns(partitions, arg, parts)
 		if err != nil {
 			return nil, err
 		}
@@ -174,7 +193,7 @@ func getPartition(partitions []string, name string) ([]string, error) {
 		tablePattern = parts[0]
 		partitionPattern = parts[1]
 	default:
-		return nil, fmt.Errorf("invalid partition name: %s", name)
+		return nil, fmt.Errorf("invalid partition name: %s", arg)
 	}
 
 	// now match the partition
@@ -188,20 +207,21 @@ func getPartition(partitions []string, name string) ([]string, error) {
 	return res, nil
 }
 
-func getPartitionMatchPatterns(partitions []string, name string, parts []string, tablePattern string, partitionPattern string) (string, string, error) { //nolint:staticcheck // TODO is tablePattern required as input?
+func getPartitionMatchPatterns(partitions []string, arg string, parts []string) (string, string, error) { //nolint:staticcheck // TODO is tablePattern required as input?
+	var tablePattern, partitionPattern string
 	// '*' is not valid for a single part arg
 	if parts[0] == "*" {
-		return "", "", fmt.Errorf("invalid partition name: %s", name)
+		return "", "", fmt.Errorf("invalid partition name: %s", arg)
 	}
 	// check whether there is table with this name
 	// partitions is a list of Unqualified names, i.e. <table>.<partition>
 	for _, partition := range partitions {
 		table := strings.Split(partition, ".")[0]
 
-		// so there IS a table with this name - set partitionPattern to *
-		if table == name {
-			tablePattern = name    //nolint:staticcheck // required for this logic
-			partitionPattern = "*" //nolint:staticcheck // required for this logic
+		// if the arg matches a table name, set table pattern to the arg and partition pattern to *
+		if fnmatch.Match(arg, table, fnmatch.FNM_CASEFOLD) {
+			tablePattern = arg
+			partitionPattern = "*"
 			return tablePattern, partitionPattern, nil
 		}
 	}

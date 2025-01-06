@@ -45,7 +45,7 @@ type Collector struct {
 	sourcePath string
 }
 
-func New(ctx context.Context) (*Collector, error) {
+func New(ctx context.Context, pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 	sourcePath, err := filepaths.EnsureSourcePath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create source path: %w", err)
@@ -55,13 +55,13 @@ func New(ctx context.Context) (*Collector, error) {
 	parquetPath := config.GlobalWorkspaceProfile.GetDataDir()
 
 	c := &Collector{
-		Events:     make(chan *proto.Event, eventBufferSize),
-		executions: make(map[string]*execution),
-		sourcePath: sourcePath,
+		Events:        make(chan *proto.Event, eventBufferSize),
+		executions:    make(map[string]*execution),
+		sourcePath:    sourcePath,
+		pluginManager: pluginManager,
 	}
 
 	// create a plugin manager
-	c.pluginManager = plugin_manager.New()
 	c.pluginManager.AddObserver(c)
 
 	// create a parquet writer
@@ -268,7 +268,6 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 	}
 
 	c.parquetWriter.Close()
-	c.pluginManager.Close()
 	c.collectionStateRepository.Close()
 
 	// if inbox path is empty, remove it (ignore errors)

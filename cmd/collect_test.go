@@ -17,7 +17,7 @@ func Test_getPartition(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "Invvalid partition name",
+			name: "Invalid partition name",
 			args: args{
 				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2"},
 				name:       "*",
@@ -112,16 +112,24 @@ func Test_getPartition(t *testing.T) {
 			},
 			want: nil,
 		},
+		{
+			name: "Table wildcard, no dot",
+			args: args{
+				partitions: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2", "aws_elb_access_log.p1", "aws_elb_access_log.p2"},
+				name:       "aws*",
+			},
+			want: []string{"aws_s3_cloudtrail_log.p1", "aws_s3_cloudtrail_log.p2", "aws_elb_access_log.p1", "aws_elb_access_log.p2"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getPartition(tt.args.partitions, tt.args.name)
+			got, err := getPartitionsForArg(tt.args.partitions, tt.args.name)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getPartition() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("getPartitions() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("getPartition() got = %v, want %v", got, tt.want)
+				t.Errorf("getPartitions() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
