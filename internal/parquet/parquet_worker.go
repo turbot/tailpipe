@@ -56,7 +56,7 @@ func newParquetConversionWorker(jobChan chan parquetJob, errorChan chan parquetJ
 	return w, nil
 }
 
-// this is the worker function run by all workers, which all read from the parquetJobPool channel
+// this is the worker function run by all workers, which all read from the ParquetJobPool channel
 func (w *parquetConversionWorker) start() {
 	slog.Debug("worker start")
 
@@ -75,7 +75,7 @@ func (w *parquetConversionWorker) start() {
 
 		// log the completion count
 		if *job.completionCount%100 == 0 {
-			slog.Debug("parquetJobPool completion count", "parquetJobPool", job.groupId, "count", *job.completionCount)
+			slog.Debug("ParquetJobPool completion count", "ParquetJobPool", job.groupId, "count", *job.completionCount)
 		}
 
 	}
@@ -95,7 +95,7 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) erro
 	jsonFileName := table.ExecutionIdToFileName(job.groupId, job.chunkNumber)
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 	s := job.SchemaFunc()
-	// process the parquetJobPool
+	// process the ParquetJobPool
 	rowCount, err := w.convertFile(jsonFilePath, job.Partition, s)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
