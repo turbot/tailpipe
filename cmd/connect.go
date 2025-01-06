@@ -77,7 +77,7 @@ func generateDbFile(ctx context.Context) (string, error) {
 	// if there are no filters, just copy the db file
 	if len(filters) == 0 {
 		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
-		return "", err
+		return databaseFilePath, err
 	}
 
 	// Open a DuckDB connection (creates the file if it doesn't exist)
