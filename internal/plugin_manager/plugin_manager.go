@@ -13,12 +13,17 @@ import (
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
+	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
+	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/filepaths"
+	"github.com/turbot/pipe-fittings/installationstate"
+	pociinstaller "github.com/turbot/pipe-fittings/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
 	"github.com/turbot/tailpipe-plugin-core/sources"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
@@ -26,6 +31,9 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/ociinstaller"
+	"github.com/turbot/tailpipe/internal/plugin"
+
 	// refer to artifact source so sdk sources are registered
 	_ "github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 )
@@ -55,7 +63,7 @@ func (p *PluginManager) AddObserver(o Observer) {
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, inboxPath string, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
 	tablePlugin := partition.Plugin
-	tablePluginClient, err := p.getPlugin(tablePlugin)
+	tablePluginClient, err := p.getPlugin(ctx, tablePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
@@ -69,7 +77,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
 	// and then pass reattach info
 	if sourcePlugin.Plugin != tablePlugin.Plugin {
-		sourcePluginClient, err := p.getPlugin(sourcePlugin)
+		sourcePluginClient, err := p.getPlugin(ctx, sourcePlugin)
 		if err != nil {
 			return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
 		}
@@ -141,7 +149,7 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
-	pluginClient, err := p.getPlugin(pluginDef)
+	pluginClient, err := p.getPlugin(ctx, pluginDef)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
 	}
@@ -175,9 +183,13 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000)) //nolint:gosec // TODO use math/rand/v2 for security
 }
 
-func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
+func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
+
 	if pluginDef.Alias == constants.CorePluginName {
-		// TODO install if needed
+		// ensure the core plugin is installed or the min version requirement is satisfied
+		if err := ensureCorePlugin(ctx); err != nil {
+			return nil, err
+		}
 	}
 
 	p.pluginMutex.RLock()
@@ -212,16 +224,16 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 	}
 
 	// create the plugin map
-	pluginMap := map[string]plugin.Plugin{
+	pluginMap := map[string]goplugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
 	}
 
 	pluginStartTimeout := p.getPluginStartTimeout()
-	c := plugin.NewClient(&plugin.ClientConfig{
+	c := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		Plugins:          pluginMap,
 		Cmd:              exec.Command("sh", "-c", pluginPath),
-		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		// send plugin stderr (logging) to our stderr
 		Stderr: os.Stderr,
 		// suppress GRPC client logging
@@ -322,4 +334,82 @@ func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*ppl
 	// assume the source type name is of form "<plugin>_<source>", eg. aws_s3_bucket -> "aws"
 	pluginName := strings.Split(sourceType, "_")[0]
 	return pplugin.NewPlugin(pluginName), nil
+}
+
+// ensureCorePlugin ensures the core plugin is installed or the min version is satisfied
+func ensureCorePlugin(ctx context.Context) error {
+	// get the installation state
+	state, err := installationstate.Load()
+	if err != nil {
+		return err
+	}
+
+	// check if core plugin is already installed
+	exists, _ := pplugin.Exists(ctx, constants.CorePluginName)
+
+	if exists {
+		// check if the min version is satisfied; if not then update
+		// retrieve the plugin version data from tailpipe config
+		pluginVersions := config.GlobalConfig.PluginVersions
+		// find the version of the core plugin from the pluginVersions
+		installedVersion := pluginVersions[constants.CorePluginFullName].Version
+
+		// compare the version(using semver) with the min version
+		satisfy, err := checkSatisfyMinVersion(installedVersion)
+		if err != nil {
+			return err
+		}
+		if !satisfy {
+			// install the core plugin
+			if err = installCorePlugin(ctx, state); err != nil {
+				return err
+			}
+		}
+
+	} else {
+		// install the core plugin
+		if err = installCorePlugin(ctx, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installCorePlugin(ctx context.Context, state installationstate.InstallationState) error {
+	// get the latest version of the core plugin
+	ref := pociinstaller.NewImageRef(constants.CorePluginName)
+	org, name, constraint := ref.GetOrgNameAndStream()
+	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
+	if err != nil {
+		return err
+	}
+	resolvedPlugin := *rpv
+
+	progress := make(chan struct{}, 5)
+
+	// install plugin
+	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.TailpipeHubOCIBase, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func checkSatisfyMinVersion(ver string) (bool, error) {
+	// check if the version satisfies the min version requirement of core plugin
+	// Parse the versions
+	installedVer, err := version.NewVersion(ver)
+	if err != nil {
+		return false, err
+	}
+	minReq, err := version.NewVersion(constants.MinCorePluginVersion)
+	if err != nil {
+		return false, err
+	}
+
+	// compare the versions
+	if installedVer.LessThan(minReq) {
+		return false, nil
+	}
+	return true, nil
 }
