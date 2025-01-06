@@ -23,7 +23,7 @@ release-dry-run:
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		--clean --skip=validate --skip=publish --snapshot --parallelism=1
+		--clean --skip=validate --skip=publish --snapshot
 
 .PHONY: release-acceptance
 release-acceptance:
@@ -36,7 +36,7 @@ release-acceptance:
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		--clean --skip=validate --skip=publish --snapshot --parallelism=1 --config=.acceptance.goreleaser.yml
+		--clean --skip=validate --skip=publish --snapshot --config=.acceptance.goreleaser.yml
 
 .PHONY: release
 release:
@@ -54,4 +54,4 @@ release:
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
-		release --clean --skip=validate --parallelism=1
+		release --clean --skip=validate

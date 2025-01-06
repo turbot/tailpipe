@@ -8,7 +8,9 @@ import (
 	"testing"
 
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/spf13/viper"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/cmdconfig"
 )
 
 var db *duckDb
@@ -45,6 +47,11 @@ func teardown() {
 }
 
 func Test_buildViewQuery(t *testing.T) {
+	// set the version explicitly here since version is set during build time
+	// then set the app specific constants needed for the tests
+	viper.Set("main.version", "0.0.1")
+	cmdconfig.SetAppSpecificConstants()
+
 	if err := setup(); err != nil {
 		t.Fatalf("error setting up test: %s", err)
 	}
