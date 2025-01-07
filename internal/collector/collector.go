@@ -193,7 +193,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
 		// TODO #errors x what to do with an error here?  https://github.com/turbot/tailpipe/issues/106
 		go func() {
-			err := c.waitForExecution(ctx, completedEvent)
+			err := c.waitForConversions(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
 			}
@@ -212,7 +212,7 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 	slog.Info("closing collector - wait for execution to complete")
 
 	// wait for any ongoing partitions to complete
-	err := c.waitForExecutions(ctx)
+	err := c.waitForExecution(ctx)
 	if err != nil {
 		// TODO #errors x https://github.com/turbot/tailpipe/issues/106
 		slog.Error("error waiting for execution to complete", "error", err)
@@ -251,9 +251,9 @@ func (c *Collector) TimingString() string {
 	return str.String()
 }
 
-// waitForExecution waits for the parquet writer to complete the conversion of the JSONL files to parquet
+// waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
-func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplete) error {
+func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) error {
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
 
 	// store the plugin pluginTiming for this execution
@@ -266,10 +266,10 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	c.execution.chunkCount = ce.ChunkCount
 
 	if ce.ChunkCount == 0 && ce.RowCount == 0 {
-		slog.Debug("waitForExecution - no chunks/rows to write", "execution", ce.ExecutionId)
+		slog.Debug("waitForConversions - no chunks/rows to write", "execution", ce.ExecutionId)
 		var err error
 		if ce.Error != "" {
-			slog.Warn("waitForExecution - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
+			slog.Warn("waitForConversions - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
 			err = errors.New(ce.Error)
 		}
 		c.execution.done(err)
@@ -287,11 +287,11 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 
 		// if no chunks have been written, we are done
 		if c.execution.chunkCount == 0 {
-			slog.Warn("waitForExecution - no chunks to write", "execution", c.execution.id)
+			slog.Warn("waitForConversions - no chunks to write", "execution", c.execution.id)
 			return nil
 		}
 
-		slog.Debug("waitForExecution", "execution", c.execution.id, "chunk written", chunksWritten, "total chunks", c.execution.chunkCount)
+		slog.Debug("waitForConversions", "execution", c.execution.id, "chunk written", chunksWritten, "total chunks", c.execution.chunkCount)
 
 		if chunksWritten < c.execution.chunkCount {
 			slog.Debug("waiting for parquet conversion", "execution", c.execution.id, "chunks written", chunksWritten, "total chunksWritten", c.execution.chunkCount)
@@ -309,7 +309,7 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 		return database.AddTableView(ctx, c.execution.table, db)
 	})
 
-	slog.Debug("waitForExecution - all chunks written", "execution", c.execution.id)
+	slog.Debug("waitForConversions - all chunks written", "execution", c.execution.id)
 
 	// mark execution as complete and record the end time
 	c.execution.done(err)
@@ -323,8 +323,8 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
 }
 
-// waitForExecutions waits for ALL execution to have state ExecutionState_COMPLETE
-func (c *Collector) waitForExecutions(ctx context.Context) error {
+// waitForExecution waits for our execution to have state ExecutionState_COMPLETE
+func (c *Collector) waitForExecution(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
 	retryInterval := 500 * time.Millisecond
@@ -337,12 +337,8 @@ func (c *Collector) waitForExecutions(ctx context.Context) error {
 
 			return nil
 		default:
-			//slog.Debug("waiting for execution to complete", "execution", e.id, "state", e.state)
 			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))
 		}
-
-		// all complete
-		return nil
 	})
 	if err != nil {
 		if err.Error() == "execution not complete" {

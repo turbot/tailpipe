@@ -21,7 +21,7 @@ type parquetJobError struct {
 	err         error
 }
 
-// the ParquetJobPool struct represents all the conversions that need to be done for a single 'ParquetJobPool'
+// ParquetJobPool struct represents all the conversions that need to be done for a single collection
 // it therefore has a unique execution id, and will potentially involve the conversion of multiple JSONL files
 // each file is assumed to have the filename format <execution_id>_<chunkNumber>.jsonl
 // so when new input files are available, we simply store the chunkNumber number
