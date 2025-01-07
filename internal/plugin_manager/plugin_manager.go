@@ -84,15 +84,9 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 	}
 
-	// TODO #design consider the flow
-	// currently we create an observer for each partition, i.e. create an event stream per partition
-	// perhaps instead we should have a single observer for all partitions?
-	// if we keep it as it is now, it may be worth merging Collect and AddObserver and just have collect returning a stream
-
 	// call into the plugin to collect log rows
 	// this returns a stream which will send events
-	// TODO #design maybe we already have an observer - or is a stream only for a single execution and reuse the stream?
-	// otherwise be sure to close the stream
+	// be sure to close the stream
 	eventStream, err := tablePluginClient.AddObserver()
 	if err != nil {
 		return nil, fmt.Errorf("error adding observer for plugin %s: %w", tablePluginClient.Name, err)
@@ -184,7 +178,6 @@ func getExecutionId() string {
 }
 
 func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
-
 	if pluginDef.Alias == constants.CorePluginName {
 		// ensure the core plugin is installed or the min version requirement is satisfied
 		if err := ensureCorePlugin(ctx); err != nil {
@@ -199,6 +192,7 @@ func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin
 	p.pluginMutex.RUnlock()
 	if !ok {
 		p.pluginMutex.Lock()
+		defer p.pluginMutex.Unlock()
 		// recheck if pluginImageRef was started by another goroutine
 		client, ok = p.Plugins[pluginImageRef]
 		if !ok {
@@ -207,9 +201,7 @@ func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin
 			if err != nil {
 				return nil, err
 			}
-
 		}
-		p.pluginMutex.Unlock()
 	}
 	return client, nil
 }

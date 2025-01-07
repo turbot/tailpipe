@@ -164,7 +164,12 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	}
 
 	// now read row count
-	return getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
+	count, err := getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
+	if err != nil {
+		slog.Warn("failed to get row count - conversion failed", "error", err, "query", exportQuery)
+	}
+	return count, err
+
 }
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {

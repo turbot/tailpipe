@@ -132,7 +132,7 @@ func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
 }
 
 func collectPartition(ctx context.Context, col *config.Partition, pluginManager *plugin_manager.PluginManager) (string, string, error) {
-	c, err := collector.New(ctx, pluginManager)
+	c, err := collector.New(pluginManager)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create collector: %w", err)
 	}
