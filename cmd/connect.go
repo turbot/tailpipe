@@ -19,6 +19,7 @@ import (
 	"github.com/turbot/pipe-fittings/connection"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
@@ -125,26 +126,30 @@ func getFilters() ([]string, error) {
 	var result []string
 	if viper.IsSet(pconstants.ArgFrom) {
 		from := viper.GetString(pconstants.ArgFrom)
-		// verify this is a valid date
-		t, err := time.Parse(time.RFC3339, from)
+		// parse the string as time.Time
+		// arg `from` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
+		// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+		t, err := parse.ParseTime(from, time.Now())
 		if err != nil {
 			return nil, fmt.Errorf("invalid date format for 'from': %s", from)
 		}
 		// format as SQL timestamp
-		fromDate := t.Format("2006-01-02")
-		fromTimestamp := t.Format("2006-01-02 15:04:05")
+		fromDate := t.Format(time.DateOnly)
+		fromTimestamp := t.Format(time.DateTime)
 		result = append(result, fmt.Sprintf("tp_date >= DATE '%s' AND tp_timestamp >= TIMESTAMP '%s'", fromDate, fromTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgTo) {
 		to := viper.GetString(pconstants.ArgTo)
-		// verify this is a valid date
-		t, err := time.Parse(time.RFC3339, to)
+		// parse the string as time.Time
+		// arg `to` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
+		// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+		t, err := parse.ParseTime(to, time.Now())
 		if err != nil {
 			return nil, fmt.Errorf("invalid date format for 'to': %s", to)
 		}
 		// format as SQL timestamp
-		toDate := t.Format("2006-01-02")
-		toTimestamp := t.Format("2006-01-02 15:04:05")
+		toDate := t.Format(time.DateOnly)
+		toTimestamp := t.Format(time.DateTime)
 		result = append(result, fmt.Sprintf("tp_date <= DATE '%s' AND tp_timestamp <= TIMESTAMP '%s'", toDate, toTimestamp))
 	}
 	return result, nil
