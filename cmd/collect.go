@@ -207,7 +207,7 @@ func getPartitionsForArg(partitions []string, arg string) ([]string, error) {
 	return res, nil
 }
 
-func getPartitionMatchPatterns(partitions []string, arg string, parts []string) (string, string, error) { //nolint:staticcheck // TODO is tablePattern required as input?
+func getPartitionMatchPatterns(partitions []string, arg string, parts []string) (string, string, error) {
 	var tablePattern, partitionPattern string
 	// '*' is not valid for a single part arg
 	if parts[0] == "*" {
