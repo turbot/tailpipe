@@ -19,8 +19,8 @@ require (
 	github.com/turbot/pipe-fittings v1.7.0
 	// develop
 	github.com/turbot/tailpipe-plugin-core v0.0.1-rc.0.0.20250109113433-83b4756d2683
-	// main
-	github.com/turbot/tailpipe-plugin-sdk v0.0.0
+	// develop
+	github.com/turbot/tailpipe-plugin-sdk v0.0.0-20250109114828-57ec30fabf1d
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 
