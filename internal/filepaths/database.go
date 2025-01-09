@@ -11,8 +11,3 @@ func TailpipeDbFilePath() string {
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	return filepath.Join(dataDir, constants.TailpipeDbName)
 }
-
-func CollectionStateDbFilePath() string {
-	dataDir := config.GlobalWorkspaceProfile.GetCollectionDir()
-	return filepath.Join(dataDir, constants.CollectionStateDbName)
-}

@@ -14,8 +14,8 @@ import (
 	"github.com/sethvargo/go-retry"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
+	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"github.com/turbot/tailpipe/internal/collection_state"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
@@ -33,33 +33,38 @@ type Collector struct {
 	// the execution
 	execution *execution
 
-	parquetWriter             *parquet.ParquetJobPool
-	collectionStateRepository *collection_state.Repository
-	spinner                   *spinner.Spinner
+	parquetWriter *parquet.ParquetJobPool
+	spinner       *spinner.Spinner
 	// the current plugin status - used to update the spinner
-	status     status
+	status status
+
+	// the subdirectory of ~/.tailpipe/internal which will be used to store all file data for this collection
+	// this will have the form ~/.tailpipe/internal/collection/<profile>/<pid>
+	collectionTempDir string
+
 	sourcePath string
 }
 
 func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
-	sourcePath, err := filepaths.EnsureSourcePath()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create source path: %w", err)
-	}
+	// get the temp data dir for this collection
+	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
+	collectionTempDir := config.GlobalWorkspaceProfile.GetCollectionDir()
 
 	c := &Collector{
-		Events:        make(chan *proto.Event, eventBufferSize),
-		sourcePath:    sourcePath,
-		pluginManager: pluginManager,
+		Events:            make(chan *proto.Event, eventBufferSize),
+		pluginManager:     pluginManager,
+		collectionTempDir: collectionTempDir,
 	}
 
 	// create a plugin manager
 	c.pluginManager.AddObserver(c)
 
-	c.collectionStateRepository, err = collection_state.NewRepository()
+	// get the JSONL path
+	sourcePath, err := sdkfilepaths.EnsureJSONLPath(c.collectionTempDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create collection state repository: %w", err)
+		return nil, fmt.Errorf("failed to create JSONL path: %w", err)
 	}
+	c.sourcePath = sourcePath
 
 	// TODO #ui temp
 	c.spinner = spinner.New(
@@ -77,7 +82,7 @@ func (c *Collector) Close() {
 	c.spinner.Stop()
 }
 
-func (c *Collector) Collect(ctx context.Context, partition *config.Partition) error {
+func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time) error {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
@@ -85,14 +90,8 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
 
-	// try to load collection state data
-	collectionState, err := c.collectionStateRepository.Load(partition.UnqualifiedName)
-	if err != nil {
-		return fmt.Errorf("failed to load collection state data: %w", err)
-	}
-
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, partition, c.sourcePath, collectionState)
+	collectResponse, err := c.pluginManager.Collect(ctx, partition, fromTime, c.collectionTempDir)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
@@ -166,14 +165,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
 		}
-		// store collection state data
-		if len(ev.CollectionState) > 0 {
-			err = c.collectionStateRepository.Save(c.execution.partition, string(ev.CollectionState))
-			if err != nil {
-				slog.Error("failed to save collection state data", "error", err)
-				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
-			}
-		}
 	case *proto.Event_CompleteEvent:
 		completedEvent := e.GetCompleteEvent()
 		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
@@ -219,7 +210,6 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 	}
 
 	c.parquetWriter.Close()
-	c.collectionStateRepository.Close()
 
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
@@ -334,7 +324,6 @@ func (c *Collector) waitForExecution(ctx context.Context) error {
 		case ExecutionState_ERROR:
 			return NewExecutionError(errors.New("execution in error state"), c.execution.id)
 		case ExecutionState_COMPLETE:
-
 			return nil
 		default:
 			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))

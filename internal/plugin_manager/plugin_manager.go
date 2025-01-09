@@ -33,6 +33,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
 	_ "github.com/turbot/tailpipe-plugin-sdk/artifact_source"
@@ -60,7 +61,7 @@ func (p *PluginManager) AddObserver(o Observer) {
 }
 
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, inboxPath string, collectionState string) (*CollectResponse, error) {
+func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) (*CollectResponse, error) {
 	// start plugin if needed
 	tablePlugin := partition.Plugin
 	tablePluginClient, err := p.getPlugin(ctx, tablePlugin)
@@ -93,15 +94,28 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	}
 	executionID := getExecutionId()
 
+	// the collection temp dir is a subfolder of the collection dir, which has
+	// with the form: ~/.tailpipe/collection/<profile_name>/<pid>/
+	// it is used to write JSONL files and sourctemporary source artifact files
+	// it is expected all this data will be cleaned up after the collection is complete
+	// these folders are subject to cleanup in the future
+
+	// the plugin collection state is written by the plugin to a json file in the parent of the collection temp dir:
+	// : ~/.tailpipe/collection/<profile_name>/
+	// the name of the collection state file contains the partition name
+	// thus the collection state is shared between multiple successive collections
+
+	collectionStateDir := filepath.Dir(collectionTempDir)
+
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
-		TableName:       partition.TableName,
-		PartitionName:   partition.ShortName,
-		ExecutionId:     executionID,
-		OutputPath:      inboxPath,
-		SourceData:      partition.Source.ToProto(),
-		SourcePlugin:    sourcePluginReattach,
-		CollectionState: []byte(collectionState),
+		TableName:        partition.TableName,
+		PartitionName:    partition.ShortName,
+		ExecutionId:      executionID,
+		CollectionFolder: collectionTempDir,
+		SourceData:       partition.Source.ToProto(),
+		SourcePlugin:     sourcePluginReattach,
+		FromTime:         timestamppb.New(fromTime),
 	}
 
 	if partition.Source.Connection != nil {
