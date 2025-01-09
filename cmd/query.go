@@ -34,6 +34,8 @@ func queryCmd() *cobra.Command {
 		AddVarFlag(enumflag.New(&queryOutputMode, pconstants.ArgOutput, constants.QueryOutputModeIds, enumflag.EnumCaseInsensitive),
 			pconstants.ArgOutput,
 			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.QueryOutputModeIds), ", "))).
+		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
+		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
 		AddBoolFlag(pconstants.ArgHeader, true, "Include column headers csv and table output").
 		AddStringFlag(pconstants.ArgSeparator, ",", "Separator string for csv output")
 
