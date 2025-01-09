@@ -21,6 +21,7 @@ release-dry-run:
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
+		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot
@@ -34,6 +35,7 @@ release-acceptance:
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
+		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot --config=.acceptance.goreleaser.yml
@@ -52,6 +54,7 @@ release:
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
+		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
 		-w /go/src/tailpipe \
 		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		release --clean --skip=validate

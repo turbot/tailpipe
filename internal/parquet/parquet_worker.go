@@ -20,7 +20,16 @@ import (
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
 type parquetConversionWorker struct {
-	fileWorkerBase[JobPayload]
+	// channel to receive jobs from the writer
+	jobChan chan parquetJob
+	// channel to send errors to the writer
+	errorChan chan parquetJobError
+
+	// source file location
+	sourceDir string
+	// dest file location
+	destDir string
+
 	// cache partition schemas - key by partition name
 	viewQueries map[string]string
 	// helper struct which provides unique filename roots
@@ -28,9 +37,12 @@ type parquetConversionWorker struct {
 	db               *duckDb
 }
 
-func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan jobGroupError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (worker, error) {
+func newParquetConversionWorker(jobChan chan parquetJob, errorChan chan parquetJobError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (*parquetConversionWorker, error) {
 	w := &parquetConversionWorker{
-		fileWorkerBase:   newWorker(jobChan, errorChan, sourceDir, destDir),
+		jobChan:          jobChan,
+		errorChan:        errorChan,
+		sourceDir:        sourceDir,
+		destDir:          destDir,
 		viewQueries:      make(map[string]string),
 		fileRootProvider: fileRootProvider,
 	}
@@ -41,25 +53,50 @@ func newParquetConversionWorker(jobChan chan fileJob[JobPayload], errorChan chan
 		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
 	}
 	w.db = db
-	// set base doWork function
-	w.doWorkFunc = w.doJSONToParquetConversion
-	w.closeFunc = w.close
 	return w, nil
+}
+
+// this is the worker function run by all workers, which all read from the ParquetJobPool channel
+func (w *parquetConversionWorker) start() {
+	slog.Debug("worker start")
+
+	// loop until we are closed
+	for job := range w.jobChan {
+		// ok we have a job
+
+		if err := w.doJSONToParquetConversion(job); err != nil {
+			slog.Error("worker failed to process job", "error", err)
+			// send the error to the writer
+			w.errorChan <- parquetJobError{job.groupId, err}
+			continue
+		}
+		// increment the completion count
+		atomic.AddInt32(job.completionCount, 1)
+
+		// log the completion count
+		if *job.completionCount%100 == 0 {
+			slog.Debug("ParquetJobPool completion count", "ParquetJobPool", job.groupId, "count", *job.completionCount)
+		}
+
+	}
+
+	// we are done
+	w.close()
 }
 
 func (w *parquetConversionWorker) close() {
 	w.db.Close()
 }
 
-func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPayload]) error {
+func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) error {
 	startTime := time.Now()
 
 	// build the source filename
 	jsonFileName := table.ExecutionIdToFileName(job.groupId, job.chunkNumber)
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
-	s := job.payload.SchemaFunc()
-	// process the jobGroup
-	rowCount, err := w.convertFile(jsonFilePath, job.payload.Partition, s)
+	s := job.SchemaFunc()
+	// process the ParquetJobPool
+	rowCount, err := w.convertFile(jsonFilePath, job.Partition, s)
 	if err != nil {
 		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
@@ -75,7 +112,7 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job fileJob[JobPaylo
 	}
 	activeDuration := time.Since(startTime)
 	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
-	job.payload.UpdateActiveDuration(activeDuration)
+	job.UpdateActiveDuration(activeDuration)
 	return nil
 }
 
@@ -127,7 +164,12 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	}
 
 	// now read row count
-	return getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
+	count, err := getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
+	if err != nil {
+		slog.Warn("failed to get row count - conversion failed", "error", err, "query", exportQuery)
+	}
+	return count, err
+
 }
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {

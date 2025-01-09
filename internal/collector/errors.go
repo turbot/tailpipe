@@ -23,5 +23,5 @@ func (e *ExecutionError) Unwrap() error {
 }
 
 func (e ExecutionError) Error() string {
-	return fmt.Sprintf("execution %s failed: %s", e.executionId, e.err)
+	return fmt.Sprintf("execution failed: %s", e.err)
 }

@@ -8,26 +8,39 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/go-hclog"
-	"github.com/hashicorp/go-plugin"
+	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/app_specific"
+	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/filepaths"
+	"github.com/turbot/pipe-fittings/installationstate"
+	pociinstaller "github.com/turbot/pipe-fittings/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
+	"github.com/turbot/tailpipe-plugin-core/sources"
+	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/ociinstaller"
+	"github.com/turbot/tailpipe/internal/plugin"
+
+	// refer to artifact source so sdk sources are registered
+	_ "github.com/turbot/tailpipe-plugin-sdk/artifact_source"
 )
 
 type PluginManager struct {
 	// map of running plugins, keyed by plugin name
-	Plugins     map[string]*PluginClient
+	Plugins     map[string]*grpc.PluginClient
 	pluginMutex sync.RWMutex
 	obs         Observer
 	pluginPath  string
@@ -35,12 +48,13 @@ type PluginManager struct {
 
 func New() *PluginManager {
 	return &PluginManager{
-		Plugins:    make(map[string]*PluginClient),
+		Plugins:    make(map[string]*grpc.PluginClient),
 		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
 	}
 }
 
-// AddObserver adds an observer to the plugin manager
+// AddObserver adds a
+// n observer to the plugin manager
 func (p *PluginManager) AddObserver(o Observer) {
 	p.obs = o
 }
@@ -48,24 +62,34 @@ func (p *PluginManager) AddObserver(o Observer) {
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, inboxPath string, collectionState string) (*CollectResponse, error) {
 	// start plugin if needed
-	pluginDef := partition.Plugin
-	pluginClient, err := p.getPlugin(pluginDef)
+	tablePlugin := partition.Plugin
+	tablePluginClient, err := p.getPlugin(ctx, tablePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
 
-	// TODO #design consider the flow
-	// currently we create an observer for each partition, i.e. create an event stream per partition
-	// perhaps instead we should have a single observer for all partitions?
-	// if we keep it as it is now, it may be worth merging Collect and AddObserver and just have collect returning a stream
+	var sourcePluginReattach *proto.SourcePluginReattach
+	// identify which plugin provides the source
+	sourcePlugin, err := p.determineSourcePlugin(partition)
+	if err != nil {
+		return nil, fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+	}
+	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
+	// and then pass reattach info
+	if sourcePlugin.Plugin != tablePlugin.Plugin {
+		sourcePluginClient, err := p.getPlugin(ctx, sourcePlugin)
+		if err != nil {
+			return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
+		}
+		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
+	}
 
 	// call into the plugin to collect log rows
 	// this returns a stream which will send events
-	// TODO #design maybe we already have an observer - or is a stream only for a single execution and reuse the stream?
-	// otherwise be sure to close the stream
-	eventStream, err := pluginClient.AddObserver()
+	// be sure to close the stream
+	eventStream, err := tablePluginClient.AddObserver()
 	if err != nil {
-		return nil, fmt.Errorf("error adding observer for plugin %s: %w", pluginClient.Name, err)
+		return nil, fmt.Errorf("error adding observer for plugin %s: %w", tablePluginClient.Name, err)
 	}
 	executionID := getExecutionId()
 
@@ -76,6 +100,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		ExecutionId:     executionID,
 		OutputPath:      inboxPath,
 		SourceData:      partition.Source.ToProto(),
+		SourcePlugin:    sourcePluginReattach,
 		CollectionState: []byte(collectionState),
 	}
 
@@ -96,10 +121,13 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
 		}
 	}
+	if sourcePluginReattach != nil {
+		req.SourcePlugin = sourcePluginReattach
+	}
 
-	collectResponse, err := pluginClient.Collect(req)
+	collectResponse, err := tablePluginClient.Collect(req)
 	if err != nil {
-		return nil, fmt.Errorf("error starting collection for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
+		return nil, fmt.Errorf("error starting collection for plugin %s: %w", tablePluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
@@ -115,7 +143,7 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
-	pluginClient, err := p.getPlugin(pluginDef)
+	pluginClient, err := p.getPlugin(ctx, pluginDef)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
 	}
@@ -136,7 +164,7 @@ func (p *PluginManager) Close() {
 	p.pluginMutex.Lock()
 	defer p.pluginMutex.Unlock()
 	for _, plg := range p.Plugins {
-		plg.client.Kill()
+		plg.Client.Kill()
 	}
 }
 
@@ -149,7 +177,14 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000)) //nolint:gosec // TODO use math/rand/v2 for security
 }
 
-func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, error) {
+func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
+	if pluginDef.Alias == constants.CorePluginName {
+		// ensure the core plugin is installed or the min version requirement is satisfied
+		if err := ensureCorePlugin(ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	p.pluginMutex.RLock()
 	// Plugins map is keyed by image ref
 	pluginImageRef := pluginDef.Plugin
@@ -157,6 +192,7 @@ func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, err
 	p.pluginMutex.RUnlock()
 	if !ok {
 		p.pluginMutex.Lock()
+		defer p.pluginMutex.Unlock()
 		// recheck if pluginImageRef was started by another goroutine
 		client, ok = p.Plugins[pluginImageRef]
 		if !ok {
@@ -165,33 +201,31 @@ func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*PluginClient, err
 			if err != nil {
 				return nil, err
 			}
-
 		}
-		p.pluginMutex.Unlock()
 	}
 	return client, nil
 }
 
-func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
+func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
 	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
 	pluginName := tp.Alias
 
 	pluginPath, err := filepaths.GetPluginPath(tp.Plugin, tp.Alias)
 	if err != nil {
-		return nil, fmt.Errorf("error getting plugin path for plugin %s: %w", tp.Alias, err)
+		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
 	}
 
 	// create the plugin map
-	pluginMap := map[string]plugin.Plugin{
+	pluginMap := map[string]goplugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
 	}
 
 	pluginStartTimeout := p.getPluginStartTimeout()
-	c := plugin.NewClient(&plugin.ClientConfig{
+	c := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		Plugins:          pluginMap,
 		Cmd:              exec.Command("sh", "-c", pluginPath),
-		AllowedProtocols: []plugin.Protocol{plugin.ProtocolGRPC},
+		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		// send plugin stderr (logging) to our stderr
 		Stderr: os.Stderr,
 		// suppress GRPC client logging
@@ -199,7 +233,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*PluginClient, error) {
 		StartTimeout: pluginStartTimeout,
 	})
 
-	client, err := NewPluginClient(c, pluginName)
+	client, err := grpc.NewPluginClient(c, pluginName)
 	if err != nil {
 		return nil, err
 
@@ -276,4 +310,98 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 		}
 	}
 
+}
+
+func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
+	sourceType := partition.Source.Type
+	// because we reference the core plugin, all sources it provides are registered with our source factory instance
+	coreSources, err := sources.DescribeSources()
+	if err != nil {
+		return nil, fmt.Errorf("error describing sources: %w", err)
+	}
+	if _, ok := coreSources[sourceType]; ok {
+		return pplugin.NewPlugin(constants.CorePluginName), nil
+	}
+
+	// assume the source type name is of form "<plugin>_<source>", eg. aws_s3_bucket -> "aws"
+	pluginName := strings.Split(sourceType, "_")[0]
+	return pplugin.NewPlugin(pluginName), nil
+}
+
+// ensureCorePlugin ensures the core plugin is installed or the min version is satisfied
+func ensureCorePlugin(ctx context.Context) error {
+	// get the installation state
+	state, err := installationstate.Load()
+	if err != nil {
+		return err
+	}
+
+	// check if core plugin is already installed
+	exists, _ := pplugin.Exists(ctx, constants.CorePluginName)
+
+	if exists {
+		// check if the min version is satisfied; if not then update
+		// retrieve the plugin version data from tailpipe config
+		pluginVersions := config.GlobalConfig.PluginVersions
+		// find the version of the core plugin from the pluginVersions
+		installedVersion := pluginVersions[constants.CorePluginFullName].Version
+
+		// compare the version(using semver) with the min version
+		satisfy, err := checkSatisfyMinVersion(installedVersion)
+		if err != nil {
+			return err
+		}
+		if !satisfy {
+			// install the core plugin
+			if err = installCorePlugin(ctx, state); err != nil {
+				return err
+			}
+		}
+
+	} else {
+		// install the core plugin
+		if err = installCorePlugin(ctx, state); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installCorePlugin(ctx context.Context, state installationstate.InstallationState) error {
+	// get the latest version of the core plugin
+	ref := pociinstaller.NewImageRef(constants.CorePluginName)
+	org, name, constraint := ref.GetOrgNameAndStream()
+	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
+	if err != nil {
+		return err
+	}
+	resolvedPlugin := *rpv
+
+	progress := make(chan struct{}, 5)
+
+	// install plugin
+	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.TailpipeHubOCIBase, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func checkSatisfyMinVersion(ver string) (bool, error) {
+	// check if the version satisfies the min version requirement of core plugin
+	// Parse the versions
+	installedVer, err := version.NewVersion(ver)
+	if err != nil {
+		return false, err
+	}
+	minReq, err := version.NewVersion(constants.MinCorePluginVersion)
+	if err != nil {
+		return false, err
+	}
+
+	// compare the versions
+	if installedVer.LessThan(minReq) {
+		return false, nil
+	}
+	return true, nil
 }

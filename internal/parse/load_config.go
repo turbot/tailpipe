@@ -3,6 +3,8 @@ package parse
 import (
 	"context"
 	"fmt"
+	"log/slog"
+
 	"github.com/spf13/viper"
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
@@ -13,7 +15,7 @@ import (
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
-	"log/slog"
+	sdkconstants "github.com/turbot/tailpipe/internal/constants"
 )
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
@@ -86,7 +88,13 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	}
 
 	// parse the files
-	body, diags := parse.ParseHclFiles(fileData)
+	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
+	parseOpts := []parse.ParseHclOpt{
+		parse.WithDisableTemplateForProperties(sdkconstants.GrokConfigProperties),
+	}
+
+	//
+	body, diags := parse.ParseHclFiles(fileData, parseOpts...)
 	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -25,19 +24,16 @@ import (
 )
 
 const eventBufferSize = 100
-const parquetWorkerCount = 5
 const executionMaxDuration = 2 * time.Hour
 
 type Collector struct {
 	Events chan *proto.Event
 
 	pluginManager *plugin_manager.PluginManager
-	// map of executions
-	executions map[string]*execution
-	// lock for executions
-	executionsLock sync.RWMutex
+	// the execution
+	execution *execution
 
-	parquetWriter             *parquet.Writer
+	parquetWriter             *parquet.ParquetJobPool
 	collectionStateRepository *collection_state.Repository
 	spinner                   *spinner.Spinner
 	// the current plugin status - used to update the spinner
@@ -45,18 +41,14 @@ type Collector struct {
 	sourcePath string
 }
 
-func New(ctx context.Context, pluginManager *plugin_manager.PluginManager) (*Collector, error) {
+func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 	sourcePath, err := filepaths.EnsureSourcePath()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create source path: %w", err)
 	}
 
-	// get the data dir - this will already have been created by the config loader
-	parquetPath := config.GlobalWorkspaceProfile.GetDataDir()
-
 	c := &Collector{
 		Events:        make(chan *proto.Event, eventBufferSize),
-		executions:    make(map[string]*execution),
 		sourcePath:    sourcePath,
 		pluginManager: pluginManager,
 	}
@@ -64,13 +56,6 @@ func New(ctx context.Context, pluginManager *plugin_manager.PluginManager) (*Col
 	// create a plugin manager
 	c.pluginManager.AddObserver(c)
 
-	// create a parquet writer
-	parquetWriter, err := parquet.NewWriter(sourcePath, parquetPath, parquetWorkerCount)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create parquet writer: %w", err)
-	}
-
-	c.parquetWriter = parquetWriter
 	c.collectionStateRepository, err = collection_state.NewRepository()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create collection state repository: %w", err)
@@ -84,8 +69,6 @@ func New(ctx context.Context, pluginManager *plugin_manager.PluginManager) (*Col
 		spinner.WithWriter(os.Stdout),
 	)
 
-	// start listening to plugin event
-	c.listenToEventsAsync(ctx)
 	return c, nil
 }
 
@@ -95,6 +78,10 @@ func (c *Collector) Close() {
 }
 
 func (c *Collector) Collect(ctx context.Context, partition *config.Partition) error {
+	if c.execution != nil {
+		return errors.New("collection already in progress")
+	}
+
 	c.spinner.Start()
 	c.spinner.Suffix = " Collecting logs"
 
@@ -109,16 +96,16 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
-	// set the schema on the parquet writer - NOTE: this may be dynamic (i.e. empty) or partial, in which case, we
-	// will need to infer the schema from the first JSONL file
-	c.parquetWriter.SetSchema(collectResponse.Schema)
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
-	e := newExecution(executionId, partition)
+	c.execution = newExecution(executionId, partition)
 
-	c.executionsLock.Lock()
-	c.executions[executionId] = e
-	c.executionsLock.Unlock()
+	// create a parquet writer
+	parquetWriter, err := parquet.NewParquetJobPool(executionId, partition, c.execution.conversionTiming.UpdateActiveDuration, c.sourcePath, collectResponse.Schema)
+	if err != nil {
+		return fmt.Errorf("failed to create parquet writer: %w", err)
+	}
+	c.parquetWriter = parquetWriter
 
 	// update the status with the chunks written
 	// TODO #design tactical push this from writer???
@@ -128,7 +115,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 			case <-ctx.Done():
 				return
 			case <-time.After(250 * time.Millisecond):
-				rowCount, err := c.parquetWriter.GetRowCount(executionId)
+				rowCount, err := c.parquetWriter.GetRowCount()
 				if err == nil {
 					c.status.SetRowsConverted(rowCount)
 					c.setStatusMessage()
@@ -137,15 +124,10 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition) er
 		}
 	}()
 
-	// create jobPayload
-	payload := parquet.JobPayload{
-		Partition:            partition,
-		SchemaFunc:           c.parquetWriter.GetSchema,
-		UpdateActiveDuration: e.conversionTiming.UpdateActiveDuration,
-	}
+	// start listening to plugin event
+	c.listenToEventsAsync(ctx)
 
-	// start the parquet writer job
-	return c.parquetWriter.StartJobGroup(executionId, payload)
+	return nil
 }
 
 // Notify implements observer.Observer
@@ -161,12 +143,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	switch e.GetEvent().(type) {
 	case *proto.Event_StartedEvent:
 		slog.Debug("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
-		executionId := e.GetStartedEvent().ExecutionId
-		c.executionsLock.Lock()
-		if e, ok := c.executions[executionId]; ok {
-			e.state = ExecutionState_STARTED
-		}
-		c.executionsLock.Unlock()
+		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
 		c.setStatusMessage()
@@ -176,57 +153,38 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
 
-		// retrieve the execution
-		c.executionsLock.RLock()
-		execution, ok := c.executions[executionId]
-		c.executionsLock.RUnlock()
-		if !ok {
-			slog.Error("Event_ChunkWrittenEvent - execution not found", "execution", executionId)
-			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
-			return
-		}
-
 		// set the conversion start time if it hasn't been set
-		execution.conversionTiming.TryStart(constants.TimingConvert)
+		c.execution.conversionTiming.TryStart(constants.TimingConvert)
 
 		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {
 			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}
 
-		err := c.parquetWriter.AddJob(executionId, chunkNumber)
+		err := c.parquetWriter.AddChunk(executionId, chunkNumber)
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
 		}
 		// store collection state data
 		if len(ev.CollectionState) > 0 {
-			err = c.collectionStateRepository.Save(execution.partition, string(ev.CollectionState))
+			err = c.collectionStateRepository.Save(c.execution.partition, string(ev.CollectionState))
 			if err != nil {
 				slog.Error("failed to save collection state data", "error", err)
 				// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
 			}
 		}
 	case *proto.Event_CompleteEvent:
-		ev := e.GetCompleteEvent()
-		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
-		slog.Debug("Event_CompleteEvent", "execution", e.GetCompleteEvent().ExecutionId)
-
 		completedEvent := e.GetCompleteEvent()
+		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
+		slog.Debug("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
 		// was there an error?
 		if completedEvent.Error != "" {
 			slog.Error("execution error", "execution", completedEvent.ExecutionId, "error", completedEvent.Error)
 			// retrieve the execution
-			c.executionsLock.RLock()
-			execution, ok := c.executions[ev.ExecutionId]
-			c.executionsLock.RUnlock()
-			if !ok {
-				slog.Error("Event_CompleteEvent - execution not found", "execution", ev.ExecutionId)
-				return
-			}
-			execution.state = ExecutionState_ERROR
-			execution.error = fmt.Errorf("plugin error: %s", completedEvent.Error)
+			c.execution.state = ExecutionState_ERROR
+			c.execution.error = fmt.Errorf("plugin error: %s", completedEvent.Error)
 		}
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file
@@ -235,7 +193,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
 		// TODO #errors x what to do with an error here?  https://github.com/turbot/tailpipe/issues/106
 		go func() {
-			err := c.waitForExecution(ctx, completedEvent)
+			err := c.waitForConversions(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
 			}
@@ -244,27 +202,20 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	case *proto.Event_ErrorEvent:
 		ev := e.GetErrorEvent()
 		// set the error on the execution
-		c.executionsLock.RLock()
-		execution, ok := c.executions[ev.ExecutionId]
-		c.executionsLock.RUnlock()
-		if !ok {
-			slog.Error("Error Event - execution not found", "execution", ev.ExecutionId)
-			return
-		}
-		execution.state = ExecutionState_ERROR
-		execution.error = fmt.Errorf("plugin error: %s", ev.Error)
+		c.execution.state = ExecutionState_ERROR
+		c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
 	}
 }
 
 // WaitForCompletion waits for all collections to complete, then cleans up the collector - closes the file watcher
 func (c *Collector) WaitForCompletion(ctx context.Context) {
-	slog.Info("closing collector - wait for executions to complete")
+	slog.Info("closing collector - wait for execution to complete")
 
 	// wait for any ongoing partitions to complete
-	err := c.waitForExecutions(ctx)
+	err := c.waitForExecution(ctx)
 	if err != nil {
 		// TODO #errors x https://github.com/turbot/tailpipe/issues/106
-		slog.Error("error waiting for executions to complete", "error", err)
+		slog.Error("error waiting for execution to complete", "error", err)
 	}
 
 	c.parquetWriter.Close()
@@ -275,39 +226,34 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 }
 
 func (c *Collector) StatusString() string {
-	// TODO #testing we need to test multiple executions https://github.com/turbot/tailpipe/issues/71
 	var str strings.Builder
 	str.WriteString("Collection complete.\n\n")
 	str.WriteString(c.status.String())
 	str.WriteString("\n")
 	// print out the execution status
-	for _, e := range c.executions {
-		if e.state == ExecutionState_ERROR {
-			// if no rows were converted, just show the error
-			if e.totalRows == 0 {
-				str.Reset()
-			}
-			str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", e.id, e.error))
+	if c.execution.state == ExecutionState_ERROR {
+		// if no rows were converted, just show the error
+		if c.execution.totalRows == 0 {
+			str.Reset()
 		}
-		//case ExecutionState_COMPLETE:
-		//	str.WriteString(fmt.Sprintf("Execution %s complete\n", e.id))
+		str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", c.execution.id, c.execution.error))
 	}
+
 	return str.String()
 }
 
 func (c *Collector) TimingString() string {
 	var str strings.Builder
 	// print out the execution status
-	for _, e := range c.executions {
-		str.WriteString(e.getTiming().String())
-		str.WriteString("\n")
-	}
+	str.WriteString(c.execution.getTiming().String())
+	str.WriteString("\n")
+
 	return str.String()
 }
 
-// waitForExecution waits for the parquet writer to complete the conversion of the JSONL files to parquet
+// waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
-func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplete) error {
+func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) error {
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
 
 	// store the plugin pluginTiming for this execution
@@ -316,24 +262,17 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
 	retryInterval := 5 * time.Second
-	c.executionsLock.Lock()
-	e, ok := c.executions[ce.ExecutionId]
-	c.executionsLock.Unlock()
-	if !ok {
-		slog.Error("waitForExecution - execution not found", "execution", ce.ExecutionId)
-		return fmt.Errorf("execution not found: %s", ce.ExecutionId)
-	}
-	e.totalRows = ce.RowCount
-	e.chunkCount = ce.ChunkCount
+	c.execution.totalRows = ce.RowCount
+	c.execution.chunkCount = ce.ChunkCount
 
 	if ce.ChunkCount == 0 && ce.RowCount == 0 {
-		slog.Debug("waitForExecution - no chunks/rows to write", "execution", ce.ExecutionId)
+		slog.Debug("waitForConversions - no chunks/rows to write", "execution", ce.ExecutionId)
 		var err error
 		if ce.Error != "" {
-			slog.Warn("waitForExecution - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
+			slog.Warn("waitForConversions - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
 			err = errors.New(ce.Error)
 		}
-		e.done(err)
+		c.execution.done(err)
 		return nil
 	}
 
@@ -347,15 +286,15 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 		}
 
 		// if no chunks have been written, we are done
-		if e.chunkCount == 0 {
-			slog.Warn("waitForExecution - no chunks to write", "execution", e.id)
+		if c.execution.chunkCount == 0 {
+			slog.Warn("waitForConversions - no chunks to write", "execution", c.execution.id)
 			return nil
 		}
 
-		slog.Debug("waitForExecution", "execution", e.id, "chunk written", chunksWritten, "total chunks", e.chunkCount)
+		slog.Debug("waitForConversions", "execution", c.execution.id, "chunk written", chunksWritten, "total chunks", c.execution.chunkCount)
 
-		if chunksWritten < e.chunkCount {
-			slog.Debug("waiting for parquet conversion", "execution", e.id, "chunks written", chunksWritten, "total chunksWritten", e.chunkCount)
+		if chunksWritten < c.execution.chunkCount {
+			slog.Debug("waiting for parquet conversion", "execution", c.execution.id, "chunks written", chunksWritten, "total chunksWritten", c.execution.chunkCount)
 			// not all chunks have been written
 			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
 		}
@@ -367,13 +306,13 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 		}
 		defer db.Close()
 
-		return database.AddTableView(ctx, e.table, db)
+		return database.AddTableView(ctx, c.execution.table, db)
 	})
 
-	slog.Debug("waitForExecution - all chunks written", "execution", e.id)
+	slog.Debug("waitForConversions - all chunks written", "execution", c.execution.id)
 
 	// mark execution as complete and record the end time
-	e.done(err)
+	c.execution.done(err)
 
 	// if there was an error, return it
 	if err != nil {
@@ -384,34 +323,26 @@ func (c *Collector) waitForExecution(ctx context.Context, ce *proto.EventComplet
 	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
 }
 
-// waitForExecutions waits for ALL executions to have state ExecutionState_COMPLETE
-func (c *Collector) waitForExecutions(ctx context.Context) error {
+// waitForExecution waits for our execution to have state ExecutionState_COMPLETE
+func (c *Collector) waitForExecution(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
 	retryInterval := 500 * time.Millisecond
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
-		c.executionsLock.RLock()
-		defer c.executionsLock.RUnlock()
-		for _, e := range c.executions {
-			switch e.state {
-			case ExecutionState_ERROR:
-				return NewExecutionError(errors.New("execution in error state"), e.id)
-			case ExecutionState_COMPLETE:
+		switch c.execution.state {
+		case ExecutionState_ERROR:
+			return NewExecutionError(errors.New("execution in error state"), c.execution.id)
+		case ExecutionState_COMPLETE:
 
-				return nil
-			default:
-				//slog.Debug("waiting for executions to complete", "execution", e.id, "state", e.state)
-				return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), e.id))
-			}
+			return nil
+		default:
+			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))
 		}
-
-		// all complete
-		return nil
 	})
 	if err != nil {
 		if err.Error() == "execution not complete" {
-			return fmt.Errorf("not all executions completed after %s", executionTimeout.String())
+			return fmt.Errorf("not all execution completed after %s", executionTimeout.String())
 		}
 		return err
 	}
@@ -432,9 +363,5 @@ func (c *Collector) setStatusMessage() {
 }
 
 func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {
-	c.executionsLock.Lock()
-	defer c.executionsLock.Unlock()
-	if e, ok := c.executions[executionId]; ok {
-		e.pluginTiming = events.TimingCollectionFromProto(timing)
-	}
+	c.execution.pluginTiming = events.TimingCollectionFromProto(timing)
 }
