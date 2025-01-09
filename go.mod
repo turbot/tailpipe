@@ -5,7 +5,7 @@ go 1.23.2
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
 	github.com/turbot/pipe-fittings => ../pipe-fittings
-	github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+	//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
 	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
@@ -17,7 +17,8 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v0.10.0-rc.0
 	github.com/turbot/pipe-fittings v1.7.0
-	github.com/turbot/tailpipe-plugin-core v0.0.0-20240418033256-15206bee92ce
+	// develop
+	github.com/turbot/tailpipe-plugin-core v0.0.1-rc.0.0.20250109113433-83b4756d2683
 	// main
 	github.com/turbot/tailpipe-plugin-sdk v0.0.0
 	github.com/zclconf/go-cty v1.14.4
