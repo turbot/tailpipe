@@ -170,3 +170,30 @@ func GetRowCount(ctx context.Context, tableName string, partitionName *string) (
 	}
 	return count, nil
 }
+
+func GetTableViews(ctx context.Context) ([]string, error) {
+	// Open a DuckDB connection
+	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
+	}
+	defer db.Close()
+
+	query := "SELECT table_name FROM information_schema.tables WHERE table_type='VIEW';"
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get table views: %w", err)
+	}
+	defer rows.Close()
+
+	var tableViews []string
+	for rows.Next() {
+		var tableView string
+		err = rows.Scan(&tableView)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan table view: %w", err)
+		}
+		tableViews = append(tableViews, tableView)
+	}
+	return tableViews, nil
+}

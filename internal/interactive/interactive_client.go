@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/query"
 	"log"
 	"os"
 	"os/signal"
@@ -17,12 +16,15 @@ import (
 	"github.com/alecthomas/chroma/styles"
 	"github.com/c-bata/go-prompt"
 	"github.com/spf13/viper"
+
 	"github.com/turbot/go-kit/helpers"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/statushooks"
 	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/metaquery"
+	"github.com/turbot/tailpipe/internal/query"
 )
 
 type AfterPromptCloseAction int
@@ -48,6 +50,7 @@ type InteractiveClient struct {
 	executionLock sync.Mutex
 	// the schema metadata - this is loaded asynchronously during init
 	//schemaMetadata *db_common.SchemaMetadata
+	tableViews  []string
 	highlighter *Highlighter
 	// hidePrompt is used to render a blank as the prompt prefix
 	hidePrompt bool
@@ -77,6 +80,13 @@ func newInteractiveClient(ctx context.Context, db *sql.DB) (*InteractiveClient, 
 		suggestions:             newAutocompleteSuggestions(),
 		db:                      db,
 	}
+
+	// initialise the table views for autocomplete
+	tv, err := database.GetTableViews(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.tableViews = tv
 
 	// initialise autocomplete suggestions
 	err = c.initialiseSuggestions(ctx)
@@ -508,17 +518,13 @@ func (c *InteractiveClient) getFirstWordSuggestions(word string) []prompt.Sugges
 }
 
 func (c *InteractiveClient) getTableSuggestions(word string) []prompt.Suggest {
-	// try to extract connection
-	//parts := strings.SplitN(word, ".", 2)
-	//if len(parts) == 1 {
-	//	// no connection, just return schemas and unqualified tables
-	//	return append(c.suggestions.schemas, c.suggestions.tables...)
-	//}
-	//
-	//connection := strings.TrimSpace(parts[0])
-	//t := c.suggestions.tablesBySchema[connection]
-	//return t
-	return nil
+	var s []prompt.Suggest
+
+	for _, tv := range c.tableViews {
+		s = append(s, prompt.Suggest{Text: tv, Output: tv})
+	}
+
+	return s
 }
 
 //
