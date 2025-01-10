@@ -117,7 +117,9 @@ func (w *ParquetJobPool) Close() {
 	// close the close channel to signal to the job schedulers to exit
 	close(w.closing)
 	// close the error channel to terminate the error reader
-	close(w.errorChan)
+	//w.errorChan <- nil
+	// TODO FIXME worker may still be sending
+
 	// do not close the job channel - the workers will terminate when `closing` is closed
 }
 
