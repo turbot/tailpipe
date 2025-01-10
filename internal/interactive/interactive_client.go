@@ -50,6 +50,7 @@ type InteractiveClient struct {
 	executionLock sync.Mutex
 	// the schema metadata - this is loaded asynchronously during init
 	//schemaMetadata *db_common.SchemaMetadata
+	tableViews  []string
 	highlighter *Highlighter
 	// hidePrompt is used to render a blank as the prompt prefix
 	hidePrompt bool
@@ -79,6 +80,13 @@ func newInteractiveClient(ctx context.Context, db *sql.DB) (*InteractiveClient, 
 		suggestions:             newAutocompleteSuggestions(),
 		db:                      db,
 	}
+
+	// initialise the table views for autocomplete
+	tv, err := database.GetTableViews(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.tableViews = tv
 
 	// initialise autocomplete suggestions
 	err = c.initialiseSuggestions(ctx)
@@ -512,12 +520,7 @@ func (c *InteractiveClient) getFirstWordSuggestions(word string) []prompt.Sugges
 func (c *InteractiveClient) getTableSuggestions(word string) []prompt.Suggest {
 	var s []prompt.Suggest
 
-	tableViews, err := database.GetTableViews(context.Background())
-	if err != nil {
-		// TODO: #interactive #error how to handle?
-		return s
-	}
-	for _, tv := range tableViews {
+	for _, tv := range c.tableViews {
 		s = append(s, prompt.Suggest{Text: tv, Output: tv})
 	}
 
