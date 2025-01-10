@@ -109,13 +109,14 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
-		TableName:        partition.TableName,
-		PartitionName:    partition.ShortName,
-		ExecutionId:      executionID,
-		CollectionFolder: collectionTempDir,
-		SourceData:       partition.Source.ToProto(),
-		SourcePlugin:     sourcePluginReattach,
-		FromTime:         timestamppb.New(fromTime),
+		TableName:          partition.TableName,
+		PartitionName:      partition.ShortName,
+		ExecutionId:        executionID,
+		CollectionTempDir:  collectionTempDir,
+		CollectionStateDir: collectionStateDir,
+		SourceData:         partition.Source.ToProto(),
+		SourcePlugin:       sourcePluginReattach,
+		FromTime:           timestamppb.New(fromTime),
 	}
 
 	if partition.Source.Connection != nil {
