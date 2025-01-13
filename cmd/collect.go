@@ -33,6 +33,12 @@ func collectCmd() *cobra.Command {
 		Short:            "Collect logs from configured sources",
 		Long:             `Collect logs from configured sources.`,
 	}
+	// arg `from` accepts:
+	// - ISO 8601 date (2024-01-01)
+	// - ISO 8601 datetime (2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms (2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone (2006-01-02T15:04:05Z07:00)
+	// - relative time formats (T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
