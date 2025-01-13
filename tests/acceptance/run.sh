@@ -47,7 +47,6 @@ batversion=$(bats --version)
 echo $batversion
 echo "Running with TAILPIPE_INSTALL_DIR set to: $TAILPIPE_INSTALL_DIR"
 echo "Running with binary from: $(which tailpipe)"
-export TAILPIPE_LOG_LEVEL=debug
 
 if [ $# -eq 0 ]; then
   # Run all test files
