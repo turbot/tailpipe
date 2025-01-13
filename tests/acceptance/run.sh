@@ -36,7 +36,7 @@ echo " ___) | || (_| | |  | |_| | | | | (_| |   | |  __/\__ \ |_\__ \\"
 echo "|____/ \__\__,_|_|   \__|_|_| |_|\__, |   |_|\___||___/\__|___/"
 echo "                                 |___/                         "
 
-export PATH=$MY_PATH/lib/bats-core/bin:$PATH
+export PATH=$MY_PATH/lib/bats/bin:$PATH
 
 if [[ ! ${TAILPIPE_INSTALL_DIR} ]];
 then
