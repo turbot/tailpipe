@@ -174,7 +174,7 @@ jobs:
     # refer:
     #   https://docs.github.com/en/actions/configuring-and-managing-workflows/persisting-workflow-data-using-artifacts#downloading-and-deleting-artifacts-after-a-workflow-run-is-complete
     name: Clean Up Artifacts
-    needs: goreleaser
+    needs: acceptance_test
     # if: ${{ needs.acceptance_test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
