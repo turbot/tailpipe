@@ -137,8 +137,8 @@ jobs:
         uses: docker/login-action@v2
         with:
           registry: ${{ env.CR }}
-          username: ${{ github.repository_owner }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.GH_USERNAME }}
+          password: ${{ secrets.GH_PAT }}
 
       - name: Install Tailpipe and plugins
         run: |
