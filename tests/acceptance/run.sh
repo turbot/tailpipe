@@ -36,10 +36,17 @@ echo " ___) | || (_| | |  | |_| | | | | (_| |   | |  __/\__ \ |_\__ \\"
 echo "|____/ \__\__,_|_|   \__|_|_| |_|\__, |   |_|\___||___/\__|___/"
 echo "                                 |___/                         "
 
-# $BATS_PATH --tap $MY_PATH/test_files
+export PATH=$MY_PATH/lib/bats-core/bin:$PATH
 
-# batversion=$(bats --version)
-# echo $batversion
+if [[ ! ${TAILPIPE_INSTALL_DIR} ]];
+then
+  export TAILPIPE_INSTALL_DIR="$HOME/.tailpipe"
+fi
+
+batversion=$(bats --version)
+echo $batversion
+echo "Running with TAILPIPE_INSTALL_DIR set to: $TAILPIPE_INSTALL_DIR"
+echo "Running with binary from: $(which tailpipe)"
 
 if [ $# -eq 0 ]; then
   # Run all test files
