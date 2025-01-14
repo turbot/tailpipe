@@ -73,3 +73,11 @@ func (c *Partition) InferPluginName() string {
 	// otherwise just use the first segment of the table name
 	return strings.Split(c.TableName, "_")[0]
 }
+
+func (c *Partition) AddFilter(filter string) {
+	if c.Filter == "" {
+		c.Filter = filter
+	} else {
+		c.Filter += " AND " + filter
+	}
+}

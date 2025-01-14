@@ -155,6 +155,12 @@ func collectPartition(ctx context.Context, partition *config.Partition, fromTime
 		return "", "", fmt.Errorf("failed to create collector: %w", err)
 	}
 	defer c.Close()
+
+	// if there is a from time, add a filter to the partition
+	if !fromTime.IsZero() {
+		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", fromTime.Format("2006-01-02T15:04:05")))
+	}
+
 	if err := c.Collect(ctx, partition, fromTime); err != nil {
 		return "", "", err
 	}
