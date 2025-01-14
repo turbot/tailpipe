@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/turbot/pipe-fittings/parse"
 	"strings"
+	"time"
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
@@ -31,9 +33,16 @@ func collectCmd() *cobra.Command {
 		Short:            "Collect logs from configured sources",
 		Long:             `Collect logs from configured sources.`,
 	}
+	// arg `from` accepts:
+	// - ISO 8601 date (2024-01-01)
+	// - ISO 8601 datetime (2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms (2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone (2006-01-02T15:04:05Z07:00)
+	// - relative time formats (T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 
 	cmdconfig.OnCmd(cmd).
-		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection")
+		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
+		AddStringFlag(pconstants.ArgFrom, "", "Specify the collection start time")
 
 	return cmd
 }
@@ -98,6 +107,15 @@ func collectAndCompact(ctx context.Context, args []string) error {
 }
 
 func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
+	var fromTime time.Time
+	if viper.GetString(pconstants.ArgFrom) != "" {
+		var err error
+		fromTime, err = parse.ParseTime(viper.GetString(pconstants.ArgFrom), time.Now())
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse 'from' argument: %w", err)
+		}
+	}
+
 	partitions, err := getPartitions(args)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get partition config: %w", err)
@@ -114,7 +132,7 @@ func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
 	timingStrings := make([]string, 0, len(partitions))
 	var errList []error
 	for _, partition := range partitions {
-		statusString, timingString, err := collectPartition(ctx, partition, pluginManager)
+		statusString, timingString, err := collectPartition(ctx, partition, fromTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
 		} else {
@@ -131,13 +149,19 @@ func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
 	return statusStrings, timingStrings, nil
 }
 
-func collectPartition(ctx context.Context, col *config.Partition, pluginManager *plugin_manager.PluginManager) (string, string, error) {
+func collectPartition(ctx context.Context, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) (string, string, error) {
 	c, err := collector.New(pluginManager)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create collector: %w", err)
 	}
 	defer c.Close()
-	if err := c.Collect(ctx, col); err != nil {
+
+	// if there is a from time, add a filter to the partition
+	if !fromTime.IsZero() {
+		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", fromTime.Format("2006-01-02T15:04:05")))
+	}
+
+	if err := c.Collect(ctx, partition, fromTime); err != nil {
 		return "", "", err
 	}
 	// now wait for all collection to complete and close the collector

@@ -28,7 +28,7 @@ func main() {
 	ctx := context.Background()
 	utils.LogTime("main start")
 
-	// add the auto-populated version properties into viper
+	// add the auto-populated version properties into viper.
 	setVersionProperties()
 
 	defer func() {

@@ -30,6 +30,13 @@ func queryCmd() *cobra.Command {
 		Long:             `execute a query against the workspace database.`,
 	}
 
+	// args `from` and `to` accept:
+	// - ISO 8601 date (2024-01-01)
+	// - ISO 8601 datetime (2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms (2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone (2006-01-02T15:04:05Z07:00)
+	// - relative time formats (T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+
 	cmdconfig.OnCmd(cmd).
 		AddVarFlag(enumflag.New(&queryOutputMode, pconstants.ArgOutput, constants.QueryOutputModeIds, enumflag.EnumCaseInsensitive),
 			pconstants.ArgOutput,
