@@ -55,6 +55,10 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	// Step 1: Query the first Parquet file to infer columns
 	columns, err := getColumnNames(ctx, parquetPath, db)
 	if err != nil {
+		// if this is because no parquet files match, suppress the error
+		if strings.Contains(err.Error(), "IO Error: No files found that match the pattern") {
+			return nil
+		}
 		return err
 	}
 

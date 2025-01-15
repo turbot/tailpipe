@@ -96,14 +96,15 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	// cleanup the collection temp dir from previous runs
 	c.cleanupCollectionDir()
 
-	c.spinner.Start()
-	c.spinner.Suffix = " Collecting logs"
-
 	// tell plugin to start collecting
 	collectResponse, err := c.pluginManager.Collect(ctx, partition, fromTime, c.collectionTempDir)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
+	fmt.Printf("Collecting partition '%s' from %s (%s)\n", partition.Name(), collectResponse.FromTime.Time.Format(time.DateTime), collectResponse.FromTime.Source) //nolint:forbidigo//UI output
+	c.spinner.Start()
+	c.spinner.Suffix = " Collecting logs"
+
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
 	c.execution = newExecution(executionId, partition)
@@ -252,7 +253,7 @@ func (c *Collector) TimingString() string {
 
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
-func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) error {
+func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
 
 	// store the plugin pluginTiming for this execution
@@ -277,7 +278,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 
 	// so there was no error
 
-	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
+	err = retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		// check chunk count - ask the parquet writer how many chunks have been written
 		chunksWritten, err := c.parquetWriter.GetChunksWritten(ce.ExecutionId)
 		if err != nil {
@@ -382,6 +383,7 @@ func (c *Collector) cleanupCollectionDir() {
 			pid, err := strconv.ParseInt(file.Name(), 10, 32)
 			if err == nil {
 				if utils.PidExists(int(pid)) {
+					slog.Info(fmt.Sprintf("cleanupCollectionDir skipping directory '%s' as process  with PID %d exists", file.Name(), pid))
 					continue
 				}
 			}
