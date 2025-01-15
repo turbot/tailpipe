@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/turbot/pipe-fittings/parse"
 	"strings"
 	"time"
 
@@ -13,8 +12,10 @@ import (
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
+	"github.com/turbot/pipe-fittings/constants"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
@@ -42,7 +43,8 @@ func collectCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
-		AddStringFlag(pconstants.ArgFrom, "", "Specify the collection start time")
+		AddStringFlag(pconstants.ArgFrom, "", "Specify the collection start time").
+		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information")
 
 	return cmd
 }
@@ -95,7 +97,8 @@ func collectAndCompact(ctx context.Context, args []string) error {
 	// now show the result
 	for i, statusString := range statusStrings {
 		fmt.Println(statusString) //nolint:forbidigo // ui output
-		if len(timingStrings) > i {
+		// show timing if requested
+		if len(timingStrings) > i && shouldShowColectTiming() {
 			fmt.Println(timingStrings[i]) //nolint:forbidigo // ui output
 		}
 	}
@@ -263,4 +266,8 @@ func setExitCodeForCollectError(err error) {
 
 	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/106
 	exitCode = 1
+}
+
+func shouldShowColectTiming() bool {
+	return viper.GetBool(constants.ArgTiming)
 }
