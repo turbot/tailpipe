@@ -57,6 +57,9 @@ func ListPluginResources(ctx context.Context) ([]*PluginResource, error) {
 
 		pr.setPartitions()
 
+		// ensure plugin processes are cleaned
+		pluginManager.Close()
+
 		res = append(res, pr)
 	}
 
@@ -97,6 +100,9 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 	}
 
 	pr.setPartitions()
+
+	// ensure plugin processes are cleaned
+	pluginManager.Close()
 
 	return pr, nil
 }
