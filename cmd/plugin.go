@@ -686,12 +686,12 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	}()
 
 	// Get Resource(s)
-	resources, err := display.ListPluginResources(ctx)
+	resources, err := display.ListPlugins(ctx)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
 	// Get Printer
-	printer, err := printers.GetPrinter[*display.PluginResource](cmd)
+	printer, err := printers.GetPrinter[*display.PluginListDetails](cmd)
 	error_helpers.FailOnError(err)
 
 	// Print

@@ -12,6 +12,53 @@ import (
 	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
+type PluginListDetails struct {
+	Name       string
+	Version    string
+	Partitions []string
+}
+
+// GetListData implements the printers.Listable interface
+func (r *PluginListDetails) GetListData() *printers.RowData {
+	res := printers.NewRowData(
+		printers.NewFieldValue("INSTALLED", r.Name),
+		printers.NewFieldValue("VERSION", r.Version),
+		printers.NewFieldValue("PARTITIONS", strings.Join(r.Partitions, ", ")),
+	)
+	return res
+}
+
+func (r *PluginListDetails) setPartitions() {
+	for _, partition := range config.GlobalConfig.Partitions {
+		if partition.Plugin.Plugin == r.Name {
+			r.Partitions = append(r.Partitions, strings.TrimPrefix(partition.FullName, "partition."))
+		}
+	}
+
+	slices.Sort(r.Partitions)
+}
+
+func ListPlugins(ctx context.Context) ([]*PluginListDetails, error) {
+	var res []*PluginListDetails
+
+	basicInfo, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, nil)
+	if err != nil {
+		return nil, fmt.Errorf("unable to obtain plugin list: %w", err)
+	}
+
+	for _, p := range basicInfo {
+		d := &PluginListDetails{
+			Name:    p.Name,
+			Version: p.Version.String(),
+		}
+		d.setPartitions()
+
+		res = append(res, d)
+	}
+
+	return res, nil
+}
+
 type PluginResource struct {
 	Name       string   `json:"name"`
 	Version    string   `json:"version"`
@@ -20,52 +67,10 @@ type PluginResource struct {
 	Tables     []string `json:"tables"`
 }
 
-func ListPluginResources(ctx context.Context) ([]*PluginResource, error) {
-	var res []*PluginResource
-
-	pluginManager := plugin_manager.New()
-
-	basicInfo, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, nil)
-	if err != nil {
-		return nil, fmt.Errorf("unable to obtain plugin list: %w", err)
-	}
-
-	for _, p := range basicInfo {
-		desc, err := pluginManager.Describe(ctx, p.Name)
-		if err != nil {
-			return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
-		}
-
-		var sources []string
-		for _, source := range desc.Sources {
-			sources = append(sources, source.Name)
-		}
-		slices.Sort(sources)
-
-		var tables []string
-		for table, _ := range desc.TableSchemas {
-			tables = append(tables, table)
-		}
-		slices.Sort(tables)
-
-		pr := &PluginResource{
-			Name:    p.Name,
-			Version: p.Version.String(),
-			Sources: sources,
-			Tables:  tables,
-		}
-
-		pr.setPartitions()
-
-		res = append(res, pr)
-	}
-
-	return res, nil
-}
-
 func GetPluginResource(ctx context.Context, name string) (*PluginResource, error) {
 
 	pluginManager := plugin_manager.New()
+	defer pluginManager.Close()
 
 	desc, err := pluginManager.Describe(ctx, name)
 	if err != nil {
