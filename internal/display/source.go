@@ -44,9 +44,6 @@ func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 		return nil, fmt.Errorf("unable to obtain plugin list: %w", err)
 	}
 
-	// TODO: #refactor `seen` map is only needed as each plugin currently implements file_system source due to being in SDK
-	var seen = make(map[string]bool)
-
 	for _, p := range plugins {
 		desc, err := pluginManager.Describe(ctx, p.Name)
 		if err != nil {
@@ -54,14 +51,10 @@ func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 		}
 
 		for _, source := range desc.Sources {
-			if seen[source.Name] {
-				continue
-			}
 			res = append(res, &SourceResource{
 				Name:        source.Name,
 				Description: source.Description,
 			})
-			seen[source.Name] = true
 		}
 	}
 
