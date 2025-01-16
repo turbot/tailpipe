@@ -81,7 +81,6 @@ func generateDbFile(ctx context.Context) (string, error) {
 	// cleanup the old db files if not in use
 	err := cleanupOldDbFiles()
 	if err != nil {
-		log.Printf("[INFO] Failed to cleanup old db files: %v", err)
 		return "", err
 	}
 
@@ -211,6 +210,21 @@ func cleanupOldDbFiles() error {
 	log.Printf("[INFO] Cleaning up old db files in %s\n", baseDir)
 	cutoffTime := time.Now().Add(-constants.DbFileMaxAge) // Files older than 1 day
 
+	// The baseDir ("$TAILPIPE_INSTALL_DIR/data") is expected to have subdirectories for different workspace
+	// profiles(default, work etc). Each subdirectory may contain multiple .db files.
+	// Example structure:
+	// data/
+	// ├── default/
+	// │   ├── tailpipe_20250115182129.db
+	// │   ├── tailpipe_20250115193816.db
+	// │   ├── tailpipe.db
+	// │   └── ...
+	// ├── work/
+	// │   ├── tailpipe_20250115182129.db
+	// │   ├── tailpipe_20250115193816.db
+	// │   ├── tailpipe.db
+	// │   └── ...
+	// So we traverse all these subdirectories for each workspace and process the relevant files.
 	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return fmt.Errorf("error accessing path %s: %v", path, err)
