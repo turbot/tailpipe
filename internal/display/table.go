@@ -23,10 +23,9 @@ type TableResource struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
 	Plugin      string                 `json:"plugin"`
-	Partitions  []string               `json:"partitions"`
+	Partitions  []string               `json:"partitions,omitempty"`
 	Columns     []*schema.ColumnSchema `json:"columns"`
 	Local       TableResourceFiles     `json:"local,omitempty"`
-	//Remote      TableResourceFiles     `json:"remote,omitempty"`
 }
 
 type TableResourceFiles struct {
@@ -57,6 +56,7 @@ func (r *TableResource) GetListData() *printers.RowData {
 		printers.NewFieldValue("LOCAL SIZE", humanizeBytes(r.Local.FileSize)),
 		printers.NewFieldValue("FILES", humanize.Comma(r.Local.FileCount)),
 		printers.NewFieldValue("ROWS", humanize.Comma(r.Local.RowCount)),
+		printers.NewFieldValue("DESCRIPTION", r.Description),
 	)
 	return res
 }
@@ -81,7 +81,7 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 		for t, s := range desc.TableSchemas {
 			table := &TableResource{
 				Name:        t,
-				Description: "", // TODO: obtain table description, currently not available in TableSchemas
+				Description: s.Description,
 				Plugin:      p.Name,
 				Columns:     s.Columns,
 			}
