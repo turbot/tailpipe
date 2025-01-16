@@ -25,6 +25,7 @@ EOF
 }
 
 @test "verify high row count" {
+  skip "enable while testing locally - high memory usage"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_high_row_count.tpc
 partition "chaos_all_columns" "chaos_high_row_count" {
   source "chaos_all_columns" {
