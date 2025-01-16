@@ -3,6 +3,6 @@ package constants
 const (
 	CorePluginName       = "core"
 	CorePluginFullName   = "hub.tailpipe.io/plugins/turbot/core@latest"
-	MinCorePluginVersion = "0.0.0"
+	MinCorePluginVersion = "v0.0.1-rc.5"
 	TailpipeHubOCIBase   = "hub.tailpipe.io/"
 )
