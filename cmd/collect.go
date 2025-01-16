@@ -98,7 +98,7 @@ func collectAndCompact(ctx context.Context, args []string) error {
 	for i, statusString := range statusStrings {
 		fmt.Println(statusString) //nolint:forbidigo // ui output
 		// show timing if requested
-		if len(timingStrings) > i && shouldShowColectTiming() {
+		if len(timingStrings) > i && shouldShowCollectTiming() {
 			fmt.Println(timingStrings[i]) //nolint:forbidigo // ui output
 		}
 	}
@@ -268,6 +268,6 @@ func setExitCodeForCollectError(err error) {
 	exitCode = 1
 }
 
-func shouldShowColectTiming() bool {
+func shouldShowCollectTiming() bool {
 	return viper.GetBool(constants.ArgTiming)
 }
