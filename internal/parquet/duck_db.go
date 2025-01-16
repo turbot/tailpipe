@@ -34,6 +34,7 @@ func newDuckDb() (*duckDb, error) {
 }
 
 func installAndLoadExtensions(db *sql.DB) error {
+	// set the extension directory
 	if _, err := db.Exec(fmt.Sprintf("SET extension_directory = '%s';", filepaths.EnsurePipesDuckDbExtensionsDir())); err != nil {
 		return fmt.Errorf("failed to set extension_directory: %w", err)
 	}
