@@ -37,6 +37,7 @@ func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 	var res []*SourceResource
 
 	pluginManager := plugin_manager.New()
+	defer pluginManager.Close()
 
 	plugins, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, nil)
 	if err != nil {

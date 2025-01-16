@@ -64,6 +64,7 @@ func (r *TableResource) GetListData() *printers.RowData {
 func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 	var res []*TableResource
 	pluginManager := plugin_manager.New()
+	defer pluginManager.Close()
 
 	plugins, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, nil)
 	if err != nil {
@@ -102,6 +103,7 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 
 func GetTableResource(ctx context.Context, tableName string) (*TableResource, error) {
 	pluginManager := plugin_manager.New()
+	defer pluginManager.Close()
 	pluginName := strings.Split(tableName, "_")[0]
 
 	plugins, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, &pluginName)
