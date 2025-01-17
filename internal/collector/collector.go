@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
 	"github.com/sethvargo/go-retry"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
@@ -37,7 +36,7 @@ type Collector struct {
 	execution *execution
 
 	parquetWriter *parquet.ParquetJobPool
-	spinner       *spinner.Spinner
+
 	// the current plugin status - used to update the spinner
 	status status
 
@@ -69,20 +68,14 @@ func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 	}
 	c.sourcePath = sourcePath
 
-	// TODO #ui temp
-	c.spinner = spinner.New(
-		spinner.CharSets[14],
-		100*time.Millisecond,
-		spinner.WithHiddenCursor(true),
-		spinner.WithWriter(os.Stdout),
-	)
+	// create bubbletea app
+	//c.app = tea.NewProgram(model.NewModel(), tea.WithAltScreen())
 
 	return c, nil
 }
 
 func (c *Collector) Close() {
 	close(c.Events)
-	c.spinner.Stop()
 
 	// delete the collection temp dir
 	_ = os.RemoveAll(c.collectionTempDir)
@@ -102,8 +95,6 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 		return fmt.Errorf("failed to collect: %w", err)
 	}
 	fmt.Printf("Collecting partition '%s' from %s (%s)\n", partition.Name(), collectResponse.FromTime.Time.Format(time.DateTime), collectResponse.FromTime.Source) //nolint:forbidigo//UI output
-	c.spinner.Start()
-	c.spinner.Suffix = " Collecting logs"
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
@@ -127,7 +118,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 				rowCount, err := c.parquetWriter.GetRowCount()
 				if err == nil {
 					c.status.SetRowsConverted(rowCount)
-					c.setStatusMessage()
+					c.updateUI()
 				}
 			}
 		}
@@ -155,7 +146,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		c.setStatusMessage()
+		c.updateUI()
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
@@ -357,8 +348,9 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 	}()
 }
 
-func (c *Collector) setStatusMessage() {
-	c.spinner.Suffix = " " + c.status.String()
+func (c *Collector) updateUI() {
+	// updatye bubble teas app
+	//	c.app.Update(model.NewModel(c.status.String(), c.execution.getTiming().String()))
 }
 
 func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {
