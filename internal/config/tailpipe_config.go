@@ -71,5 +71,4 @@ func (c *TailpipeConfig) InitPartitions() {
 			partition.Plugin = plugin.NewPlugin(partition.InferPluginName())
 		}
 	}
-
 }

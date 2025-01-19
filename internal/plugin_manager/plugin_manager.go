@@ -153,6 +153,34 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
+func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) error {
+	// start plugin if needed
+	pluginClient, err := p.getPlugin(ctx, partition.Plugin)
+	if err != nil {
+		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
+	}
+	collectionStateDir := filepath.Dir(collectionTempDir)
+	executionID := getExecutionId()
+	// reuse CollectRequest for UpdateCollectionState
+	req := &proto.CollectRequest{
+		TableName:          partition.TableName,
+		PartitionName:      partition.ShortName,
+		ExecutionId:        executionID,
+		CollectionTempDir:  collectionTempDir,
+		CollectionStateDir: collectionStateDir,
+		SourceData:         partition.Source.ToProto(),
+		FromTime:           timestamppb.New(fromTime),
+	}
+
+	_, err = pluginClient.UpdateCollectionState(req)
+	if err != nil {
+		return fmt.Errorf("error updating collection state for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
+	}
+
+	// just return - the observer is responsible for waiting for completion
+	return err
+}
+
 // Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
 func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
 	// build plugin ref from the name

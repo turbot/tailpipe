@@ -19,6 +19,7 @@ import (
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
@@ -106,6 +107,18 @@ func doCollect(ctx context.Context, args []string) error {
 	// collect each partition serially
 	var errList []error
 	for _, partition := range partitions {
+		// if a from time is set, clear the partition data from that time forward
+		if !fromTime.IsZero() {
+			err := parquet.DeleteParquetFiles(partition, fromTime)
+			if err != nil {
+				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "fromTime", fromTime, "error", err)
+				errList = append(errList, err)
+				continue
+			}
+			error_helpers.FailOnError(err)
+		}
+		// do the collection
+		err = collectPartition(ctx, partition, fromTime, pluginManager)
 		err = collectPartition(ctx, partition, fromTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)

@@ -4,19 +4,23 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
-
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/contexthelpers"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/pipe-fittings/printers"
 	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
+	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 func partitionCmd() *cobra.Command {
@@ -39,7 +43,7 @@ Examples:
 
 	cmd.AddCommand(partitionListCmd())
 	cmd.AddCommand(partitionShowCmd())
-
+	cmd.AddCommand(partitionDeleteCmd())
 	cmd.Flags().BoolP(pconstants.ArgHelp, "h", false, "Help for partition")
 
 	return cmd
@@ -130,7 +134,7 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 
 	// Get Resources
 	partitionName := args[0]
-	resource, err := display.GetPartitionResource(ctx, partitionName)
+	resource, err := display.GetPartitionResource(partitionName)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 
@@ -144,4 +148,62 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 		error_helpers.ShowError(ctx, err)
 		exitCode = pconstants.ExitCodeUnknownErrorPanic
 	}
+}
+
+func partitionDeleteCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "delete ",
+		Args:  cobra.ExactArgs(1),
+		Run:   runPartitionDeleteCmd,
+		Short: "delete a partition for the specified period",
+		Long:  `delete a partition for the specified period`,
+	}
+
+	// args `from` and `to` accept:
+	// - ISO 8601 date (2024-01-01)
+	// - ISO 8601 datetime (2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms (2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone (2006-01-02T15:04:05Z07:00)
+	// - relative time formats (T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+
+	cmdconfig.OnCmd(cmd).
+		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time")
+
+	return cmd
+}
+
+func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
+	//ctx := cmd.Context()
+
+	defer func() {
+		if r := recover(); r != nil {
+			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			error_helpers.FailOnError(helpers.ToError(r))
+		}
+	}()
+
+	var from time.Time
+	if viper.IsSet(pconstants.ArgFrom) {
+		fromArg := viper.GetString(pconstants.ArgFrom)
+		// parse the string as time.Time
+		// arg `from` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
+		// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+		var err error
+		from, err = parse.ParseTime(fromArg, time.Now())
+
+		if err != nil {
+			error_helpers.FailOnError(fmt.Errorf("invalid date format for 'from': %s", fromArg))
+		}
+	}
+
+	partitionName := args[0]
+	partition, ok := config.GlobalConfig.Partitions[partitionName]
+	if !ok {
+		error_helpers.FailOnError(fmt.Errorf("partition %s found", partitionName))
+	}
+
+	// TODO CONFIRM
+
+	err := parquet.DeleteParquetFiles(partition, from)
+	error_helpers.FailOnError(err)
 }
