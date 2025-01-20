@@ -154,18 +154,23 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 }
 
 func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) error {
+
+	// identify which plugin provides the source
+	sourcePlugin, err := p.determineSourcePlugin(partition)
+	if err != nil {
+		return fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+	}
+
 	// start plugin if needed
-	pluginClient, err := p.getPlugin(ctx, partition.Plugin)
+	pluginClient, err := p.getPlugin(ctx, sourcePlugin)
 	if err != nil {
 		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
 	collectionStateDir := filepath.Dir(collectionTempDir)
-	executionID := getExecutionId()
-	// reuse CollectRequest for UpdateCollectionState
-	req := &proto.CollectRequest{
+
+	req := &proto.UpdateCollectionStateRequest{
 		TableName:          partition.TableName,
 		PartitionName:      partition.ShortName,
-		ExecutionId:        executionID,
 		CollectionTempDir:  collectionTempDir,
 		CollectionStateDir: collectionStateDir,
 		SourceData:         partition.Source.ToProto(),
