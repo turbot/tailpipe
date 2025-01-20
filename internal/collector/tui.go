@@ -22,7 +22,7 @@ type collectionModel struct {
 	path            string
 	discovered      int64
 	downloaded      int64
-	downloadedBytes uint64
+	downloadedBytes int64
 	extracted       int64
 	errors          int64
 
@@ -65,7 +65,7 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.complete = true
 		return c, nil
 	case status:
-		c.path = t.LatestPath
+		c.path = t.LatestArtifactPath
 		c.discovered = t.ArtifactsDiscovered
 		c.downloaded = t.ArtifactsDownloaded
 		c.downloadedBytes = t.ArtifactsDownloadedBytes
@@ -86,7 +86,7 @@ func (c collectionModel) View() string {
 	var descriptionLength int = 12
 	countArtifactsDisplayLen := len(humanize.Comma(c.discovered))
 	countRowsDisplayLen := len(humanize.Comma(c.rowsReceived))
-	downloadedDisplay := fmt.Sprintf("(%s)", humanize.Bytes(c.downloadedBytes))
+	downloadedDisplay := fmt.Sprintf("(%s)", humanize.Bytes((uint64)(c.downloadedBytes)))
 	if c.rowsReceived > c.discovered {
 		descriptionLength = 11
 	}

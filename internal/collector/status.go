@@ -6,10 +6,10 @@ import (
 )
 
 type status struct {
-	LatestPath               string
+	LatestArtifactPath       string
 	ArtifactsDiscovered      int64
 	ArtifactsDownloaded      int64
-	ArtifactsDownloadedBytes uint64
+	ArtifactsDownloadedBytes int64
 	ArtifactsExtracted       int64
 	ArtifactErrors           int64
 	RowsReceived             int64
@@ -20,11 +20,15 @@ type status struct {
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
 func (s *status) UpdateWithPluginStatus(event *proto.EventStatus) {
+	s.LatestArtifactPath = event.LatestArtifactPath
 	s.ArtifactsDiscovered = event.ArtifactsDiscovered
 	s.ArtifactsDownloaded = event.ArtifactsDownloaded
+	s.ArtifactsDownloadedBytes = event.ArtifactsDownloadedBytes
 	s.ArtifactsExtracted = event.ArtifactsExtracted
+	s.ArtifactErrors = event.ArtifactErrors
+	s.RowsReceived = event.RowsReceived
 	s.RowsEnriched = event.RowsEnriched
-	s.Errors = int64(event.Errors)
+	s.Errors = event.Errors
 }
 
 func (s *status) SetRowsConverted(rowsConverted int64) {
