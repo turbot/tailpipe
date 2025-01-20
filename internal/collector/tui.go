@@ -155,5 +155,5 @@ func writeProgressLine(desc string, descLen int, count int64, maxCountLen int, p
 	if math.IsNaN(percent) {
 		percent = 0
 	}
-	return fmt.Sprintf("  %-*s%*s [%s] %3.0f%% %s\n", descLen, desc, maxCountLen, humanize.Comma(count), pb.ViewAs(percent), percent*100, s)
+	return fmt.Sprintf("  %-*s%*s [%s] %3.0f%% %s\n", descLen, desc, maxCountLen, humanize.Comma(count), pb.ViewAs(percent), math.Floor(percent*100), s)
 }
