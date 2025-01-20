@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
@@ -45,6 +46,9 @@ type Collector struct {
 	collectionTempDir string
 
 	sourcePath string
+
+	// bubble tea app
+	app *tea.Program
 }
 
 func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
@@ -67,9 +71,6 @@ func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 		return nil, fmt.Errorf("failed to create JSONL path: %w", err)
 	}
 	c.sourcePath = sourcePath
-
-	// create bubbletea app
-	//c.app = tea.NewProgram(model.NewModel(), tea.WithAltScreen())
 
 	return c, nil
 }
@@ -94,7 +95,10 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
-	fmt.Printf("Collecting partition '%s' from %s (%s)\n", partition.Name(), collectResponse.FromTime.Time.Format(time.DateTime), collectResponse.FromTime.Source) //nolint:forbidigo//UI output
+	//fmt.Printf("Collecting partition '%s' from %s (%s)\n", partition.Name(), collectResponse.FromTime.Time.Format(time.DateTime), collectResponse.FromTime.Source) //nolint:forbidigo//UI output
+
+	c.app = tea.NewProgram(newCollectionModel(partition.FullName, *collectResponse.FromTime))
+	go c.app.Run() // TODO: #error handling of errors
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
@@ -118,7 +122,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 				rowCount, err := c.parquetWriter.GetRowCount()
 				if err == nil {
 					c.status.SetRowsConverted(rowCount)
-					c.updateUI()
+					c.app.Send(c.status)
 				}
 			}
 		}
@@ -146,7 +150,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		c.updateUI()
+		c.app.Send(c.status)
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
@@ -346,11 +350,6 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 			c.handlePluginEvent(ctx, event)
 		}
 	}()
-}
-
-func (c *Collector) updateUI() {
-	// updatye bubble teas app
-	//	c.app.Update(model.NewModel(c.status.String(), c.execution.getTiming().String()))
 }
 
 func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {

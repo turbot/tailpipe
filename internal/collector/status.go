@@ -15,7 +15,7 @@ type status struct {
 	RowsReceived             int64
 	RowsEnriched             int64
 	RowsConverted            int64
-	Errors                   int32
+	Errors                   int64
 }
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
@@ -24,7 +24,7 @@ func (s *status) UpdateWithPluginStatus(event *proto.EventStatus) {
 	s.ArtifactsDownloaded = event.ArtifactsDownloaded
 	s.ArtifactsExtracted = event.ArtifactsExtracted
 	s.RowsEnriched = event.RowsEnriched
-	s.Errors = event.Errors
+	s.Errors = int64(event.Errors)
 }
 
 func (s *status) SetRowsConverted(rowsConverted int64) {
