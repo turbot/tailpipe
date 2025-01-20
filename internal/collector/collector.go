@@ -7,14 +7,11 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
-
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
@@ -55,7 +52,7 @@ type Collector struct {
 func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
-	collectionTempDir := config.GlobalWorkspaceProfile.GetCollectionDir()
+	collectionTempDir := filepaths.GetCollectionTempDir()
 
 	c := &Collector{
 		Events:            make(chan *proto.Event, eventBufferSize),
@@ -95,18 +92,21 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 		return errors.New("collection already in progress")
 	}
 
-	// cleanup the collection temp dir from previous runs
-	c.cleanupCollectionDir()
-
 	// tell plugin to start collecting
 	collectResponse, err := c.pluginManager.Collect(ctx, partition, fromTime, c.collectionTempDir)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
 
-	c.app = tea.NewProgram(newCollectionModel(partition.GetUnqualifiedName(), *collectResponse.FromTime))
+	resolvedFromTime := collectResponse.FromTime
+	c.app = tea.NewProgram(newCollectionModel(partition.GetUnqualifiedName(), *resolvedFromTime))
 	//nolint:errcheck // handle this later
 	go c.app.Run() // TODO: #error handling of errors
+
+	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
+	if !resolvedFromTime.Time.IsZero() {
+		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
+	}
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
@@ -368,33 +368,6 @@ func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) 
 	c.execution.pluginTiming = events.TimingCollectionFromProto(timing)
 }
 
-func (c *Collector) cleanupCollectionDir() {
-	// list all folders alongside our collection temp dir
-	parent := filepath.Dir(c.collectionTempDir)
-	files, err := os.ReadDir(parent)
-	if err != nil {
-		slog.Warn("failed to list files in collection dir", "error", err)
-		return
-	}
-	for _, file := range files {
-		// if the file is a directory and is not our collection temp dir, remove it
-		if file.IsDir() && file.Name() != filepath.Base(c.collectionTempDir) {
-			// the folder name is the PID - check whether that pid exists
-			// if it doesn't, remove the folder
-			// Attempt to find the process
-			// try to parse the directory name as a pid
-			pid, err := strconv.ParseInt(file.Name(), 10, 32)
-			if err == nil {
-				if utils.PidExists(int(pid)) {
-					slog.Info(fmt.Sprintf("cleanupCollectionDir skipping directory '%s' as process  with PID %d exists", file.Name(), pid))
-					continue
-				}
-			}
-			slog.Debug("removing directory", "dir", file.Name())
-			_ = os.RemoveAll(filepath.Join(parent, file.Name()))
-		}
-	}
-}
 
 func (c *Collector) Compact(ctx context.Context) error {
 	c.app.Send(AwaitingCompactionMsg{})

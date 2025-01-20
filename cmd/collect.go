@@ -109,7 +109,7 @@ func doCollect(ctx context.Context, args []string) error {
 	for _, partition := range partitions {
 		// if a from time is set, clear the partition data from that time forward
 		if !fromTime.IsZero() {
-			err := parquet.DeleteParquetFiles(partition, fromTime)
+			_, err := parquet.DeleteParquetFiles(partition, fromTime)
 			if err != nil {
 				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "fromTime", fromTime, "error", err)
 				errList = append(errList, err)
@@ -140,14 +140,10 @@ func collectPartition(ctx context.Context, partition *config.Partition, fromTime
 	}
 	defer c.Close()
 
-	// if there is a from time, add a filter to the partition
-	if !fromTime.IsZero() {
-		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", fromTime.Format("2006-01-02T15:04:05")))
-	}
-
 	if err = c.Collect(ctx, partition, fromTime); err != nil {
 		return err
 	}
+
 	// now wait for all collection to complete and close the collector
 	c.WaitForCompletion(ctx)
 

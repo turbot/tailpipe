@@ -20,7 +20,9 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
+	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 func partitionCmd() *cobra.Command {
@@ -167,13 +169,14 @@ func partitionDeleteCmd() *cobra.Command {
 	// - relative time formats (T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 
 	cmdconfig.OnCmd(cmd).
-		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time")
+		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
+		AddBoolFlag(pconstants.ArgForce, false, "Force delete without confirmation")
 
 	return cmd
 }
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
-	//ctx := cmd.Context()
+	ctx := cmd.Context()
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -183,6 +186,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	}()
 
 	var from time.Time
+	var fromStr string
 	if viper.IsSet(pconstants.ArgFrom) {
 		fromArg := viper.GetString(pconstants.ArgFrom)
 		// parse the string as time.Time
@@ -194,6 +198,8 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			error_helpers.FailOnError(fmt.Errorf("invalid date format for 'from': %s", fromArg))
 		}
+
+		fromStr = fmt.Sprintf(" from %s", from.Format(time.RFC3339))
 	}
 
 	partitionName := args[0]
@@ -202,8 +208,34 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		error_helpers.FailOnError(fmt.Errorf("partition %s found", partitionName))
 	}
 
-	// TODO CONFIRM
+	if !viper.GetBool(pconstants.ArgForce) {
+		// confirm deletion
+		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s?", partitionName, fromStr)
+		if !utils.UserConfirmationWithDefault(msg, false) {
+			fmt.Println("Deletion cancelled") //nolint:forbidigo//expected output
+			return
+		}
+	}
 
-	err := parquet.DeleteParquetFiles(partition, from)
+	filesDeleted, err := parquet.DeleteParquetFiles(partition, from)
+	error_helpers.FailOnError(err)
+
+	if filesDeleted == 0 {
+		fmt.Println("No parquet files deleted") //nolint:forbidigo//expected output
+	} else {
+		fmt.Printf("Deleted %d parquet %s\n", filesDeleted, utils.Pluralize("file", filesDeleted)) //nolint:forbidigo//expected output
+	}
+
+	// update collection state
+	// start the plugin manager
+	pluginManager := plugin_manager.New()
+	defer pluginManager.Close()
+
+	// get the temp data dir for this collection
+	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
+	collectionTempDir := filepaths.GetCollectionTempDir()
+
+	// tell the plugin manager to update the collection state
+	err = pluginManager.UpdateCollectionState(ctx, partition, from, collectionTempDir)
 	error_helpers.FailOnError(err)
 }

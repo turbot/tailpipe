@@ -35,6 +35,7 @@ type parquetConversionWorker struct {
 	// helper struct which provides unique filename roots
 	fileRootProvider *FileRootProvider
 	db               *duckDb
+	fromTime         time.Time
 }
 
 func newParquetConversionWorker(jobChan chan parquetJob, errorChan chan parquetJobError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (*parquetConversionWorker, error) {
@@ -174,7 +175,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 	// Build the query
-	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, database.GetParquetFileGlob(destDir, table, fileRoot)) //nolint:gosec // fixed sql query
+	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, database.GetParquetFileGlobForTable(destDir, table, fileRoot)) //nolint:gosec // fixed sql query
 
 	// Execute the query and scan the result directly
 	var rowCount int64

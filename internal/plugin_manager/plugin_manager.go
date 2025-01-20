@@ -168,9 +168,13 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	}
 	collectionStateDir := filepath.Dir(collectionTempDir)
 
-	req := &proto.UpdateCollectionStateRequest{
+	executionID := getExecutionId()
+
+	// reuse CollectRequest for UpdateCollectionState
+	req := &proto.CollectRequest{
 		TableName:          partition.TableName,
 		PartitionName:      partition.ShortName,
+		ExecutionId:        executionID,
 		CollectionTempDir:  collectionTempDir,
 		CollectionStateDir: collectionStateDir,
 		SourceData:         partition.Source.ToProto(),
