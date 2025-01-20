@@ -215,6 +215,7 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 	}
 
 	c.parquetWriter.Close()
+	c.app.Send(collectionCompleteMsg{})
 
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
