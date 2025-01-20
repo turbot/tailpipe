@@ -87,14 +87,12 @@ func (c collectionModel) View() string {
 	countArtifactsDisplayLen := len(humanize.Comma(c.discovered))
 	countRowsDisplayLen := len(humanize.Comma(c.rowsReceived))
 	downloadedDisplay := fmt.Sprintf("(%s)", humanize.Bytes((uint64)(c.downloadedBytes)))
-	if c.rowsReceived > c.discovered {
-		descriptionLength = 11
-	}
 	if countArtifactsDisplayLen > countLength {
 		countLength = countArtifactsDisplayLen
 	}
 	if countRowsDisplayLen > countLength {
 		countLength = countRowsDisplayLen
+		descriptionLength = 11
 	}
 
 	// header
@@ -102,14 +100,18 @@ func (c collectionModel) View() string {
 
 	// artifacts
 	if c.path != "" || c.discovered > 0 {
+		if c.complete {
+			// TODO: #tactical we should clear path in event once complete
+			c.path = ""
+		}
 		b.WriteString("Artifacts:\n")
 		b.WriteString(writeCountLine("Discovered:", descriptionLength, c.discovered, countLength, &c.path))
 		if c.complete {
 			b.WriteString(writeCountLine("Downloaded:", descriptionLength, c.downloaded, countLength, &downloadedDisplay))
 			b.WriteString(writeCountLine("Extracted:", descriptionLength, c.extracted, countLength, nil))
 		} else {
-			b.WriteString(writeProgressLine("Downloaded:", descriptionLength, c.downloaded, countLength, float64(c.downloaded)/float64(c.discovered), &downloadedDisplay, &c.progressBarConfig))
-			b.WriteString(writeProgressLine("Extracted:", descriptionLength, c.extracted, countLength, float64(c.extracted)/float64(c.discovered), nil, &c.progressBarConfig))
+			b.WriteString(writeProgressLine("Downloaded:", descriptionLength, c.downloaded, countLength, float64(c.downloaded)/float64(c.discovered), &downloadedDisplay, &c.progressBarConfig, c.complete))
+			b.WriteString(writeProgressLine("Extracted:", descriptionLength, c.extracted, countLength, float64(c.extracted)/float64(c.discovered), nil, &c.progressBarConfig, c.complete))
 		}
 		if c.errors > 0 {
 			b.WriteString(writeCountLine("Errors:", descriptionLength, c.errors, countLength, nil))
@@ -124,8 +126,8 @@ func (c collectionModel) View() string {
 		b.WriteString(writeCountLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, nil))
 		b.WriteString(writeCountLine("Converted:", descriptionLength, c.rowsConverted, countLength, nil))
 	} else {
-		b.WriteString(writeProgressLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, float64(c.rowsEnriched)/float64(c.rowsReceived), nil, &c.progressBarConfig))
-		b.WriteString(writeProgressLine("Converted:", descriptionLength, c.rowsConverted, countLength, float64(c.rowsConverted)/float64(c.rowsReceived), nil, &c.progressBarConfig))
+		b.WriteString(writeProgressLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, float64(c.rowsEnriched)/float64(c.rowsReceived), nil, &c.progressBarConfig, c.complete))
+		b.WriteString(writeProgressLine("Converted:", descriptionLength, c.rowsConverted, countLength, float64(c.rowsConverted)/float64(c.rowsReceived), nil, &c.progressBarConfig, c.complete))
 	}
 	if c.rowsErrors > 0 {
 		b.WriteString(writeCountLine("Errors:", descriptionLength, c.rowsErrors, countLength, nil))
@@ -147,13 +149,17 @@ func writeCountLine(desc string, descLen int, count int64, maxCountLen int, suff
 	return fmt.Sprintf("  %-*s%*s %s\n", descLen, desc, maxCountLen, humanize.Comma(count), s)
 }
 
-func writeProgressLine(desc string, descLen int, count int64, maxCountLen int, percent float64, suffix *string, pb *progress.Model) string {
+func writeProgressLine(desc string, descLen int, count int64, maxCountLen int, percent float64, suffix *string, pb *progress.Model, complete bool) string {
 	s := ""
 	if suffix != nil {
 		s = *suffix
 	}
 	if math.IsNaN(percent) {
 		percent = 0
+	}
+	// TODO: #hack review - essentially if we're not complete, we shouldn't be 100% on any progress bar
+	if !complete && percent >= 1.0 {
+		percent = 0.99
 	}
 	return fmt.Sprintf("  %-*s%*s [%s] %3.0f%% %s\n", descLen, desc, maxCountLen, humanize.Comma(count), pb.ViewAs(percent), math.Floor(percent*100), s)
 }
