@@ -318,7 +318,7 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 	var conditions []string
 	for i := 0; i < len(updatedTables); i++ {
 		if i < len(updatedPartitions) {
-			condition := fmt.Sprintf("(tp_table LIKE '%s' AND tp_partition LIKE '%s')", updatedTables[i], updatedPartitions[i])
+			condition := fmt.Sprintf("(tp_table LIKE '%s' AND CAST(tp_partition AS VARCHAR) LIKE '%s')", updatedTables[i], updatedPartitions[i])
 			conditions = append(conditions, condition)
 		}
 	}
@@ -341,7 +341,7 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 		if strings.Contains(index, "*") {
 			// Replace '*' wildcard with '%' for SQL LIKE compatibility
 			index = strings.ReplaceAll(index, "*", "%")
-			conditions = append(conditions, fmt.Sprintf("CAST(tp_index AS TEXT) LIKE '%s'", index))
+			conditions = append(conditions, fmt.Sprintf("CAST(tp_index AS VARCHAR) LIKE '%s'", index))
 		} else {
 			// Exact match using '='
 			conditions = append(conditions, fmt.Sprintf("tp_index = '%s'", index))
