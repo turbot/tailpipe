@@ -68,6 +68,7 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return c, tea.Quit
 		}
 	case CollectionFinishedMsg:
+		c.complete = true
 		return c, tea.Quit
 	case status:
 		c.path = t.LatestArtifactPath

@@ -333,8 +333,6 @@ func (c *Collector) waitForExecution(ctx context.Context) error {
 	executionTimeout := executionMaxDuration
 	retryInterval := 100 * time.Millisecond
 
-	slog.Error("waiting for execution")
-
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		switch c.execution.state {
 		case ExecutionState_ERROR:
@@ -351,7 +349,7 @@ func (c *Collector) waitForExecution(ctx context.Context) error {
 		}
 		return err
 	}
-	slog.Error("done waiting for execution")
+
 	return nil
 }
 
