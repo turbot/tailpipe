@@ -78,32 +78,6 @@ func collectAndCompact(ctx context.Context, args []string) error {
 		return err
 	}
 
-	// compact the data
-	//var compactStatusString string
-	//if viper.GetBool(pconstants.ArgCompact) {
-	//	compactStatus, err := doCompaction(ctx)
-	//	// if the context was cancelled, we don't want to return an error
-	//	if err != nil && !errors.Is(err, context.Canceled) {
-	//		return fmt.Errorf("compaction error: %w", err)
-	//	}
-	//	compactStatusString = compactStatus.BriefString()
-	//	if ctx.Err() != nil {
-	//		// instead show the status as cancelled
-	//		compactStatusString = "Compaction cancelled: " + compactStatusString
-	//	}
-	//}
-
-	// now show the result
-	//for i, statusString := range statusStrings {
-	//	fmt.Println(statusString) //nolint:forbidigo // ui output
-	//	if len(timingStrings) > i {
-	//		fmt.Println(timingStrings[i]) //nolint:forbidigo // ui output
-	//	}
-	//}
-	//if compactStatusString != "" {
-	//	fmt.Println(compactStatusString) //nolint:forbidigo // ui output
-	//}
-
 	return nil
 }
 
