@@ -120,7 +120,6 @@ func doCollect(ctx context.Context, args []string) error {
 		}
 		// do the collection
 		err = collectPartition(ctx, partition, fromTime, pluginManager)
-		err = collectPartition(ctx, partition, fromTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
 		}
