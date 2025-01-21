@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/briandowns/spinner"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
+
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
@@ -37,7 +38,7 @@ type Collector struct {
 	execution *execution
 
 	parquetWriter *parquet.ParquetJobPool
-	spinner       *spinner.Spinner
+
 	// the current plugin status - used to update the spinner
 	status status
 
@@ -46,6 +47,9 @@ type Collector struct {
 	collectionTempDir string
 
 	sourcePath string
+
+	// bubble tea app
+	app *tea.Program
 }
 
 func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
@@ -69,20 +73,18 @@ func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 	}
 	c.sourcePath = sourcePath
 
-	// TODO #ui temp
-	c.spinner = spinner.New(
-		spinner.CharSets[14],
-		100*time.Millisecond,
-		spinner.WithHiddenCursor(true),
-		spinner.WithWriter(os.Stdout),
-	)
-
 	return c, nil
 }
 
 func (c *Collector) Close() {
 	close(c.Events)
-	c.spinner.Stop()
+
+	c.parquetWriter.Close()
+
+	c.app.Send(CollectionFinishedMsg{})
+
+	// if inbox path is empty, remove it (ignore errors)
+	_ = os.Remove(c.sourcePath)
 
 	// delete the collection temp dir
 	_ = os.RemoveAll(c.collectionTempDir)
@@ -101,9 +103,10 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
-	fmt.Printf("Collecting partition '%s' from %s (%s)\n", partition.Name(), collectResponse.FromTime.Time.Format(time.DateTime), collectResponse.FromTime.Source) //nolint:forbidigo//UI output
-	c.spinner.Start()
-	c.spinner.Suffix = " Collecting logs"
+
+	c.app = tea.NewProgram(newCollectionModel(partition.GetUnqualifiedName(), *collectResponse.FromTime))
+	//nolint:errcheck // handle this later
+	go c.app.Run() // TODO: #error handling of errors
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
@@ -127,7 +130,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 				rowCount, err := c.parquetWriter.GetRowCount()
 				if err == nil {
 					c.status.SetRowsConverted(rowCount)
-					c.setStatusMessage()
+					c.app.Send(c.status)
 				}
 			}
 		}
@@ -155,7 +158,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		c.setStatusMessage()
+		c.app.Send(c.status)
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
@@ -219,10 +222,6 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 		slog.Error("error waiting for execution to complete", "error", err)
 	}
 
-	c.parquetWriter.Close()
-
-	// if inbox path is empty, remove it (ignore errors)
-	_ = os.Remove(c.sourcePath)
 }
 
 func (c *Collector) StatusString() string {
@@ -261,7 +260,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
-	retryInterval := 5 * time.Second
+	retryInterval := 200 * time.Millisecond
 	c.execution.totalRows = ce.RowCount
 	c.execution.chunkCount = ce.ChunkCount
 
@@ -298,15 +297,8 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 			// not all chunks have been written
 			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
 		}
-		// so we are done writing chunks - now update the db to add a view to this data
-		// Open a DuckDB connection
-		db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
-		if err != nil {
-			return err
-		}
-		defer db.Close()
 
-		return database.AddTableView(ctx, c.execution.table, db)
+		return nil
 	})
 
 	slog.Debug("waitForConversions - all chunks written", "execution", c.execution.id)
@@ -319,6 +311,18 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 		return err
 	}
 
+	// so we are done writing chunks - now update the db to add a view to this data
+	// Open a DuckDB connection
+	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	err = database.AddTableView(ctx, c.execution.table, db)
+	if err != nil {
+		return err
+	}
 	// notify the writer that the collection is complete
 	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
 }
@@ -327,7 +331,9 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 func (c *Collector) waitForExecution(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
-	retryInterval := 500 * time.Millisecond
+	retryInterval := 100 * time.Millisecond
+
+	slog.Error("waiting for execution")
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		switch c.execution.state {
@@ -345,6 +351,7 @@ func (c *Collector) waitForExecution(ctx context.Context) error {
 		}
 		return err
 	}
+	slog.Error("done waiting for execution")
 	return nil
 }
 
@@ -355,10 +362,6 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 			c.handlePluginEvent(ctx, event)
 		}
 	}()
-}
-
-func (c *Collector) setStatusMessage() {
-	c.spinner.Suffix = " " + c.status.String()
 }
 
 func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {
@@ -391,4 +394,16 @@ func (c *Collector) cleanupCollectionDir() {
 			_ = os.RemoveAll(filepath.Join(parent, file.Name()))
 		}
 	}
+}
+
+func (c *Collector) Compact(ctx context.Context) error {
+	c.app.Send(AwaitingCompactionMsg{})
+	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
+		c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
+	}
+	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc)
+	if err != nil {
+		return fmt.Errorf("failed to compact data files: %w", err)
+	}
+	return nil
 }
