@@ -26,6 +26,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
+	"golang.org/x/exp/maps"
 )
 
 // variable used to assign the output mode flag
@@ -50,6 +51,8 @@ func connectCmd() *cobra.Command {
 	cmdconfig.OnCmd(cmd).
 		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
 		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
+		AddStringSliceFlag(pconstants.ArgIndex, nil, "Specify the index to use").
+		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partition to use").
 		AddVarFlag(enumflag.New(&connectOutputMode, pconstants.ArgOutput, constants.ConnectOutputModeIds, enumflag.EnumCaseInsensitive),
 			pconstants.ArgOutput,
 			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.PluginOutputModeIds), ", ")))
@@ -167,6 +170,26 @@ func getFilters() ([]string, error) {
 		toTimestamp := t.Format(time.DateTime)
 		result = append(result, fmt.Sprintf("tp_date <= DATE '%s' AND tp_timestamp <= TIMESTAMP '%s'", toDate, toTimestamp))
 	}
+	if viper.IsSet(pconstants.ArgPartition) {
+		// we have loaded tailpipe config by this time
+		availablePartitions := config.GlobalConfig.Partitions
+		partitionArgs := viper.GetStringSlice(pconstants.ArgPartition)
+		// get the SQL filters from the provided partition
+		sqlFilters, err := getPartitionSqlFilters(partitionArgs, maps.Keys(availablePartitions))
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, sqlFilters)
+	}
+	if viper.IsSet(pconstants.ArgIndex) {
+		indexArgs := viper.GetStringSlice(pconstants.ArgIndex)
+		// get the SQL filters from the provided index
+		sqlFilters, err := getIndexSqlFilters(indexArgs)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, sqlFilters)
+	}
 	return result, nil
 }
 
@@ -274,4 +297,92 @@ func cleanupOldDbFiles() error {
 		return err
 	}
 	return nil
+}
+
+func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string) (string, error) {
+	// Get table and partition patterns using getPartitionPatterns
+	tablePatterns, partitionPatterns, err := getPartitionPatterns(partitionArgs, availablePartitions)
+	if err != nil {
+		return "", fmt.Errorf("error processing partition args: %w", err)
+	}
+
+	// Handle the case when patterns are empty
+	if len(tablePatterns) == 0 || len(partitionPatterns) == 0 {
+		return "", nil
+	}
+
+	// Replace wildcards from '*' to '%' for SQL compatibility
+	updatedTables, updatedPartitions := replaceWildcards(tablePatterns, partitionPatterns)
+
+	// Build the SQL filters
+	var conditions []string
+	for i := 0; i < len(updatedTables); i++ {
+		if i < len(updatedPartitions) {
+			condition := fmt.Sprintf("(tp_table LIKE '%s' AND tp_partition LIKE '%s')", updatedTables[i], updatedPartitions[i])
+			conditions = append(conditions, condition)
+		}
+	}
+
+	// Combine all conditions with OR
+	sqlFilters := strings.Join(conditions, " OR ")
+
+	return sqlFilters, nil
+}
+
+func getIndexSqlFilters(indexArgs []string) (string, error) {
+	// Return empty if no indexes provided
+	if len(indexArgs) == 0 {
+		return "", nil
+	}
+
+	// Build SQL filter based on whether wildcards are present
+	var conditions []string
+	for _, index := range indexArgs {
+		if strings.Contains(index, "*") {
+			// Replace '*' wildcard with '%' for SQL LIKE compatibility
+			index = strings.ReplaceAll(index, "*", "%")
+			conditions = append(conditions, fmt.Sprintf("CAST(tp_index AS TEXT) LIKE '%s'", index))
+		} else {
+			// Exact match using '='
+			conditions = append(conditions, fmt.Sprintf("tp_index = '%s'", index))
+		}
+	}
+
+	// Combine all conditions with OR
+	sqlFilter := strings.Join(conditions, " OR ")
+
+	return sqlFilter, nil
+}
+
+// getPartitionPatterns returns the table and partition patterns for the given partition args
+func getPartitionPatterns(partitionArgs []string, partitions []string) ([]string, []string, error) {
+	var tablePatterns []string
+	var partitionPatterns []string
+
+	for _, arg := range partitionArgs {
+		tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error processing partition arg '%s': %w", arg, err)
+		}
+
+		tablePatterns = append(tablePatterns, tablePattern)
+		partitionPatterns = append(partitionPatterns, partitionPattern)
+	}
+
+	return tablePatterns, partitionPatterns, nil
+}
+
+func replaceWildcards(tablePatterns []string, partitionPatterns []string) ([]string, []string) {
+	updatedTables := make([]string, len(tablePatterns))
+	updatedPartitions := make([]string, len(partitionPatterns))
+
+	for i, table := range tablePatterns {
+		updatedTables[i] = strings.ReplaceAll(table, "*", "%")
+	}
+
+	for i, partition := range partitionPatterns {
+		updatedPartitions[i] = strings.ReplaceAll(partition, "*", "%")
+	}
+
+	return updatedTables, updatedPartitions
 }

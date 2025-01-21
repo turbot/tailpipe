@@ -43,6 +43,8 @@ func queryCmd() *cobra.Command {
 			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.QueryOutputModeIds), ", "))).
 		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
 		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
+		AddStringSliceFlag(pconstants.ArgIndex, nil, "Specify the index to use").
+		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partition to use").
 		AddBoolFlag(pconstants.ArgHeader, true, "Include column headers csv and table output").
 		AddStringFlag(pconstants.ArgSeparator, ",", "Separator string for csv output")
 
