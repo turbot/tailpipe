@@ -96,7 +96,7 @@ func (c collectionModel) View() string {
 	}
 
 	// header
-	b.WriteString(fmt.Sprintf("Collecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format("2006-01-02"), c.fromTime.Source))
+	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format("2006-01-02"), c.fromTime.Source))
 
 	// artifacts
 	if c.path != "" || c.discovered > 0 {
