@@ -2,11 +2,9 @@ package collector
 
 import (
 	"fmt"
-	"math"
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbletea"
 	"github.com/dustin/go-humanize"
 
@@ -33,16 +31,17 @@ type collectionModel struct {
 	rowsConverted int64
 	rowsErrors    int64
 
-	complete          bool
-	terminalWidth     int
-	initiated         time.Time
-	progressBarConfig progress.Model
+	complete      bool
+	terminalWidth int
+	initiated     time.Time
 
 	// compaction
 	compactionStatus *parquet.CompactionStatus
 }
 
-type CollectionCompleteMsg struct{}
+type CollectionFinishedMsg struct{}
+
+type AwaitingCompactionMsg struct{}
 
 type CompactionStatusUpdateMsg struct {
 	status *parquet.CompactionStatus
@@ -50,10 +49,10 @@ type CompactionStatusUpdateMsg struct {
 
 func newCollectionModel(partitionName string, fromTime row_source.ResolvedFromTime) collectionModel {
 	return collectionModel{
-		partitionName:     partitionName,
-		fromTime:          fromTime,
-		initiated:         time.Now(),
-		progressBarConfig: progress.New(progress.WithWidth(20), progress.WithFillCharacters('=', '-'), progress.WithColorProfile(3), progress.WithoutPercentage()),
+		partitionName:    partitionName,
+		fromTime:         fromTime,
+		initiated:        time.Now(),
+		compactionStatus: nil,
 	}
 }
 
@@ -69,8 +68,7 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// TODO: Handle graceful exit
 			return c, tea.Quit
 		}
-	case CollectionCompleteMsg:
-		c.complete = true
+	case CollectionFinishedMsg:
 		return c, tea.Quit
 	case status:
 		c.path = t.LatestArtifactPath
@@ -83,6 +81,11 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.rowsEnriched = t.RowsEnriched
 		c.rowsConverted = t.RowsConverted
 		c.rowsErrors = t.Errors
+		return c, nil
+	case AwaitingCompactionMsg:
+		cs := parquet.CompactionStatus{}
+		c.complete = true
+		c.compactionStatus = &cs
 		return c, nil
 	case CompactionStatusUpdateMsg:
 		if c.compactionStatus == nil {
@@ -100,9 +103,10 @@ func (c collectionModel) View() string {
 	var b strings.Builder
 	var countLength int = 5
 	var descriptionLength int = 12
+
 	countArtifactsDisplayLen := len(humanize.Comma(c.discovered))
 	countRowsDisplayLen := len(humanize.Comma(c.rowsReceived))
-	downloadedDisplay := fmt.Sprintf("(%s)", humanize.Bytes((uint64)(c.downloadedBytes)))
+	downloadedDisplay := humanize.Bytes((uint64)(c.downloadedBytes))
 	if countArtifactsDisplayLen > countLength {
 		countLength = countArtifactsDisplayLen
 	}
@@ -112,33 +116,28 @@ func (c collectionModel) View() string {
 	}
 
 	collectionComplete := c.complete || c.compactionStatus != nil
+	displayPath := c.path
+	timeLabel := "Time:"
+
+	if collectionComplete {
+		// TODO: #tactical we should clear path in event once complete
+		displayPath = ""
+		timeLabel = "Completed:"
+	}
 
 	// header
 	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format("2006-01-02"), c.fromTime.Source))
 
 	// artifacts
-	displayPath := c.path
 	if c.path != "" || c.discovered > 0 {
-		if collectionComplete {
-			// TODO: #tactical we should clear path in event once complete
-			displayPath = ""
-		}
-		if displayPath != "" {
-			if strings.Contains(displayPath, "/") {
-				displayPath = displayPath[strings.LastIndex(displayPath, "/")+1:]
-			}
-			displayPath = fmt.Sprintf("(%s)", displayPath)
+		if strings.Contains(displayPath, "/") {
+			displayPath = displayPath[strings.LastIndex(displayPath, "/")+1:]
 		}
 
 		b.WriteString("Artifacts:\n")
 		b.WriteString(writeCountLine("Discovered:", descriptionLength, c.discovered, countLength, &displayPath))
-		if collectionComplete {
-			b.WriteString(writeCountLine("Downloaded:", descriptionLength, c.downloaded, countLength, &downloadedDisplay))
-			b.WriteString(writeCountLine("Extracted:", descriptionLength, c.extracted, countLength, nil))
-		} else {
-			b.WriteString(writeProgressLine("Downloaded:", descriptionLength, c.downloaded, countLength, float64(c.downloaded)/float64(c.discovered), &downloadedDisplay, &c.progressBarConfig, collectionComplete))
-			b.WriteString(writeProgressLine("Extracted:", descriptionLength, c.extracted, countLength, float64(c.extracted)/float64(c.discovered), nil, &c.progressBarConfig, collectionComplete))
-		}
+		b.WriteString(writeCountLine("Downloaded:", descriptionLength, c.downloaded, countLength, &downloadedDisplay))
+		b.WriteString(writeCountLine("Extracted:", descriptionLength, c.extracted, countLength, nil))
 		if c.errors > 0 {
 			b.WriteString(writeCountLine("Errors:", descriptionLength, c.errors, countLength, nil))
 		}
@@ -148,13 +147,8 @@ func (c collectionModel) View() string {
 	// rows
 	b.WriteString("Rows:\n")
 	b.WriteString(writeCountLine("Received:", descriptionLength, c.rowsReceived, countLength, nil))
-	if collectionComplete {
-		b.WriteString(writeCountLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, nil))
-		b.WriteString(writeCountLine("Converted:", descriptionLength, c.rowsConverted, countLength, nil))
-	} else {
-		b.WriteString(writeProgressLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, float64(c.rowsEnriched)/float64(c.rowsReceived), nil, &c.progressBarConfig, collectionComplete))
-		b.WriteString(writeProgressLine("Converted:", descriptionLength, c.rowsConverted, countLength, float64(c.rowsConverted)/float64(c.rowsReceived), nil, &c.progressBarConfig, collectionComplete))
-	}
+	b.WriteString(writeCountLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, nil))
+	b.WriteString(writeCountLine("Converted:", descriptionLength, c.rowsConverted, countLength, nil))
 	if c.rowsErrors > 0 {
 		b.WriteString(writeCountLine("Errors:", descriptionLength, c.rowsErrors, countLength, nil))
 	}
@@ -162,14 +156,15 @@ func (c collectionModel) View() string {
 
 	// compaction
 	if c.compactionStatus != nil {
-		b.WriteString("Compaction:\n")
-		b.WriteString(fmt.Sprintf("  %s\n", c.compactionStatus.VerboseString()))
+		b.WriteString("File Compaction:\n")
+		b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source, c.compactionStatus.Dest))
+		b.WriteString(fmt.Sprintf("  Skipped:   %d\n", c.compactionStatus.Uncompacted))
 		b.WriteString("\n")
 	}
 
 	// run time
 	duration := time.Since(c.initiated)
-	b.WriteString(fmt.Sprintf("Time: %s\n", utils.HumanizeDuration(duration)))
+	b.WriteString(fmt.Sprintf("%s %s\n", timeLabel, utils.HumanizeDuration(duration)))
 
 	return b.String()
 }
@@ -180,19 +175,4 @@ func writeCountLine(desc string, descLen int, count int64, maxCountLen int, suff
 		s = *suffix
 	}
 	return fmt.Sprintf("  %-*s%*s %s\n", descLen, desc, maxCountLen, humanize.Comma(count), s)
-}
-
-func writeProgressLine(desc string, descLen int, count int64, maxCountLen int, percent float64, suffix *string, pb *progress.Model, complete bool) string {
-	s := ""
-	if suffix != nil {
-		s = *suffix
-	}
-	if math.IsNaN(percent) {
-		percent = 0
-	}
-	// TODO: #hack review - essentially if we're not complete, we shouldn't be 100% on any progress bar
-	if !complete && percent >= 1.0 {
-		percent = 0.99
-	}
-	return fmt.Sprintf("  %-*s%*s [%s] %3.0f%% %s\n", descLen, desc, maxCountLen, humanize.Comma(count), pb.ViewAs(percent), math.Floor(percent*100), s)
 }

@@ -81,7 +81,7 @@ func (c *Collector) Close() {
 
 	c.parquetWriter.Close()
 
-	c.app.Send(CollectionCompleteMsg{})
+	c.app.Send(CollectionFinishedMsg{})
 
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
@@ -388,6 +388,7 @@ func (c *Collector) cleanupCollectionDir() {
 }
 
 func (c *Collector) Compact(ctx context.Context) error {
+	c.app.Send(AwaitingCompactionMsg{})
 	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
 		c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
 	}
