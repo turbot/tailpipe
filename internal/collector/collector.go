@@ -12,7 +12,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
-	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
@@ -367,7 +366,6 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {
 	c.execution.pluginTiming = events.TimingCollectionFromProto(timing)
 }
-
 
 func (c *Collector) Compact(ctx context.Context) error {
 	c.app.Send(AwaitingCompactionMsg{})
