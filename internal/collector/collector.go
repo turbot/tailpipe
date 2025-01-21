@@ -105,6 +105,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	}
 
 	c.app = tea.NewProgram(newCollectionModel(partition.GetUnqualifiedName(), *collectResponse.FromTime))
+	//nolint:errcheck // handle this later
 	go c.app.Run() // TODO: #error handling of errors
 
 	executionId := collectResponse.ExecutionId
@@ -259,7 +260,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
-	retryInterval := 5 * time.Second
+	retryInterval := 200 * time.Millisecond
 	c.execution.totalRows = ce.RowCount
 	c.execution.chunkCount = ce.ChunkCount
 
@@ -296,15 +297,8 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 			// not all chunks have been written
 			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
 		}
-		// so we are done writing chunks - now update the db to add a view to this data
-		// Open a DuckDB connection
-		db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
-		if err != nil {
-			return err
-		}
-		defer db.Close()
 
-		return database.AddTableView(ctx, c.execution.table, db)
+		return nil
 	})
 
 	slog.Debug("waitForConversions - all chunks written", "execution", c.execution.id)
@@ -317,6 +311,18 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 		return err
 	}
 
+	// so we are done writing chunks - now update the db to add a view to this data
+	// Open a DuckDB connection
+	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	err = database.AddTableView(ctx, c.execution.table, db)
+	if err != nil {
+		return err
+	}
 	// notify the writer that the collection is complete
 	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
 }
@@ -325,7 +331,9 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 func (c *Collector) waitForExecution(ctx context.Context) error {
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
-	retryInterval := 500 * time.Millisecond
+	retryInterval := 100 * time.Millisecond
+
+	slog.Error("waiting for execution")
 
 	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
 		switch c.execution.state {
@@ -343,6 +351,7 @@ func (c *Collector) waitForExecution(ctx context.Context) error {
 		}
 		return err
 	}
+	slog.Error("done waiting for execution")
 	return nil
 }
 

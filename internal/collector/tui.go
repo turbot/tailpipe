@@ -31,9 +31,8 @@ type collectionModel struct {
 	rowsConverted int64
 	rowsErrors    int64
 
-	complete      bool
-	terminalWidth int
-	initiated     time.Time
+	complete  bool
+	initiated time.Time
 
 	// compaction
 	compactionStatus *parquet.CompactionStatus
@@ -103,10 +102,15 @@ func (c collectionModel) View() string {
 	var b strings.Builder
 	var countLength int = 5
 	var descriptionLength int = 12
+	var downloadedDisplay string
 
 	countArtifactsDisplayLen := len(humanize.Comma(c.discovered))
 	countRowsDisplayLen := len(humanize.Comma(c.rowsReceived))
-	downloadedDisplay := humanize.Bytes((uint64)(c.downloadedBytes))
+	if c.downloadedBytes < 0 {
+		downloadedDisplay = "0 B" // Handle negative values gracefully
+	} else {
+		downloadedDisplay = humanize.Bytes(uint64(c.downloadedBytes))
+	}
 	if countArtifactsDisplayLen > countLength {
 		countLength = countArtifactsDisplayLen
 	}
