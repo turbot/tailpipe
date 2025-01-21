@@ -14,6 +14,7 @@ import (
 
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
+	"github.com/turbot/pipe-fittings/constants"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/parse"
@@ -43,7 +44,8 @@ func collectCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
-		AddStringFlag(pconstants.ArgFrom, "", "Specify the collection start time")
+		AddStringFlag(pconstants.ArgFrom, "", "Specify the collection start time").
+		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information")
 
 	return cmd
 }
@@ -244,4 +246,8 @@ func setExitCodeForCollectError(err error) {
 
 	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/106
 	exitCode = 1
+}
+
+func shouldShowCollectTiming() bool {
+	return viper.GetBool(constants.ArgTiming)
 }

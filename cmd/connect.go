@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	"github.com/turbot/pipe-fittings/connection"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	pfilepaths "github.com/turbot/pipe-fittings/filepaths"
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -75,6 +77,12 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 
 func generateDbFile(ctx context.Context) (string, error) {
 	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
+
+	// cleanup the old db files if not in use
+	err := cleanupOldDbFiles()
+	if err != nil {
+		return "", err
+	}
 
 	// first build the filters
 	filters, err := getFilters()
@@ -194,4 +202,76 @@ func copyDBFile(src, dst string) error {
 
 	_, err = io.Copy(destFile, sourceFile)
 	return err
+}
+
+// cleanupOldDbFiles deletes old db files(older than a day) that are not in use
+func cleanupOldDbFiles() error {
+	baseDir := pfilepaths.GetDataDir()
+	log.Printf("[INFO] Cleaning up old db files in %s\n", baseDir)
+	cutoffTime := time.Now().Add(-constants.DbFileMaxAge) // Files older than 1 day
+
+	// The baseDir ("$TAILPIPE_INSTALL_DIR/data") is expected to have subdirectories for different workspace
+	// profiles(default, work etc). Each subdirectory may contain multiple .db files.
+	// Example structure:
+	// data/
+	// ├── default/
+	// │   ├── tailpipe_20250115182129.db
+	// │   ├── tailpipe_20250115193816.db
+	// │   ├── tailpipe.db
+	// │   └── ...
+	// ├── work/
+	// │   ├── tailpipe_20250115182129.db
+	// │   ├── tailpipe_20250115193816.db
+	// │   ├── tailpipe.db
+	// │   └── ...
+	// So we traverse all these subdirectories for each workspace and process the relevant files.
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("error accessing path %s: %v", path, err)
+		}
+
+		// skip directories and non-`.db` files
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".db") {
+			return nil
+		}
+
+		// skip `tailpipe.db` file
+		if info.Name() == "tailpipe.db" {
+			return nil
+		}
+
+		// only process `tailpipe_*.db` files
+		if !strings.HasPrefix(info.Name(), "tailpipe_") {
+			return nil
+		}
+
+		// check if the file is older than the cutoff time
+		if info.ModTime().After(cutoffTime) {
+			log.Printf("[DEBUG] Skipping deleting file %s(%s) as it is not older than %s\n", path, info.ModTime().String(), cutoffTime)
+			return nil
+		}
+
+		// check for a lock on the file
+		db, err := sql.Open("duckdb", path)
+		if err != nil {
+			log.Printf("[INFO] Skipping deletion of file %s due to error: %v\n", path, err)
+			return nil
+		}
+		defer db.Close()
+
+		// if no lock, delete the file
+		err = os.Remove(path)
+		if err != nil {
+			log.Printf("[INFO] Failed to delete db file %s: %v", path, err)
+		} else {
+			log.Printf("[DEBUG] Cleaned up old unused db file: %s\n", path)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
 }
