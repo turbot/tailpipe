@@ -4,21 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/turbot/pipe-fittings/parse"
 	"strings"
 	"time"
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/exp/maps"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
-	"golang.org/x/exp/maps"
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
@@ -72,36 +73,36 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 func collectAndCompact(ctx context.Context, args []string) error {
 	// collect the data
-	statusStrings, timingStrings, err := doCollect(ctx, args)
+	_, _, err := doCollect(ctx, args)
 	if err != nil {
 		return err
 	}
 
 	// compact the data
-	var compactStatusString string
-	if viper.GetBool(pconstants.ArgCompact) {
-		compactStatus, err := doCompaction(ctx)
-		// if the context was cancelled, we don't want to return an error
-		if err != nil && !errors.Is(err, context.Canceled) {
-			return fmt.Errorf("compaction error: %w", err)
-		}
-		compactStatusString = compactStatus.BriefString()
-		if ctx.Err() != nil {
-			// instead show the status as cancelled
-			compactStatusString = "Compaction cancelled: " + compactStatusString
-		}
-	}
+	//var compactStatusString string
+	//if viper.GetBool(pconstants.ArgCompact) {
+	//	compactStatus, err := doCompaction(ctx)
+	//	// if the context was cancelled, we don't want to return an error
+	//	if err != nil && !errors.Is(err, context.Canceled) {
+	//		return fmt.Errorf("compaction error: %w", err)
+	//	}
+	//	compactStatusString = compactStatus.BriefString()
+	//	if ctx.Err() != nil {
+	//		// instead show the status as cancelled
+	//		compactStatusString = "Compaction cancelled: " + compactStatusString
+	//	}
+	//}
 
 	// now show the result
-	for i, statusString := range statusStrings {
-		fmt.Println(statusString) //nolint:forbidigo // ui output
-		if len(timingStrings) > i {
-			fmt.Println(timingStrings[i]) //nolint:forbidigo // ui output
-		}
-	}
-	if compactStatusString != "" {
-		fmt.Println(compactStatusString) //nolint:forbidigo // ui output
-	}
+	//for i, statusString := range statusStrings {
+	//	fmt.Println(statusString) //nolint:forbidigo // ui output
+	//	if len(timingStrings) > i {
+	//		fmt.Println(timingStrings[i]) //nolint:forbidigo // ui output
+	//	}
+	//}
+	//if compactStatusString != "" {
+	//	fmt.Println(compactStatusString) //nolint:forbidigo // ui output
+	//}
 
 	return nil
 }
@@ -161,12 +162,18 @@ func collectPartition(ctx context.Context, partition *config.Partition, fromTime
 		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", fromTime.Format("2006-01-02T15:04:05")))
 	}
 
-	if err := c.Collect(ctx, partition, fromTime); err != nil {
+	if err = c.Collect(ctx, partition, fromTime); err != nil {
 		return "", "", err
 	}
 	// now wait for all collection to complete and close the collector
 	c.WaitForCompletion(ctx)
-	return c.StatusString(), c.TimingString(), nil
+
+	err = c.Compact(ctx)
+	if err != nil {
+		return "", "", err
+	}
+
+	return "", "", nil
 }
 
 func getPartitions(args []string) ([]*config.Partition, error) {

@@ -12,6 +12,7 @@ import (
 
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
+	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 type collectionModel struct {
@@ -36,9 +37,16 @@ type collectionModel struct {
 	terminalWidth     int
 	initiated         time.Time
 	progressBarConfig progress.Model
+
+	// compaction
+	compactionStatus *parquet.CompactionStatus
 }
 
-type collectionCompleteMsg struct{}
+type CollectionCompleteMsg struct{}
+
+type CompactionStatusUpdateMsg struct {
+	status *parquet.CompactionStatus
+}
 
 func newCollectionModel(partitionName string, fromTime row_source.ResolvedFromTime) collectionModel {
 	return collectionModel{
@@ -61,9 +69,9 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// TODO: Handle graceful exit
 			return c, tea.Quit
 		}
-	case collectionCompleteMsg:
+	case CollectionCompleteMsg:
 		c.complete = true
-		return c, nil
+		return c, tea.Quit
 	case status:
 		c.path = t.LatestArtifactPath
 		c.discovered = t.ArtifactsDiscovered
@@ -75,6 +83,9 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.rowsEnriched = t.RowsEnriched
 		c.rowsConverted = t.RowsConverted
 		c.rowsErrors = t.Errors
+		return c, nil
+	case CompactionStatusUpdateMsg:
+		c.compactionStatus = t.status
 		return c, nil
 	}
 	return c, nil
@@ -95,23 +106,25 @@ func (c collectionModel) View() string {
 		descriptionLength = 11
 	}
 
+	collectionComplete := c.complete || c.compactionStatus != nil
+
 	// header
 	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format("2006-01-02"), c.fromTime.Source))
 
 	// artifacts
 	if c.path != "" || c.discovered > 0 {
-		if c.complete {
+		if collectionComplete {
 			// TODO: #tactical we should clear path in event once complete
 			c.path = ""
 		}
 		b.WriteString("Artifacts:\n")
 		b.WriteString(writeCountLine("Discovered:", descriptionLength, c.discovered, countLength, &c.path))
-		if c.complete {
+		if collectionComplete {
 			b.WriteString(writeCountLine("Downloaded:", descriptionLength, c.downloaded, countLength, &downloadedDisplay))
 			b.WriteString(writeCountLine("Extracted:", descriptionLength, c.extracted, countLength, nil))
 		} else {
-			b.WriteString(writeProgressLine("Downloaded:", descriptionLength, c.downloaded, countLength, float64(c.downloaded)/float64(c.discovered), &downloadedDisplay, &c.progressBarConfig, c.complete))
-			b.WriteString(writeProgressLine("Extracted:", descriptionLength, c.extracted, countLength, float64(c.extracted)/float64(c.discovered), nil, &c.progressBarConfig, c.complete))
+			b.WriteString(writeProgressLine("Downloaded:", descriptionLength, c.downloaded, countLength, float64(c.downloaded)/float64(c.discovered), &downloadedDisplay, &c.progressBarConfig, collectionComplete))
+			b.WriteString(writeProgressLine("Extracted:", descriptionLength, c.extracted, countLength, float64(c.extracted)/float64(c.discovered), nil, &c.progressBarConfig, collectionComplete))
 		}
 		if c.errors > 0 {
 			b.WriteString(writeCountLine("Errors:", descriptionLength, c.errors, countLength, nil))
@@ -122,17 +135,24 @@ func (c collectionModel) View() string {
 	// rows
 	b.WriteString("Rows:\n")
 	b.WriteString(writeCountLine("Received:", descriptionLength, c.rowsReceived, countLength, nil))
-	if c.complete {
+	if collectionComplete {
 		b.WriteString(writeCountLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, nil))
 		b.WriteString(writeCountLine("Converted:", descriptionLength, c.rowsConverted, countLength, nil))
 	} else {
-		b.WriteString(writeProgressLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, float64(c.rowsEnriched)/float64(c.rowsReceived), nil, &c.progressBarConfig, c.complete))
-		b.WriteString(writeProgressLine("Converted:", descriptionLength, c.rowsConverted, countLength, float64(c.rowsConverted)/float64(c.rowsReceived), nil, &c.progressBarConfig, c.complete))
+		b.WriteString(writeProgressLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, float64(c.rowsEnriched)/float64(c.rowsReceived), nil, &c.progressBarConfig, collectionComplete))
+		b.WriteString(writeProgressLine("Converted:", descriptionLength, c.rowsConverted, countLength, float64(c.rowsConverted)/float64(c.rowsReceived), nil, &c.progressBarConfig, collectionComplete))
 	}
 	if c.rowsErrors > 0 {
 		b.WriteString(writeCountLine("Errors:", descriptionLength, c.rowsErrors, countLength, nil))
 	}
 	b.WriteString("\n")
+
+	// compaction
+	if c.compactionStatus != nil {
+		b.WriteString("Compaction:\n")
+		b.WriteString(fmt.Sprintf("  %s\n", c.compactionStatus.VerboseString()))
+		b.WriteString("\n")
+	}
 
 	// run time
 	duration := time.Since(c.initiated)

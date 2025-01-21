@@ -78,6 +78,13 @@ func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 func (c *Collector) Close() {
 	close(c.Events)
 
+	c.parquetWriter.Close()
+
+	c.app.Send(CollectionCompleteMsg{})
+
+	// if inbox path is empty, remove it (ignore errors)
+	_ = os.Remove(c.sourcePath)
+
 	// delete the collection temp dir
 	_ = os.RemoveAll(c.collectionTempDir)
 }
@@ -214,11 +221,6 @@ func (c *Collector) WaitForCompletion(ctx context.Context) {
 		slog.Error("error waiting for execution to complete", "error", err)
 	}
 
-	c.parquetWriter.Close()
-	c.app.Send(collectionCompleteMsg{})
-
-	// if inbox path is empty, remove it (ignore errors)
-	_ = os.Remove(c.sourcePath)
 }
 
 func (c *Collector) StatusString() string {
@@ -383,4 +385,15 @@ func (c *Collector) cleanupCollectionDir() {
 			_ = os.RemoveAll(filepath.Join(parent, file.Name()))
 		}
 	}
+}
+
+func (c *Collector) Compact(ctx context.Context) error {
+	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
+		c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
+	}
+	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc)
+	if err != nil {
+		return fmt.Errorf("failed to compact data files: %w", err)
+	}
+	return nil
 }
