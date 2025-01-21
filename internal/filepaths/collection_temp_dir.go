@@ -11,16 +11,16 @@ import (
 )
 
 func GetCollectionTempDir() string {
+	// get the collection directory for this workspace
 	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
 	// cleanup the collection temp dir from previous runs
 	cleanupCollectionTempDirs(collectionDir)
-
+	// add a PID directory to the collection directory
 	return filepath.Join(collectionDir, fmt.Sprintf("%d", os.Getpid()))
 }
+
 func cleanupCollectionTempDirs(collectionTempDir string) {
-	// list all folders alongside our collection temp dir
-	parent := filepath.Dir(collectionTempDir)
-	files, err := os.ReadDir(parent)
+	files, err := os.ReadDir(collectionTempDir)
 	if err != nil {
 		slog.Warn("failed to list files in collection dir", "error", err)
 		return
@@ -40,7 +40,12 @@ func cleanupCollectionTempDirs(collectionTempDir string) {
 				}
 			}
 			slog.Debug("removing directory", "dir", file.Name())
-			_ = os.RemoveAll(filepath.Join(parent, file.Name()))
+			_ = os.RemoveAll(filepath.Join(collectionTempDir, file.Name()))
 		}
 	}
+}
+
+func CollectionStatePath(collectionFolder string, table, partition string) string {
+	// return the path to the collection state file
+	return filepath.Join(collectionFolder, fmt.Sprintf("collection_state_%s_%s.json", table, partition))
 }

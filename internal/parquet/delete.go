@@ -20,7 +20,7 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
     SELECT 
     DISTINCT '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date AS hive_path
     FROM read_parquet('%s', hive_partitioning=true)
-    WHERE tp_partition = '%s';
+    WHERE tp_partition = '%s'
 `, dataDir, fileGlob, partition.ShortName)
 
 	if !from.IsZero() {

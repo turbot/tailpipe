@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -211,7 +212,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	if !viper.GetBool(pconstants.ArgForce) {
 		// confirm deletion
 		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s?", partitionName, fromStr)
-		if !utils.UserConfirmationWithDefault(msg, false) {
+		if !utils.UserConfirmationWithDefault(msg, true) {
 			fmt.Println("Deletion cancelled") //nolint:forbidigo//expected output
 			return
 		}
@@ -220,22 +221,29 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	filesDeleted, err := parquet.DeleteParquetFiles(partition, from)
 	error_helpers.FailOnError(err)
 
-	if filesDeleted == 0 {
-		fmt.Println("No parquet files deleted") //nolint:forbidigo//expected output
-	} else {
-		fmt.Printf("Deleted %d parquet %s\n", filesDeleted, utils.Pluralize("file", filesDeleted)) //nolint:forbidigo//expected output
-	}
-
 	// update collection state
 	// start the plugin manager
 	pluginManager := plugin_manager.New()
 	defer pluginManager.Close()
 
-	// get the temp data dir for this collection
-	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
-	collectionTempDir := filepaths.GetCollectionTempDir()
+	// build the collection state path
+	collectionStateDir := config.GlobalWorkspaceProfile.GetCollectionDir()
+	collectionStatePath := filepaths.CollectionStatePath(collectionStateDir, partition.TableName, partition.ShortName)
 
 	// tell the plugin manager to update the collection state
-	err = pluginManager.UpdateCollectionState(ctx, partition, from, collectionTempDir)
+	err = pluginManager.UpdateCollectionState(ctx, partition, from, collectionStatePath)
 	error_helpers.FailOnError(err)
+
+	msg := buildStatusMessage(filesDeleted, partitionName, fromStr)
+	fmt.Println(msg) //nolint:forbidigo//expected output
+	slog.Info("Partition deleted", "partition", partitionName, "from", from)
+}
+
+func buildStatusMessage(filesDeleted int, partition string, fromStr string) interface{} {
+	var deletedStr string
+	if filesDeleted > 0 {
+		deletedStr = fmt.Sprintf(" (deleted %d parquet %s)", filesDeleted, utils.Pluralize("file", filesDeleted))
+	}
+
+	return fmt.Sprintf("\nDeleted partition '%s' %s%s.\n", partition, fromStr, deletedStr)
 }

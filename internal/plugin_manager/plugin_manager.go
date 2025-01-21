@@ -21,7 +21,7 @@ import (
 	"github.com/turbot/pipe-fittings/app_specific"
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/error_helpers"
-	"github.com/turbot/pipe-fittings/filepaths"
+	pfilepaths "github.com/turbot/pipe-fittings/filepaths"
 	"github.com/turbot/pipe-fittings/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/plugin"
@@ -31,6 +31,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -105,18 +106,20 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// the name of the collection state file contains the partition name
 	// thus the collection state is shared between multiple successive collections
 
-	collectionStateDir := filepath.Dir(collectionTempDir)
+	// build the collection state path
+	collectionStateDir := config.GlobalWorkspaceProfile.GetCollectionDir()
+	collectionStatePath := filepaths.CollectionStatePath(collectionStateDir, partition.TableName, partition.ShortName)
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
-		TableName:          partition.TableName,
-		PartitionName:      partition.ShortName,
-		ExecutionId:        executionID,
-		CollectionTempDir:  collectionTempDir,
-		CollectionStateDir: collectionStateDir,
-		SourceData:         partition.Source.ToProto(),
-		SourcePlugin:       sourcePluginReattach,
-		FromTime:           timestamppb.New(fromTime),
+		TableName:           partition.TableName,
+		PartitionName:       partition.ShortName,
+		ExecutionId:         executionID,
+		CollectionTempDir:   collectionTempDir,
+		CollectionStatePath: collectionStatePath,
+		SourceData:          partition.Source.ToProto(),
+		SourcePlugin:        sourcePluginReattach,
+		FromTime:            timestamppb.New(fromTime),
 	}
 
 	if partition.Source.Connection != nil {
@@ -153,8 +156,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
-func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) error {
-
+func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionStatePath string) error {
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
@@ -166,19 +168,17 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	if err != nil {
 		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
-	collectionStateDir := filepath.Dir(collectionTempDir)
 
 	executionID := getExecutionId()
 
 	// reuse CollectRequest for UpdateCollectionState
 	req := &proto.CollectRequest{
-		TableName:          partition.TableName,
-		PartitionName:      partition.ShortName,
-		ExecutionId:        executionID,
-		CollectionTempDir:  collectionTempDir,
-		CollectionStateDir: collectionStateDir,
-		SourceData:         partition.Source.ToProto(),
-		FromTime:           timestamppb.New(fromTime),
+		TableName:           partition.TableName,
+		PartitionName:       partition.ShortName,
+		ExecutionId:         executionID,
+		CollectionStatePath: collectionStatePath,
+		SourceData:          partition.Source.ToProto(),
+		FromTime:            timestamppb.New(fromTime),
 	}
 
 	_, err = pluginClient.UpdateCollectionState(req)
@@ -259,10 +259,9 @@ func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin
 }
 
 func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
-	// TODO #plugin search in dest folder for any .plugin, as steampipe does https://github.com/turbot/tailpipe/issues/4
 	pluginName := tp.Alias
 
-	pluginPath, err := filepaths.GetPluginPath(tp.Plugin, tp.Alias)
+	pluginPath, err := pfilepaths.GetPluginPath(tp.Plugin, tp.Alias)
 	if err != nil {
 		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
 	}
