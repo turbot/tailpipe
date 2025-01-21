@@ -20,8 +20,8 @@ func Test_getPartitionSqlFilters(t *testing.T) {
 				"github_audit_log.p1",
 			},
 			args: []string{"aws_cloudtrail_log.*", "github_audit_log.p1"},
-			wantFilters: "(tp_table LIKE 'aws_cloudtrail_log' AND tp_partition LIKE '%') OR " +
-				"(tp_table LIKE 'github_audit_log' AND tp_partition LIKE 'p1')",
+			wantFilters: "(tp_table LIKE 'aws_cloudtrail_log' AND CAST(tp_partition AS VARCHAR) LIKE '%') OR " +
+				"(tp_table LIKE 'github_audit_log' AND CAST(tp_partition AS VARCHAR) LIKE 'p1')",
 			wantErr: false,
 		},
 		{
@@ -31,8 +31,8 @@ func Test_getPartitionSqlFilters(t *testing.T) {
 				"sys_logs.p2",
 			},
 			args: []string{"aws*.p1", "sys_logs.*"},
-			wantFilters: "(tp_table LIKE 'aws%' AND tp_partition LIKE 'p1') OR " +
-				"(tp_table LIKE 'sys_logs' AND tp_partition LIKE '%')",
+			wantFilters: "(tp_table LIKE 'aws%' AND CAST(tp_partition AS VARCHAR) LIKE 'p1') OR " +
+				"(tp_table LIKE 'sys_logs' AND CAST(tp_partition AS VARCHAR) LIKE '%')",
 			wantErr: false,
 		},
 		{
@@ -68,15 +68,15 @@ func Test_getIndexSqlFilters(t *testing.T) {
 		{
 			name:      "Multiple indexes with wildcards and exact values",
 			indexArgs: []string{"1234*", "456789012345", "98*76"},
-			wantFilters: "CAST(tp_index AS TEXT) LIKE '1234%' OR " +
+			wantFilters: "CAST(tp_index AS VARCHAR) LIKE '1234%' OR " +
 				"tp_index = '456789012345' OR " +
-				"CAST(tp_index AS TEXT) LIKE '98%76'",
+				"CAST(tp_index AS VARCHAR) LIKE '98%76'",
 			wantErr: false,
 		},
 		{
 			name:        "Single index with wildcard",
 			indexArgs:   []string{"12345678*"},
-			wantFilters: "CAST(tp_index AS TEXT) LIKE '12345678%'",
+			wantFilters: "CAST(tp_index AS VARCHAR) LIKE '12345678%'",
 			wantErr:     false,
 		},
 		{
@@ -88,7 +88,7 @@ func Test_getIndexSqlFilters(t *testing.T) {
 		{
 			name:        "Fully wildcarded index",
 			indexArgs:   []string{"*"},
-			wantFilters: "CAST(tp_index AS TEXT) LIKE '%'",
+			wantFilters: "CAST(tp_index AS VARCHAR) LIKE '%'",
 			wantErr:     false,
 		},
 		{
@@ -100,9 +100,9 @@ func Test_getIndexSqlFilters(t *testing.T) {
 		{
 			name:      "Mixed patterns",
 			indexArgs: []string{"12*", "3456789", "9*76"},
-			wantFilters: "CAST(tp_index AS TEXT) LIKE '12%' OR " +
+			wantFilters: "CAST(tp_index AS VARCHAR) LIKE '12%' OR " +
 				"tp_index = '3456789' OR " +
-				"CAST(tp_index AS TEXT) LIKE '9%76'",
+				"CAST(tp_index AS VARCHAR) LIKE '9%76'",
 			wantErr: false,
 		},
 		{
@@ -120,9 +120,9 @@ func Test_getIndexSqlFilters(t *testing.T) {
 		{
 			name:      "Combination of wildcards and exact values",
 			indexArgs: []string{"*456*", "1234", "98*76"},
-			wantFilters: "CAST(tp_index AS TEXT) LIKE '%456%' OR " +
+			wantFilters: "CAST(tp_index AS VARCHAR) LIKE '%456%' OR " +
 				"tp_index = '1234' OR " +
-				"CAST(tp_index AS TEXT) LIKE '98%76'",
+				"CAST(tp_index AS VARCHAR) LIKE '98%76'",
 			wantErr: false,
 		},
 		{
