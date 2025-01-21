@@ -75,7 +75,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 func collectAndCompact(ctx context.Context, args []string) error {
 	// collect the data
-	_, _, err := doCollect(ctx, args)
+	err := doCollect(ctx, args)
 	if err != nil {
 		return err
 	}
@@ -83,19 +83,19 @@ func collectAndCompact(ctx context.Context, args []string) error {
 	return nil
 }
 
-func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
+func doCollect(ctx context.Context, args []string) error {
 	var fromTime time.Time
 	if viper.GetString(pconstants.ArgFrom) != "" {
 		var err error
 		fromTime, err = parse.ParseTime(viper.GetString(pconstants.ArgFrom), time.Now())
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to parse 'from' argument: %w", err)
+			return fmt.Errorf("failed to parse 'from' argument: %w", err)
 		}
 	}
 
 	partitions, err := getPartitions(args)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get partition config: %w", err)
+		return fmt.Errorf("failed to get partition config: %w", err)
 	}
 
 	// now we have the partitions, we can start collecting
@@ -105,31 +105,26 @@ func doCollect(ctx context.Context, args []string) ([]string, []string, error) {
 	defer pluginManager.Close()
 
 	// collect each partition serially
-	statusStrings := make([]string, 0, len(partitions))
-	timingStrings := make([]string, 0, len(partitions))
 	var errList []error
 	for _, partition := range partitions {
-		statusString, timingString, err := collectPartition(ctx, partition, fromTime, pluginManager)
+		err = collectPartition(ctx, partition, fromTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
-		} else {
-			statusStrings = append(statusStrings, statusString)
-			timingStrings = append(timingStrings, timingString)
 		}
 	}
 
 	if len(errList) > 0 {
 		err = errors.Join(errList...)
-		return nil, nil, fmt.Errorf("collection error: %w", err)
+		return fmt.Errorf("collection error: %w", err)
 	}
 
-	return statusStrings, timingStrings, nil
+	return nil
 }
 
-func collectPartition(ctx context.Context, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) (string, string, error) {
+func collectPartition(ctx context.Context, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) error {
 	c, err := collector.New(pluginManager)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create collector: %w", err)
+		return fmt.Errorf("failed to create collector: %w", err)
 	}
 	defer c.Close()
 
@@ -139,17 +134,17 @@ func collectPartition(ctx context.Context, partition *config.Partition, fromTime
 	}
 
 	if err = c.Collect(ctx, partition, fromTime); err != nil {
-		return "", "", err
+		return err
 	}
 	// now wait for all collection to complete and close the collector
 	c.WaitForCompletion(ctx)
 
 	err = c.Compact(ctx)
 	if err != nil {
-		return "", "", err
+		return err
 	}
 
-	return "", "", nil
+	return nil
 }
 
 func getPartitions(args []string) ([]*config.Partition, error) {
