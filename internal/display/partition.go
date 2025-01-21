@@ -68,27 +68,23 @@ func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 	return res, nil
 }
 
-func GetPartitionResource(ctx context.Context, partitionName string) (*PartitionResource, error) {
-	partitions := config.GlobalConfig.Partitions
-	for _, p := range partitions {
-		name := fmt.Sprintf("%s.%s", p.TableName, p.ShortName)
-		if name == partitionName {
-			partition := &PartitionResource{
-				Name:        name,
-				Description: p.Description,
-				Plugin:      p.Plugin.Alias,
-			}
-
-			err := partition.setFileInformation()
-			if err != nil {
-				return nil, fmt.Errorf("error setting file information: %w", err)
-			}
-
-			return partition, nil
-		}
+func GetPartitionResource(partitionName string) (*PartitionResource, error) {
+	p, ok := config.GlobalConfig.Partitions[partitionName]
+	if !ok {
+		return nil, fmt.Errorf("no partitions found")
+	}
+	partition := &PartitionResource{
+		Name:        partitionName,
+		Description: p.Description,
+		Plugin:      p.Plugin.Alias,
 	}
 
-	return nil, fmt.Errorf("partition '%s' not found", partitionName)
+	err := partition.setFileInformation()
+	if err != nil {
+		return nil, fmt.Errorf("error setting file information: %w", err)
+	}
+
+	return partition, nil
 }
 
 func (r *PartitionResource) setFileInformation() error {

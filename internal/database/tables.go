@@ -50,7 +50,7 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	// Path to the Parquet directory
 	// hive structure is <workspace>/tp_table=<table_name>/tp_partition=<partition>/tp_index=<index>/tp_date=<date>.parquet
-	parquetPath := GetParquetFileGlob(dataDir, tableName, "")
+	parquetPath := GetParquetFileGlobForTable(dataDir, tableName, "")
 
 	// Step 1: Query the first Parquet file to infer columns
 	columns, err := getColumnNames(ctx, parquetPath, db)
@@ -102,8 +102,13 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	return nil
 }
 
-func GetParquetFileGlob(dataDir, tableName, fileRoot string) string {
+func GetParquetFileGlobForTable(dataDir, tableName, fileRoot string) string {
 	parquetPath := fmt.Sprintf("%s/tp_table=%s/*/*/*/%s*.parquet", dataDir, tableName, fileRoot)
+	return parquetPath
+}
+
+func GetParquetFileGlobForPartition(dataDir, tableName, partitionName, fileRoot string) string {
+	parquetPath := fmt.Sprintf("%s/tp_table=%s/tp_partition=%s/*/*/%s*.parquet", dataDir, tableName, partitionName, fileRoot)
 	return parquetPath
 }
 

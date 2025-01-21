@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
@@ -106,6 +108,17 @@ func doCollect(ctx context.Context, args []string) error {
 	// collect each partition serially
 	var errList []error
 	for _, partition := range partitions {
+		// if a from time is set, clear the partition data from that time forward
+		if !fromTime.IsZero() {
+			_, err := parquet.DeleteParquetFiles(partition, fromTime)
+			if err != nil {
+				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "fromTime", fromTime, "error", err)
+				errList = append(errList, err)
+				continue
+			}
+			error_helpers.FailOnError(err)
+		}
+		// do the collection
 		err = collectPartition(ctx, partition, fromTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
@@ -127,14 +140,10 @@ func collectPartition(ctx context.Context, partition *config.Partition, fromTime
 	}
 	defer c.Close()
 
-	// if there is a from time, add a filter to the partition
-	if !fromTime.IsZero() {
-		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", fromTime.Format("2006-01-02T15:04:05")))
-	}
-
 	if err = c.Collect(ctx, partition, fromTime); err != nil {
 		return err
 	}
+
 	// now wait for all collection to complete and close the collector
 	c.WaitForCompletion(ctx)
 
