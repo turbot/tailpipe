@@ -14,6 +14,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
+
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
@@ -102,9 +103,8 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
-	//fmt.Printf("Collecting partition '%s' from %s (%s)\n", partition.Name(), collectResponse.FromTime.Time.Format(time.DateTime), collectResponse.FromTime.Source) //nolint:forbidigo//UI output
 
-	c.app = tea.NewProgram(newCollectionModel(partition.FullName, *collectResponse.FromTime))
+	c.app = tea.NewProgram(newCollectionModel(partition.GetUnqualifiedName(), *collectResponse.FromTime))
 	go c.app.Run() // TODO: #error handling of errors
 
 	executionId := collectResponse.ExecutionId

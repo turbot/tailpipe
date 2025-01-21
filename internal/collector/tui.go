@@ -85,8 +85,13 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.rowsErrors = t.Errors
 		return c, nil
 	case CompactionStatusUpdateMsg:
-		c.compactionStatus = t.status
-		return c, nil
+		if c.compactionStatus == nil {
+			c.compactionStatus = t.status
+			return c, nil
+		} else {
+			c.compactionStatus.Update(*t.status)
+			return c, nil
+		}
 	}
 	return c, nil
 }
@@ -112,13 +117,21 @@ func (c collectionModel) View() string {
 	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format("2006-01-02"), c.fromTime.Source))
 
 	// artifacts
+	displayPath := c.path
 	if c.path != "" || c.discovered > 0 {
 		if collectionComplete {
 			// TODO: #tactical we should clear path in event once complete
-			c.path = ""
+			displayPath = ""
 		}
+		if displayPath != "" {
+			if strings.Contains(displayPath, "/") {
+				displayPath = displayPath[strings.LastIndex(displayPath, "/")+1:]
+			}
+			displayPath = fmt.Sprintf("(%s)", displayPath)
+		}
+
 		b.WriteString("Artifacts:\n")
-		b.WriteString(writeCountLine("Discovered:", descriptionLength, c.discovered, countLength, &c.path))
+		b.WriteString(writeCountLine("Discovered:", descriptionLength, c.discovered, countLength, &displayPath))
 		if collectionComplete {
 			b.WriteString(writeCountLine("Downloaded:", descriptionLength, c.downloaded, countLength, &downloadedDisplay))
 			b.WriteString(writeCountLine("Extracted:", descriptionLength, c.extracted, countLength, nil))
