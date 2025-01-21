@@ -35,7 +35,6 @@ type parquetConversionWorker struct {
 	// helper struct which provides unique filename roots
 	fileRootProvider *FileRootProvider
 	db               *duckDb
-	fromTime         time.Time
 }
 
 func newParquetConversionWorker(jobChan chan parquetJob, errorChan chan parquetJobError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (*parquetConversionWorker, error) {
