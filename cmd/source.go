@@ -23,7 +23,7 @@ func sourceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "source [command]",
 		Args:  cobra.NoArgs,
-		Short: "Tailpipe source commands.",
+		Short: "List and show Tailpipe sources",
 		Long: `Tailpipe source commands.
 
 Sources extend Tailpipe to obtain data from many different services and providers.
@@ -100,7 +100,7 @@ func sourceShowCmd() *cobra.Command {
 		Use:   "show [source]",
 		Args:  cobra.ExactArgs(1),
 		Run:   runSourceShowCmd,
-		Short: "Show details for a specific source.",
+		Short: "Show details for a specific source",
 		Long:  `Show details for a specific source.`,
 	}
 

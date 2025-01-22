@@ -28,12 +28,14 @@ import (
 
 func collectCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:              "collect [flags]",
+		Use:              "collect [table|table.partition] [flags]",
 		Args:             cobra.ArbitraryArgs,
 		TraverseChildren: true,
 		Run:              runCollectCmd,
-		Short:            "Collect logs from configured sources",
-		Long:             `Collect logs from configured sources.`,
+		Short:            "Run a collection",
+		Long: `The tailpipe collect command runs a plugin that reads from a source and writes to the hive. 
+		
+Every time you run tailpipe collect, Tailpipe refreshes its views over all collected parquet files.`,
 	}
 	// arg `from` accepts:
 	// - ISO 8601 date (2024-01-01)
@@ -44,7 +46,7 @@ func collectCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
-		AddStringFlag(pconstants.ArgFrom, "", "Specify the collection start time").
+		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
 		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information")
 
 	return cmd

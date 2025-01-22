@@ -18,11 +18,11 @@ import (
 
 func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "compact [flags]",
+		Use:   "compact [table|table.partition] [flags]",
 		Args:  cobra.ArbitraryArgs,
 		Run:   runCompactCmd,
-		Short: "compact the data files",
-		Long:  `compact the parquet data files into one file per day.`,
+		Short: "Compact multiple parquet files per day to one per day",
+		Long:  `Compact multiple parquet files per day to one per day.`,
 	}
 
 	cmdconfig.OnCmd(cmd)

@@ -23,7 +23,7 @@ func tableCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "table [command]",
 		Args:  cobra.NoArgs,
-		Short: "Tailpipe table commands.",
+		Short: "List and show Tailpipe tables",
 		Long: `Tailpipe table commands.
 
 Tables define the structure of the data that is collected by Tailpipe.

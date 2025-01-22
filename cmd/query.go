@@ -22,12 +22,19 @@ var queryOutputMode = constants.QueryOutputModeTable
 
 func queryCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:              "query [sql]",
+		Use:              "query [sql] [flags]",
 		Args:             cobra.MaximumNArgs(1),
 		TraverseChildren: true,
 		Run:              runQueryCmd,
-		Short:            "execute a query against the workspace database",
-		Long:             `execute a query against the workspace database.`,
+		Short:            "Execute a query against the workspace database",
+		Long: `Execute SQL queries interactively, or by a query argument.
+
+To open the interactive query shell, run tailpipe query with no arguments. The query shell 
+provides a way to explore your data and run multiple queries.
+
+If a query string is passed on the command line then it will be run immediately and the command 
+will exit. Alternatively, you may specify one or more files containing SQL statements. You can 
+run multiple SQL files by passing a glob or a space-separated list of file names.`,
 	}
 
 	// args `from` and `to` accept:
