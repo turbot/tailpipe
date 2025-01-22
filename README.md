@@ -36,20 +36,20 @@ Install Tailpipe from the [downloads](https://tailpipe-io.vercel.app/downloads) 
 
 ```sh
 # MacOS
-brew install turbot/tap/steampipe
+brew install turbot/tap/tailpipe
 ```
 
 ```
 # Linux or Windows (WSL2)
-sudo /bin/sh -c "$(curl -fsSL https://tailpipe-io.vercel.app/install/steampipe.sh)"
+sudo /bin/sh -c "$(curl -fsSL https://tailpipe-io.vercel.app/install/tailpipe.sh)"
 ```
 
 ## Install a plugin
 
-Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe-io.vercel.app/plugins/turbot/aws), [Azure](https://hub.tailpipe-io.vercel.app/plugins/turbot/azure), [GCP](https://hub.tailpipe-io.vercel.app/plugins/turbot/gcp), [GitHub](https://hub.tailpipe-io.vercel.app/plugins/turbot/github).
+Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe-io.vercel.app/plugins/turbot/aws), [Azure](https://hub.tailpipe-io.vercel.app/plugins/turbot/azure), [GCP](https://hub.tailpipe-io.vercel.app/plugins/turbot/gcp), [Pipes](https://hub.tailpipe-io.vercel.app/plugins/turbot/pipes).
 
 ```sh
-steampipe plugin install aws
+tailpipe plugin install aws
 ```
 
 ## Configure a collection
