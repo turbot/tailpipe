@@ -206,7 +206,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	partitionName := args[0]
 	partition, ok := config.GlobalConfig.Partitions[partitionName]
 	if !ok {
-		error_helpers.FailOnError(fmt.Errorf("partition %s found", partitionName))
+		error_helpers.FailOnError(fmt.Errorf("partition %s not found", partitionName))
 	}
 
 	if !viper.GetBool(pconstants.ArgForce) {
