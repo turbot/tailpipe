@@ -30,7 +30,6 @@ require (
 	github.com/alecthomas/chroma v0.10.0
 	github.com/briandowns/spinner v1.23.0
 	github.com/c-bata/go-prompt v0.0.0-00010101000000-000000000000
-	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
 	github.com/dustin/go-humanize v1.0.1
@@ -90,7 +89,6 @@ require (
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/btubbs/datetime v0.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/harmonica v0.2.0 // indirect
 	github.com/charmbracelet/lipgloss v1.0.0 // indirect
 	github.com/charmbracelet/x/ansi v0.4.5 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
