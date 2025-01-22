@@ -314,12 +314,38 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 	// Replace wildcards from '*' to '%' for SQL compatibility
 	updatedTables, updatedPartitions := replaceWildcards(tablePatterns, partitionPatterns)
 
-	// Build the SQL filters
 	var conditions []string
+
 	for i := 0; i < len(updatedTables); i++ {
-		if i < len(updatedPartitions) {
-			condition := fmt.Sprintf("(tp_table LIKE '%s' AND CAST(tp_partition AS VARCHAR) LIKE '%s')", updatedTables[i], updatedPartitions[i])
-			conditions = append(conditions, condition)
+		table := updatedTables[i]
+		partition := updatedPartitions[i]
+
+		var tableCondition, partitionCondition string
+
+		// If there is no wildcard, use '=' instead of LIKE
+		if table == "%" {
+			tableCondition = "" // Skip table condition if full wildcard
+		} else if strings.Contains(table, "%") {
+			tableCondition = fmt.Sprintf("tp_table LIKE '%s'", table)
+		} else {
+			tableCondition = fmt.Sprintf("tp_table = '%s'", table)
+		}
+
+		if partition == "%" {
+			partitionCondition = "" // Skip partition condition if full wildcard
+		} else if strings.Contains(partition, "%") {
+			partitionCondition = fmt.Sprintf("tp_partition LIKE '%s'", partition)
+		} else {
+			partitionCondition = fmt.Sprintf("tp_partition = '%s'", partition)
+		}
+
+		// Remove empty conditions and combine valid ones
+		if tableCondition != "" && partitionCondition != "" {
+			conditions = append(conditions, fmt.Sprintf("(%s AND %s)", tableCondition, partitionCondition))
+		} else if tableCondition != "" {
+			conditions = append(conditions, tableCondition)
+		} else if partitionCondition != "" {
+			conditions = append(conditions, partitionCondition)
 		}
 	}
 
@@ -338,7 +364,9 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 	// Build SQL filter based on whether wildcards are present
 	var conditions []string
 	for _, index := range indexArgs {
-		if strings.Contains(index, "*") {
+		if index == "*" {
+			conditions = append(conditions, "") // Skip partition condition if full wildcard
+		} else if strings.Contains(index, "*") {
 			// Replace '*' wildcard with '%' for SQL LIKE compatibility
 			index = strings.ReplaceAll(index, "*", "%")
 			conditions = append(conditions, fmt.Sprintf("CAST(tp_index AS VARCHAR) LIKE '%s'", index))

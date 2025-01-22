@@ -13,27 +13,63 @@ func Test_getPartitionSqlFilters(t *testing.T) {
 		wantErr     bool
 	}{
 		{
-			name: "Basic partition filters",
+			name: "Basic partition filters with wildcard",
 			partitions: []string{
 				"aws_cloudtrail_log.p1",
 				"aws_cloudtrail_log.p2",
 				"github_audit_log.p1",
 			},
 			args: []string{"aws_cloudtrail_log.*", "github_audit_log.p1"},
-			wantFilters: "(tp_table LIKE 'aws_cloudtrail_log' AND CAST(tp_partition AS VARCHAR) LIKE '%') OR " +
-				"(tp_table LIKE 'github_audit_log' AND CAST(tp_partition AS VARCHAR) LIKE 'p1')",
+			wantFilters: "tp_table = 'aws_cloudtrail_log' OR " +
+				"(tp_table = 'github_audit_log' AND tp_partition = 'p1')",
 			wantErr: false,
 		},
 		{
-			name: "Wildcard in table and partition",
+			name: "Wildcard in table and exact partition",
 			partitions: []string{
 				"aws_cloudtrail_log.p1",
 				"sys_logs.p2",
 			},
 			args: []string{"aws*.p1", "sys_logs.*"},
-			wantFilters: "(tp_table LIKE 'aws%' AND CAST(tp_partition AS VARCHAR) LIKE 'p1') OR " +
-				"(tp_table LIKE 'sys_logs' AND CAST(tp_partition AS VARCHAR) LIKE '%')",
+			wantFilters: "(tp_table LIKE 'aws%' AND tp_partition = 'p1') OR " +
+				"tp_table = 'sys_logs'",
 			wantErr: false,
+		},
+		{
+			name: "Exact table and partition",
+			partitions: []string{
+				"aws_cloudtrail_log.p1",
+			},
+			args:        []string{"aws_cloudtrail_log.p1"},
+			wantFilters: "(tp_table = 'aws_cloudtrail_log' AND tp_partition = 'p1')",
+			wantErr:     false,
+		},
+		{
+			name: "Partition with full wildcard",
+			partitions: []string{
+				"aws_cloudtrail_log.p1",
+			},
+			args:        []string{"aws_cloudtrail_log.*"},
+			wantFilters: "tp_table = 'aws_cloudtrail_log'",
+			wantErr:     false,
+		},
+		{
+			name: "Table with full wildcard",
+			partitions: []string{
+				"aws_cloudtrail_log.p1",
+			},
+			args:        []string{"*.p1"},
+			wantFilters: "tp_partition = 'p1'",
+			wantErr:     false,
+		},
+		{
+			name: "Both table and partition with full wildcards",
+			partitions: []string{
+				"aws_cloudtrail_log.p1",
+			},
+			args:        []string{"*.*"},
+			wantFilters: "",
+			wantErr:     false,
 		},
 		{
 			name:        "Empty input",
@@ -42,17 +78,27 @@ func Test_getPartitionSqlFilters(t *testing.T) {
 			wantFilters: "",
 			wantErr:     false,
 		},
+		{
+			name: "Multiple wildcards in table and partition",
+			partitions: []string{
+				"aws_cloudtrail_log.p1",
+				"sys_logs.p2",
+			},
+			args:        []string{"aws*log.p*"},
+			wantFilters: "(tp_table LIKE 'aws%log' AND tp_partition LIKE 'p%')",
+			wantErr:     false,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			gotFilters, err := getPartitionSqlFilters(tt.args, tt.partitions)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getSQLFilters() name = %s error = %v, wantErr %v", tt.name, err, tt.wantErr)
+				t.Errorf("getPartitionSqlFilters() name = %s error = %v, wantErr %v", tt.name, err, tt.wantErr)
 				return
 			}
 			if gotFilters != tt.wantFilters {
-				t.Errorf("getSQLFilters() name = %s got = %v, want %v", tt.name, gotFilters, tt.wantFilters)
+				t.Errorf("getPartitionSqlFilters() name = %s got = %v, want %v", tt.name, gotFilters, tt.wantFilters)
 			}
 		})
 	}
@@ -88,7 +134,7 @@ func Test_getIndexSqlFilters(t *testing.T) {
 		{
 			name:        "Fully wildcarded index",
 			indexArgs:   []string{"*"},
-			wantFilters: "CAST(tp_index AS VARCHAR) LIKE '%'",
+			wantFilters: "",
 			wantErr:     false,
 		},
 		{
