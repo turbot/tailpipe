@@ -75,9 +75,13 @@ func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 func (c *Collector) Close() {
 	close(c.Events)
 
-	c.parquetWriter.Close()
+	if c.parquetWriter != nil {
+		c.parquetWriter.Close()
+	}
 
-	c.app.Send(CollectionFinishedMsg{})
+	if c.app != nil {
+		c.app.Send(CollectionFinishedMsg{})
+	}
 
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
