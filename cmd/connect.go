@@ -324,7 +324,8 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 
 		// If there is no wildcard, use '=' instead of LIKE
 		if table == "%" {
-			tableCondition = "" // Skip table condition if full wildcard
+			// Skip table condition if full wildcard
+			tableCondition = ""
 		} else if strings.Contains(table, "%") {
 			tableCondition = fmt.Sprintf("tp_table LIKE '%s'", table)
 		} else {
@@ -332,7 +333,8 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 		}
 
 		if partition == "%" {
-			partitionCondition = "" // Skip partition condition if full wildcard
+			// Skip partition condition if full wildcard
+			partitionCondition = ""
 		} else if strings.Contains(partition, "%") {
 			partitionCondition = fmt.Sprintf("tp_partition LIKE '%s'", partition)
 		} else {
@@ -365,7 +367,8 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 	var conditions []string
 	for _, index := range indexArgs {
 		if index == "*" {
-			conditions = append(conditions, "") // Skip partition condition if full wildcard
+			// Skip index condition if full wildcard
+			conditions = append(conditions, "")
 		} else if strings.Contains(index, "*") {
 			// Replace '*' wildcard with '%' for SQL LIKE compatibility
 			index = strings.ReplaceAll(index, "*", "%")
