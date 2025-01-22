@@ -84,7 +84,6 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return c, nil
 	case AwaitingCompactionMsg:
 		cs := parquet.CompactionStatus{}
-		c.complete = true
 		c.compactionStatus = &cs
 		return c, nil
 	case CompactionStatusUpdateMsg:
@@ -123,11 +122,13 @@ func (c collectionModel) View() string {
 	collectionComplete := c.complete || c.compactionStatus != nil
 	displayPath := c.path
 	timeLabel := "Time:"
+	compaction := "Verifying..."
 
 	if collectionComplete {
 		// TODO: #tactical we should clear path in event once complete
 		displayPath = ""
 		timeLabel = "Completed:"
+		compaction = "No files to compact."
 	}
 
 	// header
@@ -162,8 +163,15 @@ func (c collectionModel) View() string {
 	// compaction
 	if c.compactionStatus != nil {
 		b.WriteString("File Compaction:\n")
-		b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source, c.compactionStatus.Dest))
-		b.WriteString(fmt.Sprintf("  Skipped:   %d\n", c.compactionStatus.Uncompacted))
+		if c.compactionStatus.Source == 0 && c.compactionStatus.Uncompacted == 0 {
+			b.WriteString(fmt.Sprintf("  %s\n", compaction))
+		}
+		if c.compactionStatus.Source > 0 {
+			b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source, c.compactionStatus.Dest))
+		}
+		if c.compactionStatus.Uncompacted > 0 {
+			b.WriteString(fmt.Sprintf("  Skipped:   %d\n", c.compactionStatus.Uncompacted))
+		}
 		b.WriteString("\n")
 	}
 
