@@ -3,12 +3,13 @@ package parquet
 import (
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/filepaths"
 	"log/slog"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error) {
@@ -45,7 +46,7 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
 func deletePartitionFrom(db *sql.DB, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
-	// TODO verify for SQL injection - c an we use params
+	//nolint:gosec // TODO verify for SQL injection - c an we use params
 	query := fmt.Sprintf(`
     SELECT 
     DISTINCT '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date AS hive_path,
