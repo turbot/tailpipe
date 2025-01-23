@@ -189,23 +189,10 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 }
 
 func getPartitionsForArg(partitions []string, arg string) ([]string, error) {
-	var tablePattern, partitionPattern string
-	parts := strings.Split(arg, ".")
-	switch len(parts) {
-	case 1:
-		var err error
-		tablePattern, partitionPattern, err = getPartitionMatchPatterns(partitions, arg, parts)
-		if err != nil {
-			return nil, err
-		}
-	case 2:
-		// use the args as provided
-		tablePattern = parts[0]
-		partitionPattern = parts[1]
-	default:
-		return nil, fmt.Errorf("invalid partition name: %s", arg)
+	tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
+	if err != nil {
+		return nil, err
 	}
-
 	// now match the partition
 	var res []string
 	for _, partition := range partitions {
@@ -217,10 +204,32 @@ func getPartitionsForArg(partitions []string, arg string) ([]string, error) {
 	return res, nil
 }
 
-func getPartitionMatchPatterns(partitions []string, arg string, parts []string) (string, string, error) {
+func getPartitionMatchPatternsForArg(partitions []string, arg string) (string, string, error) {
+	var tablePattern, partitionPattern string
+	parts := strings.Split(arg, ".")
+	switch len(parts) {
+	case 1:
+		var err error
+		tablePattern, partitionPattern, err = getPartitionMatchPatternsForSinglePartName(partitions, arg)
+		if err != nil {
+			return "", "", err
+		}
+	case 2:
+		// use the args as provided
+		tablePattern = parts[0]
+		partitionPattern = parts[1]
+	default:
+		return "", "", fmt.Errorf("invalid partition name: %s", arg)
+	}
+	return tablePattern, partitionPattern, nil
+}
+
+// getPartitionMatchPatternsForSinglePartName returns the table and partition patterns for a single part name
+// e.g. if the arg is "aws*"
+func getPartitionMatchPatternsForSinglePartName(partitions []string, arg string) (string, string, error) {
 	var tablePattern, partitionPattern string
 	// '*' is not valid for a single part arg
-	if parts[0] == "*" {
+	if arg == "*" {
 		return "", "", fmt.Errorf("invalid partition name: %s", arg)
 	}
 	// check whether there is table with this name
@@ -237,7 +246,7 @@ func getPartitionMatchPatterns(partitions []string, arg string, parts []string) 
 	}
 	// so there IS NOT a table with this name - set table pattern to * and user provided partition name
 	tablePattern = "*"
-	partitionPattern = parts[0]
+	partitionPattern = arg
 	return tablePattern, partitionPattern, nil
 }
 
