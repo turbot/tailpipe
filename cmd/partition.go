@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -15,7 +16,6 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/constants"
 	"github.com/turbot/pipe-fittings/contexthelpers"
 	"github.com/turbot/pipe-fittings/error_helpers"
-	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/pipe-fittings/printers"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/tailpipe/internal/config"
@@ -186,21 +186,15 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	var from time.Time
+	// arg `fromTime` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
+	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+	var fromTime time.Time
 	var fromStr string
 	if viper.IsSet(pconstants.ArgFrom) {
-		fromArg := viper.GetString(pconstants.ArgFrom)
-		// parse the string as time.Time
-		// arg `from` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
-		// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 		var err error
-		from, err = parse.ParseTime(fromArg, time.Now())
-
-		if err != nil {
-			error_helpers.FailOnError(fmt.Errorf("invalid date format for 'from': %s", fromArg))
-		}
-
-		fromStr = fmt.Sprintf(" from %s", from.Format(time.RFC3339))
+		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom), time.Hour*24)
+		error_helpers.FailOnError(err)
+		fromStr = fmt.Sprintf(" from %s", fromTime.Format(time.DateOnly))
 	}
 
 	partitionName := args[0]
@@ -218,32 +212,42 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	filesDeleted, err := parquet.DeleteParquetFiles(partition, from)
+	filesDeleted, err := parquet.DeleteParquetFiles(partition, fromTime)
 	error_helpers.FailOnError(err)
-
-	// update collection state
-	// start the plugin manager
-	pluginManager := plugin_manager.New()
-	defer pluginManager.Close()
 
 	// build the collection state path
-	collectionStateDir := config.GlobalWorkspaceProfile.GetCollectionDir()
-	collectionStatePath := filepaths.CollectionStatePath(collectionStateDir, partition.TableName, partition.ShortName)
+	collectionStatePath := partition.CollectionStatePath(config.GlobalWorkspaceProfile.GetCollectionDir())
 
-	// tell the plugin manager to update the collection state
-	err = pluginManager.UpdateCollectionState(ctx, partition, from, collectionStatePath)
-	error_helpers.FailOnError(err)
+	// if the fromTime time is not specified, just delete the colleciton state file
+	if fromTime.IsZero() {
+		err := os.Remove(collectionStatePath)
+		if err != nil && !os.IsNotExist(err) {
+			error_helpers.FailOnError(fmt.Errorf("failed to delete collection state file: %s", err.Error()))
+		}
+	} else {
+		// update collection state
+		// start the plugin manager
+		pluginManager := plugin_manager.New()
+		defer pluginManager.Close()
+		err = pluginManager.UpdateCollectionState(ctx, partition, fromTime, collectionStatePath)
+		error_helpers.FailOnError(err)
+	}
+
+	// now prune the collection folders
+	err = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetCollectionDir())
+	if err != nil {
+		slog.Warn("DeleteParquetFiles failed to prune empty collection folders", "error", err)
+	}
 
 	msg := buildStatusMessage(filesDeleted, partitionName, fromStr)
 	fmt.Println(msg) //nolint:forbidigo//expected output
-	slog.Info("Partition deleted", "partition", partitionName, "from", from)
 }
 
 func buildStatusMessage(filesDeleted int, partition string, fromStr string) interface{} {
-	var deletedStr string
+	var deletedStr = " (no parquet files deleted)"
 	if filesDeleted > 0 {
 		deletedStr = fmt.Sprintf(" (deleted %d parquet %s)", filesDeleted, utils.Pluralize("file", filesDeleted))
 	}
 
-	return fmt.Sprintf("\nDeleted partition '%s' %s%s.\n", partition, fromStr, deletedStr)
+	return fmt.Sprintf("\nDeleted partition '%s'%s%s.\n", partition, fromStr, deletedStr)
 }

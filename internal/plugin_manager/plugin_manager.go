@@ -31,7 +31,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -107,8 +106,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// thus the collection state is shared between multiple successive collections
 
 	// build the collection state path
-	collectionStateDir := config.GlobalWorkspaceProfile.GetCollectionDir()
-	collectionStatePath := filepaths.CollectionStatePath(collectionStateDir, partition.TableName, partition.ShortName)
+	collectionStatePath := partition.CollectionStatePath(config.GlobalWorkspaceProfile.GetCollectionDir())
 
 	// tell the plugin to start the collection
 	req := &proto.CollectRequest{
@@ -169,13 +167,8 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
 
-	executionID := getExecutionId()
-
 	// reuse CollectRequest for UpdateCollectionState
-	req := &proto.CollectRequest{
-		TableName:           partition.TableName,
-		PartitionName:       partition.ShortName,
-		ExecutionId:         executionID,
+	req := &proto.UpdateCollectionStateRequest{
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
 		FromTime:            timestamppb.New(fromTime),

@@ -3,6 +3,7 @@ package parquet
 import (
 	"database/sql"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -15,7 +16,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
@@ -174,7 +174,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 	// Build the query
-	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, database.GetParquetFileGlobForTable(destDir, table, fileRoot)) //nolint:gosec // fixed sql query
+	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, filepaths.GetParquetFileGlobForTable(destDir, table, fileRoot)) //nolint:gosec // fixed sql query
 
 	// Execute the query and scan the result directly
 	var rowCount int64

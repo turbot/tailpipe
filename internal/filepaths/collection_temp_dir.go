@@ -44,8 +44,3 @@ func cleanupCollectionTempDirs(collectionTempDir string) {
 		}
 	}
 }
-
-func CollectionStatePath(collectionFolder string, table, partition string) string {
-	// return the path to the collection state file
-	return filepath.Join(collectionFolder, fmt.Sprintf("collection_state_%s_%s.json", table, partition))
-}

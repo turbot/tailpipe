@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -80,4 +81,9 @@ func (c *Partition) AddFilter(filter string) {
 	} else {
 		c.Filter += " AND " + filter
 	}
+}
+
+func (c *Partition) CollectionStatePath(collectionDir string) string {
+	// return the path to the collection state file
+	return filepath.Join(collectionDir, fmt.Sprintf("collection_state_%s_%s.json", c.TableName, c.ShortName))
 }

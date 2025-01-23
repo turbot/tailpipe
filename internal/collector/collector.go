@@ -130,11 +130,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 			case <-ctx.Done():
 				return
 			case <-time.After(250 * time.Millisecond):
-				rowCount, err := c.parquetWriter.GetRowCount()
-				if err == nil {
-					c.status.SetRowsConverted(rowCount)
-					c.app.Send(c.status)
-				}
+				c.updateConvertedStatus()
 			}
 		}
 	}()
@@ -143,6 +139,14 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	c.listenToEventsAsync(ctx)
 
 	return nil
+}
+
+func (c *Collector) updateConvertedStatus() {
+	rowCount, err := c.parquetWriter.GetRowCount()
+	if err == nil {
+		c.status.SetRowsConverted(rowCount)
+		c.app.Send(c.status)
+	}
 }
 
 // Notify implements observer.Observer
@@ -235,7 +239,7 @@ func (c *Collector) StatusString() string {
 	// print out the execution status
 	if c.execution.state == ExecutionState_ERROR {
 		// if no rows were converted, just show the error
-		if c.execution.totalRows == 0 {
+		if c.execution.rowsReceived == 0 {
 			str.Reset()
 		}
 		str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", c.execution.id, c.execution.error))
@@ -256,7 +260,7 @@ func (c *Collector) TimingString() string {
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
 func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
-	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId)
+	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
 
 	// store the plugin pluginTiming for this execution
 	c.setPluginTiming(ce.ExecutionId, ce.Timing)
@@ -264,7 +268,8 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
 	retryInterval := 200 * time.Millisecond
-	c.execution.totalRows = ce.RowCount
+	//retryInterval := 200 * time.Millisecond
+	c.execution.rowsReceived = ce.RowCount
 	c.execution.chunkCount = ce.ChunkCount
 
 	if ce.ChunkCount == 0 && ce.RowCount == 0 {
@@ -281,7 +286,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 	// so there was no error
 
 	err = retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
-		// check chunk count - ask the parquet writer how many chunks have been written
+		// check chunk count - ask the parquet writer how many chunks have been converted
 		chunksWritten, err := c.parquetWriter.GetChunksWritten(ce.ExecutionId)
 		if err != nil {
 			return err
