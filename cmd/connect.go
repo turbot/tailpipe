@@ -37,8 +37,8 @@ func connectCmd() *cobra.Command {
 		Use:   "connect [flags]",
 		Args:  cobra.ArbitraryArgs,
 		Run:   runConnectCmd,
-		Short: "return a connection string for a database with a schema determined by the provided parameters",
-		Long:  `return a connection string for a database with a schema determined by the provided parameters.`,
+		Short: "Return a connection string for a database, with a schema determined by the provided parameters",
+		Long:  `Return a connection string for a database, with a schema determined by the provided parameters.`,
 	}
 
 	// args `from` and `to` accept:

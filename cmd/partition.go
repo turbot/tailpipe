@@ -30,7 +30,7 @@ func partitionCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "partition [command]",
 		Args:  cobra.NoArgs,
-		Short: "Tailpipe partition commands.",
+		Short: "List, show, and delete Tailpipe partitions",
 		Long: `Tailpipe partition commands.
 
 Partitions are instances of Tailpipe tables with a defined source and configuration.
@@ -108,7 +108,7 @@ func partitionShowCmd() *cobra.Command {
 		Use:   "show",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionShowCmd,
-		Short: "Show details for a specific partition.",
+		Short: "Show details for a specific partition",
 		Long:  `Show details for a specific partition.`,
 	}
 
@@ -158,8 +158,8 @@ func partitionDeleteCmd() *cobra.Command {
 		Use:   "delete ",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionDeleteCmd,
-		Short: "delete a partition for the specified period",
-		Long:  `delete a partition for the specified period`,
+		Short: "Delete a partition for the specified period",
+		Long:  `Delete a partition for the specified period`,
 	}
 
 	// args `from` and `to` accept:
