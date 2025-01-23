@@ -128,7 +128,7 @@ func (c collectionModel) View() string {
 
 		downloadedDisplay := "0B" // Handle negative values gracefully
 		if c.downloadedBytes > 0 {
-			downloadedDisplay = humanize.Bytes(uint64(c.downloadedBytes))
+			downloadedDisplay = strings.Replace(humanize.Bytes(uint64(c.downloadedBytes)), " ", "", -1)
 		}
 
 		b.WriteString("Artifacts:\n")
@@ -142,14 +142,14 @@ func (c collectionModel) View() string {
 	}
 
 	// rows
-	rowDescriptionLen := 10
+	rowDescriptionLen := 9
 	rowCountLen := len(humanize.Comma(c.rowsReceived))
 	b.WriteString("Rows:\n")
 	b.WriteString(writeCountLine("Received:", rowDescriptionLen, c.rowsReceived, rowCountLen, nil))
 	b.WriteString(writeCountLine("Enriched:", rowDescriptionLen, c.rowsEnriched, rowCountLen, nil))
-	b.WriteString(writeCountLine("Converted:", rowDescriptionLen, c.rowsConverted, rowCountLen, nil))
+	b.WriteString(writeCountLine("Saved:", rowDescriptionLen, c.rowsConverted, rowCountLen, nil))
 	if c.compactionStatus != nil {
-		b.WriteString(writeCountLine("Skipped:", rowDescriptionLen, c.rowsReceived-c.rowsConverted, rowCountLen, nil))
+		b.WriteString(writeCountLine("Filtered:", rowDescriptionLen, c.rowsReceived-c.rowsConverted, rowCountLen, nil))
 	}
 	if c.rowsErrors > 0 {
 		b.WriteString(writeCountLine("Errors:", rowDescriptionLen, c.rowsErrors, rowCountLen, nil))
@@ -158,15 +158,11 @@ func (c collectionModel) View() string {
 
 	// compaction
 	if c.compactionStatus != nil {
-		b.WriteString("File Compaction:\n")
+		b.WriteString("Files:\n")
 		if c.compactionStatus.Source == 0 && c.compactionStatus.Uncompacted == 0 {
 			b.WriteString(fmt.Sprintf("  %s\n", compaction))
-		}
-		if c.compactionStatus.Source > 0 {
-			b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source, c.compactionStatus.Dest))
-		}
-		if c.compactionStatus.Uncompacted > 0 {
-			b.WriteString(writeCountLine("Skipped:", 10, int64(c.compactionStatus.Uncompacted), 0, nil))
+		} else {
+			b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source+c.compactionStatus.Uncompacted, c.compactionStatus.Dest+c.compactionStatus.Uncompacted))
 		}
 		b.WriteString("\n")
 	}
