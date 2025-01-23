@@ -112,7 +112,11 @@ func (c collectionModel) View() string {
 	}
 
 	// header
-	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format(time.DateOnly), c.fromTime.Source))
+	fromTimeSource := c.fromTime.Source
+	if c.fromTime.Source != "" {
+		fromTimeSource = fmt.Sprintf("(%s)", c.fromTime.Source)
+	}
+	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s %s\n\n", c.partitionName, c.fromTime.Time.Format(time.DateOnly), fromTimeSource))
 
 	// artifacts
 	artifactDescriptionLen := 11
