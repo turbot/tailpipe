@@ -100,32 +100,12 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (c collectionModel) View() string {
 	var b strings.Builder
-	var countLength int = 5
-	var descriptionLength int = 12
-	var downloadedDisplay string
 
-	countArtifactsDisplayLen := len(humanize.Comma(c.discovered))
-	countRowsDisplayLen := len(humanize.Comma(c.rowsReceived))
-	if c.downloadedBytes < 0 {
-		downloadedDisplay = "0 B" // Handle negative values gracefully
-	} else {
-		downloadedDisplay = humanize.Bytes(uint64(c.downloadedBytes))
-	}
-	if countArtifactsDisplayLen > countLength {
-		countLength = countArtifactsDisplayLen
-	}
-	if countRowsDisplayLen > countLength {
-		countLength = countRowsDisplayLen
-		descriptionLength = 11
-	}
-
-	collectionComplete := c.complete || c.compactionStatus != nil
 	displayPath := c.path
 	timeLabel := "Time:"
 	compaction := "Verifying..."
 
-	if collectionComplete {
-		// TODO: #tactical we should clear path in event once complete
+	if c.complete {
 		displayPath = ""
 		timeLabel = "Completed:"
 		compaction = "No files to compact."
@@ -135,28 +115,40 @@ func (c collectionModel) View() string {
 	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s (%s)\n\n", c.partitionName, c.fromTime.Time.Format("2006-01-02"), c.fromTime.Source))
 
 	// artifacts
+	artifactDescriptionLen := 11
+	artifactCountLen := len(humanize.Comma(c.discovered))
 	if c.path != "" || c.discovered > 0 {
 		if strings.Contains(displayPath, "/") {
 			displayPath = displayPath[strings.LastIndex(displayPath, "/")+1:]
 		}
 
+		downloadedDisplay := "0B" // Handle negative values gracefully
+		if c.downloadedBytes > 0 {
+			downloadedDisplay = humanize.Bytes(uint64(c.downloadedBytes))
+		}
+
 		b.WriteString("Artifacts:\n")
-		b.WriteString(writeCountLine("Discovered:", descriptionLength, c.discovered, countLength, &displayPath))
-		b.WriteString(writeCountLine("Downloaded:", descriptionLength, c.downloaded, countLength, &downloadedDisplay))
-		b.WriteString(writeCountLine("Extracted:", descriptionLength, c.extracted, countLength, nil))
+		b.WriteString(writeCountLine("Discovered:", artifactDescriptionLen, c.discovered, artifactCountLen, &displayPath))
+		b.WriteString(writeCountLine("Downloaded:", artifactDescriptionLen, c.downloaded, artifactCountLen, &downloadedDisplay))
+		b.WriteString(writeCountLine("Extracted:", artifactDescriptionLen, c.extracted, artifactCountLen, nil))
 		if c.errors > 0 {
-			b.WriteString(writeCountLine("Errors:", descriptionLength, c.errors, countLength, nil))
+			b.WriteString(writeCountLine("Errors:", artifactDescriptionLen, c.errors, artifactCountLen, nil))
 		}
 		b.WriteString("\n")
 	}
 
 	// rows
+	rowDescriptionLen := 10
+	rowCountLen := len(humanize.Comma(c.rowsReceived))
 	b.WriteString("Rows:\n")
-	b.WriteString(writeCountLine("Received:", descriptionLength, c.rowsReceived, countLength, nil))
-	b.WriteString(writeCountLine("Enriched:", descriptionLength, c.rowsEnriched, countLength, nil))
-	b.WriteString(writeCountLine("Converted:", descriptionLength, c.rowsConverted, countLength, nil))
+	b.WriteString(writeCountLine("Received:", rowDescriptionLen, c.rowsReceived, rowCountLen, nil))
+	b.WriteString(writeCountLine("Enriched:", rowDescriptionLen, c.rowsEnriched, rowCountLen, nil))
+	b.WriteString(writeCountLine("Converted:", rowDescriptionLen, c.rowsConverted, rowCountLen, nil))
+	if c.compactionStatus != nil {
+		b.WriteString(writeCountLine("Skipped:", rowDescriptionLen, c.rowsReceived-c.rowsConverted, rowCountLen, nil))
+	}
 	if c.rowsErrors > 0 {
-		b.WriteString(writeCountLine("Errors:", descriptionLength, c.rowsErrors, countLength, nil))
+		b.WriteString(writeCountLine("Errors:", rowDescriptionLen, c.rowsErrors, rowCountLen, nil))
 	}
 	b.WriteString("\n")
 
@@ -170,7 +162,7 @@ func (c collectionModel) View() string {
 			b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source, c.compactionStatus.Dest))
 		}
 		if c.compactionStatus.Uncompacted > 0 {
-			b.WriteString(fmt.Sprintf("  Skipped:   %d\n", c.compactionStatus.Uncompacted))
+			b.WriteString(writeCountLine("Skipped:", 10, int64(c.compactionStatus.Uncompacted), 0, nil))
 		}
 		b.WriteString("\n")
 	}
@@ -187,5 +179,5 @@ func writeCountLine(desc string, descLen int, count int64, maxCountLen int, suff
 	if suffix != nil {
 		s = *suffix
 	}
-	return fmt.Sprintf("  %-*s%*s %s\n", descLen, desc, maxCountLen, humanize.Comma(count), s)
+	return fmt.Sprintf("  %-*s %*s %s\n", descLen, desc, maxCountLen, humanize.Comma(count), s)
 }
