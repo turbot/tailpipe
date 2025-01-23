@@ -3,7 +3,6 @@ package parquet
 import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
-	"time"
 )
 
 // parquetJob represents a single file that needs processed by a worker
@@ -17,7 +16,6 @@ type parquetJob struct {
 	// pointer to the row count
 	rowCount *int64
 
-	Partition            *config.Partition
-	SchemaFunc           func() *schema.RowSchema
-	UpdateActiveDuration func(duration time.Duration)
+	Partition  *config.Partition
+	SchemaFunc func() *schema.RowSchema
 }

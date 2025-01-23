@@ -12,8 +12,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
-	"github.com/turbot/tailpipe-plugin-sdk/constants"
-	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe/internal/config"
@@ -116,7 +114,7 @@ func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fr
 	c.execution = newExecution(executionId, partition)
 
 	// create a parquet writer
-	parquetWriter, err := parquet.NewParquetJobPool(executionId, partition, c.execution.conversionTiming.UpdateActiveDuration, c.sourcePath, collectResponse.Schema)
+	parquetWriter, err := parquet.NewParquetJobPool(executionId, partition, c.sourcePath, collectResponse.Schema)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -171,9 +169,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
-
-		// set the conversion start time if it hasn't been set
-		c.execution.conversionTiming.TryStart(constants.TimingConvert)
 
 		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {
@@ -248,22 +243,10 @@ func (c *Collector) StatusString() string {
 	return str.String()
 }
 
-func (c *Collector) TimingString() string {
-	var str strings.Builder
-	// print out the execution status
-	str.WriteString(c.execution.getTiming().String())
-	str.WriteString("\n")
-
-	return str.String()
-}
-
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
 func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
-
-	// store the plugin pluginTiming for this execution
-	c.setPluginTiming(ce.ExecutionId, ce.Timing)
 
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
@@ -368,10 +351,6 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 			c.handlePluginEvent(ctx, event)
 		}
 	}()
-}
-
-func (c *Collector) setPluginTiming(executionId string, timing []*proto.Timing) {
-	c.execution.pluginTiming = events.TimingCollectionFromProto(timing)
 }
 
 func (c *Collector) Compact(ctx context.Context) error {

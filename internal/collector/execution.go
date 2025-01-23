@@ -1,9 +1,6 @@
 package collector
 
 import (
-	"time"
-
-	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -28,13 +25,8 @@ type execution struct {
 	// the chunks written
 	chunkCount int32
 	// total rows returned by the plugin
-	rowsReceived    int64
-	executionTiming types.Timing
-	// timing for the plugin operations
-	pluginTiming types.TimingCollection
-	// pluginTiming for the parquet conversion
-	conversionTiming types.Timing
-	table            string
+	rowsReceived int64
+	table        string
 }
 
 func newExecution(executionId string, part *config.Partition) *execution {
@@ -45,19 +37,8 @@ func newExecution(executionId string, part *config.Partition) *execution {
 		plugin:    part.Plugin.Alias,
 		state:     ExecutionState_PENDING,
 	}
-	e.executionTiming.TryStart("total time")
-	return e
-}
 
-// getTiming returns the timing for the execution,
-// adding the conversion and full execution timing to the end of the plugin timing list
-func (e *execution) getTiming() types.TimingCollection {
-	// TODO #timing a nice way of doing this
-	res := e.pluginTiming
-	if e.conversionTiming.Operation != "" {
-		res = append(res, e.conversionTiming)
-	}
-	return append(res, e.executionTiming)
+	return e
 }
 
 // set state to complete and set end time for the execution and the conversion timing
@@ -70,6 +51,4 @@ func (e *execution) done(err error) {
 		// if state has not already been set to error, set to complete
 		e.state = ExecutionState_COMPLETE
 	}
-	e.executionTiming.End = time.Now()
-	e.conversionTiming.End = time.Now()
 }

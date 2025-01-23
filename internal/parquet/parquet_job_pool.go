@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"path/filepath"
 	"sync"
-	"time"
 )
 
 const parquetWorkerCount = 5
@@ -68,27 +67,24 @@ type ParquetJobPool struct {
 	schemaMut sync.RWMutex
 
 	Partition *config.Partition
-
-	UpdateActiveDuration func(duration time.Duration)
 }
 
-func NewParquetJobPool(executionId string, partition *config.Partition, updateActiveDuration func(duration time.Duration), sourceDir string, schema *schema.RowSchema) (*ParquetJobPool, error) {
+func NewParquetJobPool(executionId string, partition *config.Partition, sourceDir string, schema *schema.RowSchema) (*ParquetJobPool, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	w := &ParquetJobPool{
-		id:                   executionId,
-		chunkWrittenSignal:   sync.NewCond(&sync.Mutex{}),
-		done:                 make(chan struct{}),
-		Partition:            partition,
-		UpdateActiveDuration: updateActiveDuration,
-		jobChan:              make(chan parquetJob, parquetWorkerCount*2),
-		errorChan:            make(chan parquetJobError),
-		closing:              make(chan struct{}),
-		workerCount:          parquetWorkerCount,
-		sourceDir:            sourceDir,
-		destDir:              destDir,
-		schema:               schema,
+		id:                 executionId,
+		chunkWrittenSignal: sync.NewCond(&sync.Mutex{}),
+		done:               make(chan struct{}),
+		Partition:          partition,
+		jobChan:            make(chan parquetJob, parquetWorkerCount*2),
+		errorChan:          make(chan parquetJobError),
+		closing:            make(chan struct{}),
+		workerCount:        parquetWorkerCount,
+		sourceDir:          sourceDir,
+		destDir:            destDir,
+		schema:             schema,
 
 		fileRootProvider: &FileRootProvider{},
 	}
@@ -265,13 +261,12 @@ func (w *ParquetJobPool) scheduler() {
 		// send the ParquetJobPool to the workers
 		// do in a goroutine so we can also check for completion/closure
 		j := parquetJob{
-			groupId:              w.id,
-			chunkNumber:          nextChunk,
-			completionCount:      &w.completionCount,
-			rowCount:             &w.rowCount,
-			Partition:            w.Partition,
-			SchemaFunc:           w.GetSchema,
-			UpdateActiveDuration: w.UpdateActiveDuration,
+			groupId:         w.id,
+			chunkNumber:     nextChunk,
+			completionCount: &w.completionCount,
+			rowCount:        &w.rowCount,
+			Partition:       w.Partition,
+			SchemaFunc:      w.GetSchema,
 		}
 		// TODO #conversion is this costly to do thousands of times?
 		sendChan := make(chan struct{})

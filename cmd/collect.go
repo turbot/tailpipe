@@ -262,7 +262,7 @@ func parseFromTime(fromArg string, granularity time.Duration) (time.Time, error)
 	}
 	// ensure the from time passed is more than the granularity away from now
 	// and truncate to the granularity
-	if time.Now().Sub(fromTime) < granularity {
+	if time.Since(fromTime) < granularity {
 		return time.Time{}, fmt.Errorf("'from' time must be at least %s in the past", formatDuration(granularity))
 	}
 	return fromTime.Truncate(granularity), nil

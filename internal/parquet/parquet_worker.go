@@ -112,7 +112,6 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) erro
 	}
 	activeDuration := time.Since(startTime)
 	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
-	job.UpdateActiveDuration(activeDuration)
 	return nil
 }
 
