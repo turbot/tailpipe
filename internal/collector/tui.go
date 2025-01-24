@@ -128,7 +128,7 @@ func (c collectionModel) View() string {
 
 		downloadedDisplay := "0B" // Handle negative values gracefully
 		if c.downloadedBytes > 0 {
-			downloadedDisplay = strings.Replace(humanize.Bytes(uint64(c.downloadedBytes)), " ", "", -1)
+			downloadedDisplay = strings.ReplaceAll(humanize.Bytes(uint64(c.downloadedBytes)), " ", "")
 		}
 
 		b.WriteString("Artifacts:\n")
