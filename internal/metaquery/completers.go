@@ -8,8 +8,8 @@ import (
 
 // CompleterInput is a struct defining input data for the metaquery completer
 type CompleterInput struct {
-	Query            string
-	TableSuggestions []prompt.Suggest
+	Query           string
+	ViewSuggestions []prompt.Suggest
 }
 
 type completer func(input *CompleterInput) []prompt.Suggest
@@ -40,6 +40,6 @@ func completerFromArgsOf(cmd string) completer {
 	}
 }
 
-//func inspectCompleter(input *CompleterInput) []prompt.Suggest {
-//	return input.TableSuggestions
-//}
+func inspectCompleter(input *CompleterInput) []prompt.Suggest {
+	return input.ViewSuggestions
+}

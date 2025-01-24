@@ -115,17 +115,17 @@ func validatorFromArgsOf(cmd string) validator {
 //	}
 //}
 
-//var atMostNArgs = func(n int) validator {
-//	return func(args []string) ValidationResult {
-//		numArgs := len(args)
-//		if numArgs > n {
-//			return ValidationResult{
-//				Err: fmt.Errorf("command needs at most %d %s - got %d", n, utils.Pluralize("argument", n), numArgs),
-//			}
-//		}
-//		return ValidationResult{ShouldRun: true}
-//	}
-//}
+var atMostNArgs = func(n int) validator {
+	return func(args []string) ValidationResult {
+		numArgs := len(args)
+		if numArgs > n {
+			return ValidationResult{
+				Err: fmt.Errorf("command needs at most %d %s - got %d", n, utils.Pluralize("argument", n), numArgs),
+			}
+		}
+		return ValidationResult{ShouldRun: true}
+	}
+}
 
 var exactlyNArgs = func(n int) validator {
 	return func(args []string) ValidationResult {

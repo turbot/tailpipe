@@ -492,8 +492,8 @@ func (c *InteractiveClient) queryCompleter(d prompt.Document) []prompt.Suggest {
 		s = append(s, suggestions...)
 	case metaquery.IsMetaQuery(text):
 		suggestions := metaquery.Complete(&metaquery.CompleterInput{
-			Query:            text,
-			TableSuggestions: c.getTableSuggestions(lastWord(text)),
+			Query:           text,
+			ViewSuggestions: c.getTableSuggestions(lastWord(text)),
 		})
 		s = append(s, suggestions...)
 	default:

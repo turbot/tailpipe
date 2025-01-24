@@ -196,3 +196,42 @@ func GetTableViews(ctx context.Context) ([]string, error) {
 	}
 	return tableViews, nil
 }
+
+func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string, error) {
+	// Open a DuckDB connection
+	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
+	}
+	defer db.Close()
+
+	query := `
+		SELECT column_name, data_type 
+		FROM information_schema.columns 
+		WHERE table_name = ? ORDER BY columns.column_name;
+	`
+	rows, err := db.QueryContext(ctx, query, viewName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get view schema for %s: %w", viewName, err)
+	}
+	defer rows.Close()
+
+	schema := make(map[string]string)
+	for rows.Next() {
+		var columnName, columnType string
+		err = rows.Scan(&columnName, &columnType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan column schema: %w", err)
+		}
+		if strings.HasPrefix(columnType, "STRUCT") {
+			columnType = "STRUCT"
+		}
+		schema[columnName] = columnType
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over view schema rows: %w", err)
+	}
+
+	return schema, nil
+}
