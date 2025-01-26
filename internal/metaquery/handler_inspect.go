@@ -29,7 +29,7 @@ func inspect(ctx context.Context, input *HandlerInput) error {
 		return listViewSchema(ctx, input, viewName)
 	}
 
-	return nil
+	return fmt.Errorf("could not find a view named '%s'", viewName)
 }
 
 func listViews(ctx context.Context, input *HandlerInput, views []string) error {
@@ -61,7 +61,7 @@ func listViewSchema(ctx context.Context, input *HandlerInput, viewName string) e
 	sort.Strings(cols)
 
 	for _, col := range cols {
-		rows = append(rows, []string{col, schema[col]})
+		rows = append(rows, []string{col, strings.ToLower(schema[col])})
 	}
 
 	fmt.Println(buildTable(rows, true)) //nolint:forbidigo //UI output
