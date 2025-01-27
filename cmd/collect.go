@@ -14,6 +14,7 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
+	"github.com/turbot/pipe-fittings/contexthelpers"
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/parse"
 	"github.com/turbot/tailpipe/internal/collector"
@@ -53,7 +54,8 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 }
 
 func runCollectCmd(cmd *cobra.Command, args []string) {
-	ctx := cmd.Context()
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
 
 	var err error
 	defer func() {
@@ -67,7 +69,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	err = doCollect(ctx, args)
+	err = doCollect(ctx, cancel, args)
 	if errors.Is(err, context.Canceled) {
 		// clear error so we don't show it with normal error reporting
 		err = nil
@@ -75,7 +77,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-func doCollect(ctx context.Context, args []string) error {
+func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) error {
 	// arg `from` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
 	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 	var fromTime time.Time
@@ -116,7 +118,7 @@ func doCollect(ctx context.Context, args []string) error {
 			error_helpers.FailOnError(err)
 		}
 		// do the collection
-		err = collectPartition(ctx, partition, fromTime, pluginManager)
+		err = collectPartition(ctx, cancel, partition, fromTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
 		}
@@ -130,8 +132,8 @@ func doCollect(ctx context.Context, args []string) error {
 	return nil
 }
 
-func collectPartition(ctx context.Context, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) error {
-	c, err := collector.New(pluginManager, partition)
+func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) error {
+	c, err := collector.New(pluginManager, partition, cancel)
 	if err != nil {
 		return fmt.Errorf("failed to create collector: %w", err)
 	}
@@ -142,7 +144,10 @@ func collectPartition(ctx context.Context, partition *config.Partition, fromTime
 	}
 
 	// now wait for all collection to complete and close the collector
-	c.WaitForCompletion(ctx)
+	err = c.WaitForCompletion(ctx)
+	if err != nil {
+		return err
+	}
 
 	slog.Info("Collection complete", "partition", partition.Name)
 	// compact the parquet files

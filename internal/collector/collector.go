@@ -45,10 +45,11 @@ type Collector struct {
 	sourcePath string
 
 	// bubble tea app
-	app *tea.Program
+	app    *tea.Program
+	cancel context.CancelFunc
 }
 
-func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition) (*Collector, error) {
+func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	collectionTempDir := filepaths.GetCollectionTempDir()
@@ -58,6 +59,7 @@ func New(pluginManager *plugin_manager.PluginManager, partition *config.Partitio
 		pluginManager:     pluginManager,
 		collectionTempDir: collectionTempDir,
 		partition:         partition,
+		cancel:            cancel,
 	}
 
 	// create a plugin manager
@@ -103,9 +105,20 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	}
 
 	resolvedFromTime := collectResponse.FromTime
+
 	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
-	//nolint:errcheck // handle this later
-	go c.app.Run() // TODO: #error handling of errors
+
+	go func() {
+		model, err := c.app.Run()
+		if model.(collectionModel).cancelled {
+			c.doCancel()
+		}
+		if err != nil {
+			slog.Warn("Bubbletea app failed", "error", err)
+			c.doCancel()
+		}
+
+	}()
 
 	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
 	if !resolvedFromTime.Time.IsZero() {
@@ -185,7 +198,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		}
 	case *proto.Event_CompleteEvent:
 		completedEvent := e.GetCompleteEvent()
-		// TODO if no chunk written event was received, this currently stalls https://github.com/turbot/tailpipe/issues/7
 		slog.Debug("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
 		// was there an error?
@@ -216,19 +228,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	}
 }
 
-// WaitForCompletion waits for all collections to complete, then cleans up the collector - closes the file watcher
-func (c *Collector) WaitForCompletion(ctx context.Context) {
-	slog.Info("closing collector - wait for execution to complete")
-
-	// wait for any ongoing partitions to complete
-	err := c.waitForExecution(ctx)
-	if err != nil {
-		// TODO #errors x https://github.com/turbot/tailpipe/issues/106
-		slog.Error("error waiting for execution to complete", "error", err)
-	}
-
-}
-
 func (c *Collector) StatusString() string {
 	var str strings.Builder
 	str.WriteString("Collection complete.\n\n")
@@ -244,6 +243,34 @@ func (c *Collector) StatusString() string {
 	}
 
 	return str.String()
+}
+
+// WaitForCompletion waits for our execution to have state ExecutionState_COMPLETE
+func (c *Collector) WaitForCompletion(ctx context.Context) error {
+	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
+	executionTimeout := executionMaxDuration
+	retryInterval := 100 * time.Millisecond
+
+	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
+		switch c.execution.state {
+		case ExecutionState_ERROR:
+			slog.Info("Execution in error state", "execution", c.execution.id)
+			return NewExecutionError(errors.New("execution in error state"), c.execution.id)
+		case ExecutionState_COMPLETE:
+			slog.Info("Execution complete", "execution", c.execution.id)
+			return nil
+		default:
+			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))
+		}
+	})
+	if err != nil {
+		if err.Error() == "execution not complete" {
+			return fmt.Errorf("not all execution completed after %s", executionTimeout.String())
+		}
+		return err
+	}
+
+	return nil
 }
 
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
@@ -321,32 +348,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
 }
 
-// waitForExecution waits for our execution to have state ExecutionState_COMPLETE
-func (c *Collector) waitForExecution(ctx context.Context) error {
-	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
-	executionTimeout := executionMaxDuration
-	retryInterval := 100 * time.Millisecond
-
-	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
-		switch c.execution.state {
-		case ExecutionState_ERROR:
-			return NewExecutionError(errors.New("execution in error state"), c.execution.id)
-		case ExecutionState_COMPLETE:
-			return nil
-		default:
-			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))
-		}
-	})
-	if err != nil {
-		if err.Error() == "execution not complete" {
-			return fmt.Errorf("not all execution completed after %s", executionTimeout.String())
-		}
-		return err
-	}
-
-	return nil
-}
-
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
 	// TODO #control_flow do we need to consider end conditions here - check context or nil event? https://github.com/turbot/tailpipe/issues/8
 	go func() {
@@ -368,4 +369,11 @@ func (c *Collector) Compact(ctx context.Context) error {
 		return fmt.Errorf("failed to compact data files: %w", err)
 	}
 	return nil
+}
+
+func (c *Collector) doCancel() {
+	if c.cancel != nil {
+		c.cancel()
+	}
+	// todo cleanup
 }

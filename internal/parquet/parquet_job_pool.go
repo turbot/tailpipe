@@ -271,8 +271,13 @@ func (w *ParquetJobPool) scheduler() {
 		// TODO #conversion is this costly to do thousands of times?
 		sendChan := make(chan struct{})
 		go func() {
-			w.jobChan <- j
-			close(sendChan)
+			select {
+			case <-w.closing:
+				// close jobs channel
+				close(w.jobChan)
+			case w.jobChan <- j:
+				close(sendChan)
+			}
 		}()
 
 		select {

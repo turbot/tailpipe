@@ -65,7 +65,6 @@ func (w *parquetConversionWorker) start() {
 		// ok we have a job
 
 		if err := w.doJSONToParquetConversion(job); err != nil {
-			slog.Error("worker failed to process job", "error", err)
 			// send the error to the writer
 			w.errorChan <- parquetJobError{job.groupId, err}
 			continue
@@ -98,7 +97,6 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) erro
 	// process the ParquetJobPool
 	rowCount, err := w.convertFile(jsonFilePath, job.Partition, s)
 	if err != nil {
-		slog.Error("failed to convert file", "error", err)
 		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
 	}
 	// update the row count

@@ -156,7 +156,9 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 
 	defer func() {
 		if err != nil {
-			slog.Error("Compaction failed", "inputPath", inputPath, "error", err)
+			if ctx.Err() == nil {
+				slog.Error("Compaction failed", "inputPath", inputPath, "error", err)
+			}
 			// delete temp file if it exists
 			_ = os.Remove(tempOutputFile)
 		}

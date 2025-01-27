@@ -13,12 +13,6 @@ type TailpipeConfig struct {
 
 	Connections map[string]*TailpipeConnection
 
-	// map of plugin configs, keyed by plugin image ref
-	// (for each image ref we store an array of configs)
-	//Plugins map[string][]*plugin.Plugin
-	//// map of plugin configs, keyed by plugin instance
-	//PluginsInstances map[string]plugin.Plugin
-	// map of installed plugin versions, keyed by plugin image ref
 	PluginVersions map[string]*versionfile.InstalledVersion
 	CustomTables   map[string]*Table
 	Formats        map[string]*Format
@@ -26,10 +20,8 @@ type TailpipeConfig struct {
 
 func NewTailpipeConfig() *TailpipeConfig {
 	return &TailpipeConfig{
-		Partitions:  make(map[string]*Partition),
-		Connections: make(map[string]*TailpipeConnection),
-		//Plugins:     make(map[string][]*plugin.Plugin),
-		//PluginsInstances: make(map[string]plugin.Plugin),
+		Partitions:     make(map[string]*Partition),
+		Connections:    make(map[string]*TailpipeConnection),
 		PluginVersions: make(map[string]*versionfile.InstalledVersion),
 		CustomTables:   make(map[string]*Table),
 		Formats:        make(map[string]*Format),

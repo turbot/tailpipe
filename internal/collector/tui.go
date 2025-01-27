@@ -31,6 +31,7 @@ type collectionModel struct {
 	rowsConverted int64
 	rowsErrors    int64
 
+	cancelled bool
 	complete  bool
 	initiated time.Time
 
@@ -64,7 +65,7 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch t.String() {
 		case "ctrl+c":
-			// TODO: Handle graceful exit
+			c.cancelled = true
 			return c, tea.Quit
 		}
 	case CollectionFinishedMsg:
