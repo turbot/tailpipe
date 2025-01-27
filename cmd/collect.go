@@ -68,6 +68,11 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 			setExitCodeForCollectError(err)
 		}
 	}()
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	err = doCollect(ctx, cancel, args)
 	if errors.Is(err, context.Canceled) {
