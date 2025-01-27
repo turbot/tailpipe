@@ -18,6 +18,9 @@ func NewPartitionPattern(partition *config.Partition) PartitionPattern {
 }
 
 func ParquetPathMatchesPatterns(table, partition string, patterns []PartitionPattern) bool {
+	if len(patterns) == 0 {
+		return true
+	}
 	// do ANY patterns match
 	gotMatch := false
 	for _, pattern := range patterns {
