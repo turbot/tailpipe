@@ -35,11 +35,11 @@ func cleanupCollectionTempDirs(collectionTempDir string) {
 			pid, err := strconv.ParseInt(file.Name(), 10, 32)
 			if err == nil {
 				if utils.PidExists(int(pid)) {
-					slog.Info(fmt.Sprintf("cleanupCollectionTempDirs skipping directory '%s' as process  with PID %d exists", file.Name(), pid))
+					slog.Info(fmt.Sprintf("Cleaning existing collection temp dirs - skipping directory '%s' as process with PID %d exists", file.Name(), pid))
 					continue
 				}
 			}
-			slog.Debug("removing directory", "dir", file.Name())
+			slog.Debug("Removing directory", "dir", file.Name())
 			_ = os.RemoveAll(filepath.Join(collectionTempDir, file.Name()))
 		}
 	}

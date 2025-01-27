@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/turbot/pipe-fittings/utils"
-	"github.com/turbot/tailpipe/internal/config"
 	"golang.org/x/sync/semaphore"
 	"log/slog"
 	"os"
@@ -14,6 +12,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 type CompactionStatus struct {
@@ -64,7 +65,7 @@ func (total *CompactionStatus) BriefString() string {
 	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
 }
 
-func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus)) error {
+func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), patterns ...PartitionPattern) error {
 	// get the root data directory
 	baseDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -76,12 +77,16 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus)) er
 	defer db.Close()
 
 	// traverse the directory and compact files
-	err = traverseAndCompact(ctx, db, baseDir, updateFunc)
-	return err
-
+	return traverseAndCompact(ctx, db, baseDir, updateFunc, patterns)
 }
+func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
+	// if this is the partition folder, check if it matches the patterns before descending further
+	if table, partition, ok := getPartitionFromPath(dirPath); ok {
+		if !ParquetPathMatchesPatterns(table, partition, patterns) {
+			return nil
+		}
+	}
 
-func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionStatus)) error {
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return fmt.Errorf("failed to read directory %s: %w", dirPath, err)
@@ -94,7 +99,7 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateF
 		if entry.IsDir() {
 			// recursively process subdirectories
 			subDirPath := filepath.Join(dirPath, entry.Name())
-			err := traverseAndCompact(ctx, db, subDirPath, updateFunc)
+			err := traverseAndCompact(ctx, db, subDirPath, updateFunc, patterns)
 			if err != nil {
 				return err
 			}
@@ -119,9 +124,23 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateF
 	}
 
 	// update the totals
-	updateFunc(CompactionStatus{Source: len(parquetFiles), Dest: 1})
+	updateFunc(CompactionStatus{Source: numFiles, Dest: 1})
 
 	return nil
+}
+
+// if this filepath ends with the partition segment, return the table and partition
+func getPartitionFromPath(dirPath string) (string, string, bool) {
+	// if this is a partition folder, check if it matches the patterns
+	parts := strings.Split(dirPath, "/")
+	l := len(parts)
+	if l > 1 && strings.HasPrefix(parts[l-1], "tp_partition=") && strings.HasPrefix(parts[l-2], "tp_table=") {
+
+		table := strings.TrimPrefix(parts[l-2], "tp_table=")
+		partition := strings.TrimPrefix(parts[l-1], "tp_partition=")
+		return table, partition, true
+	}
+	return "", "", false
 }
 
 func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string, inputPath string) (err error) {

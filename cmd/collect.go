@@ -67,22 +67,12 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	err = collectAndCompact(ctx, args)
+	err = doCollect(ctx, args)
 	if errors.Is(err, context.Canceled) {
 		// clear error so we don't show it with normal error reporting
 		err = nil
 		fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
 	}
-}
-
-func collectAndCompact(ctx context.Context, args []string) error {
-	// collect the data
-	err := doCollect(ctx, args)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func doCollect(ctx context.Context, args []string) error {
@@ -101,6 +91,11 @@ func doCollect(ctx context.Context, args []string) error {
 		return fmt.Errorf("failed to get partition config: %w", err)
 	}
 
+	var partitionNames []string
+	for _, partition := range partitions {
+		partitionNames = append(partitionNames, partition.FullName)
+	}
+	slog.Info("Starting collection", "partition(s)", partitionNames, "from", fromTime)
 	// now we have the partitions, we can start collecting
 
 	// start the plugin manager
@@ -136,22 +131,26 @@ func doCollect(ctx context.Context, args []string) error {
 }
 
 func collectPartition(ctx context.Context, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) error {
-	c, err := collector.New(pluginManager)
+	c, err := collector.New(pluginManager, partition)
 	if err != nil {
 		return fmt.Errorf("failed to create collector: %w", err)
 	}
 	defer c.Close()
 
-	if err = c.Collect(ctx, partition, fromTime); err != nil {
+	if err = c.Collect(ctx, fromTime); err != nil {
 		return err
 	}
 
 	// now wait for all collection to complete and close the collector
 	c.WaitForCompletion(ctx)
 
-	err = c.Compact(ctx)
-	if err != nil {
-		return err
+	slog.Info("Collection complete", "partition", partition.Name)
+	// compact the parquet files
+	if viper.GetBool(pconstants.ArgCompact) {
+		err = c.Compact(ctx)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error) {

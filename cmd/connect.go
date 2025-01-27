@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"io"
 	"log"
 	"os"
@@ -26,7 +27,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"golang.org/x/exp/maps"
+	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 // variable used to assign the output mode flag
@@ -301,24 +302,24 @@ func cleanupOldDbFiles() error {
 
 func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string) (string, error) {
 	// Get table and partition patterns using getPartitionPatterns
-	tablePatterns, partitionPatterns, err := getPartitionPatterns(partitionArgs, availablePartitions)
+	patterns, err := getPartitionPatterns(partitionArgs, availablePartitions)
 	if err != nil {
 		return "", fmt.Errorf("error processing partition args: %w", err)
 	}
 
 	// Handle the case when patterns are empty
-	if len(tablePatterns) == 0 || len(partitionPatterns) == 0 {
+	if len(patterns) == 0 {
 		return "", nil
 	}
 
 	// Replace wildcards from '*' to '%' for SQL compatibility
-	updatedTables, updatedPartitions := replaceWildcards(tablePatterns, partitionPatterns)
+	sqlPatterns := replaceWildcards(patterns)
 
 	var conditions []string
 
-	for i := 0; i < len(updatedTables); i++ {
-		table := updatedTables[i]
-		partition := updatedPartitions[i]
+	for i := 0; i < len(sqlPatterns); i++ {
+		table := sqlPatterns[i].Table
+		partition := sqlPatterns[i].Partition
 
 		var tableCondition, partitionCondition string
 
@@ -386,34 +387,29 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 }
 
 // getPartitionPatterns returns the table and partition patterns for the given partition args
-func getPartitionPatterns(partitionArgs []string, partitions []string) ([]string, []string, error) {
-	var tablePatterns []string
-	var partitionPatterns []string
-
+func getPartitionPatterns(partitionArgs []string, partitions []string) ([]parquet.PartitionPattern, error) {
+	var res []parquet.PartitionPattern
 	for _, arg := range partitionArgs {
 		tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
 		if err != nil {
-			return nil, nil, fmt.Errorf("error processing partition arg '%s': %w", arg, err)
+			return nil, fmt.Errorf("error processing partition arg '%s': %w", arg, err)
 		}
 
-		tablePatterns = append(tablePatterns, tablePattern)
-		partitionPatterns = append(partitionPatterns, partitionPattern)
+		res = append(res, parquet.PartitionPattern{Table: tablePattern, Partition: partitionPattern})
 	}
 
-	return tablePatterns, partitionPatterns, nil
+	return res, nil
 }
 
-func replaceWildcards(tablePatterns []string, partitionPatterns []string) ([]string, []string) {
-	updatedTables := make([]string, len(tablePatterns))
-	updatedPartitions := make([]string, len(partitionPatterns))
+// convert partition patterns with '*' wildcards to SQL '%' wildcards
+func replaceWildcards(patterns []parquet.PartitionPattern) []parquet.PartitionPattern {
+	updatedPatterns := make([]parquet.PartitionPattern, len(patterns))
 
-	for i, table := range tablePatterns {
-		updatedTables[i] = strings.ReplaceAll(table, "*", "%")
+	for i, p := range patterns {
+		updatedPatterns[i] = parquet.PartitionPattern{
+			Table:     strings.ReplaceAll(p.Table, "*", "%"),
+			Partition: strings.ReplaceAll(p.Partition, "*", "%")}
 	}
+	return updatedPatterns
 
-	for i, partition := range partitionPatterns {
-		updatedPartitions[i] = strings.ReplaceAll(partition, "*", "%")
-	}
-
-	return updatedTables, updatedPartitions
 }

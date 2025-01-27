@@ -109,7 +109,7 @@ func NewParquetJobPool(executionId string, partition *config.Partition, sourceDi
 }
 
 func (w *ParquetJobPool) Close() {
-	slog.Info("closing ParquetJobPool", "job pool", w)
+	slog.Info("closing ParquetJobPool")
 	// close the close channel to signal to the job schedulers to exit
 	close(w.closing)
 	// close the error channel to terminate the error reader
