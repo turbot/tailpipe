@@ -28,6 +28,8 @@ type Collector struct {
 	Events chan *proto.Event
 
 	pluginManager *plugin_manager.PluginManager
+	// the partition to collect
+	partition *config.Partition
 	// the execution
 	execution *execution
 
@@ -46,7 +48,7 @@ type Collector struct {
 	app *tea.Program
 }
 
-func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
+func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	collectionTempDir := filepaths.GetCollectionTempDir()
@@ -55,6 +57,7 @@ func New(pluginManager *plugin_manager.PluginManager) (*Collector, error) {
 		Events:            make(chan *proto.Event, eventBufferSize),
 		pluginManager:     pluginManager,
 		collectionTempDir: collectionTempDir,
+		partition:         partition,
 	}
 
 	// create a plugin manager
@@ -88,33 +91,33 @@ func (c *Collector) Close() {
 	_ = os.RemoveAll(c.collectionTempDir)
 }
 
-func (c *Collector) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time) error {
+func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, partition, fromTime, c.collectionTempDir)
+	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, c.collectionTempDir)
 	if err != nil {
 		return fmt.Errorf("failed to collect: %w", err)
 	}
 
 	resolvedFromTime := collectResponse.FromTime
-	c.app = tea.NewProgram(newCollectionModel(partition.GetUnqualifiedName(), *resolvedFromTime))
+	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
 	//nolint:errcheck // handle this later
 	go c.app.Run() // TODO: #error handling of errors
 
 	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
 	if !resolvedFromTime.Time.IsZero() {
-		partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
+		c.partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
 	}
 
 	executionId := collectResponse.ExecutionId
 	// add the execution to the map
-	c.execution = newExecution(executionId, partition)
+	c.execution = newExecution(executionId, c.partition)
 
 	// create a parquet writer
-	parquetWriter, err := parquet.NewParquetJobPool(executionId, partition, c.sourcePath, collectResponse.Schema)
+	parquetWriter, err := parquet.NewParquetJobPool(executionId, c.partition, c.sourcePath, collectResponse.Schema)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -354,11 +357,13 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 }
 
 func (c *Collector) Compact(ctx context.Context) error {
+	slog.Info("Compacting parquet files")
 	c.app.Send(AwaitingCompactionMsg{})
 	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
 		c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
 	}
-	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc)
+	partitionPattern := parquet.NewPartitionPattern(c.partition)
+	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)
 	}
