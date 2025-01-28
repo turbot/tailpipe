@@ -4,6 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/spf13/viper"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
+	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
+	"golang.org/x/exp/maps"
+	"log/slog"
 	"os"
 	"time"
 

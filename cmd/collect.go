@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
+	"github.com/turbot/tailpipe/internal/constants"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
