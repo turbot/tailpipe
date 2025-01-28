@@ -4,22 +4,31 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/turbot/pipe-fittings/querydisplay"
 	"github.com/turbot/pipe-fittings/queryresult"
+	"github.com/turbot/pipe-fittings/statushooks"
+	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 func ExecuteQuery(ctx context.Context, query string, db *sql.DB) (int, error) {
-
 	// Run the query
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
+		// if this error is due to trying to select a table which exists in partition config,
+		// but there is no view defined (as no rows have been collected), return a special error
+		err := handleMissingViewError(err)
+
 		return 0, err
 	}
 
 	// Execute the query
-	result, err := Execute(ctx, rows, query)
+	result, err := Execute(ctx, rows)
 	if err != nil {
 		return 0, err
 	}
@@ -33,6 +42,27 @@ func ExecuteQuery(ctx context.Context, query string, db *sql.DB) (int, error) {
 	return 0, nil
 }
 
+func handleMissingViewError(err error) error {
+	errorMessage := err.Error()
+	// Define the regex to match the table name
+	regex := regexp.MustCompile(`Catalog Error: Table with name ([a-zA-Z0-9_]+) does not exist`)
+
+	// Find the matches
+	matches := regex.FindStringSubmatch(errorMessage)
+	if len(matches) > 1 {
+		tableName := strings.ToLower(matches[1])
+		// do we have a partition defined for this table
+		for _, partition := range config.GlobalConfig.Partitions {
+			if strings.ToLower(partition.TableName) == tableName {
+				return fmt.Errorf("no data has been collected for table %s", tableName)
+			}
+		}
+	}
+
+	// return the original error
+	return err
+}
+
 type TimingMetadata struct {
 	Duration time.Duration
 }
@@ -41,7 +71,7 @@ func (t TimingMetadata) GetTiming() any {
 	return t
 }
 
-func Execute(ctx context.Context, rows *sql.Rows, query string) (res *queryresult.Result[TimingMetadata], err error) {
+func Execute(ctx context.Context, rows *sql.Rows) (res *queryresult.Result[TimingMetadata], err error) {
 
 	colDefs, err := fetchColumnDefs(rows)
 	if err != nil {
@@ -66,7 +96,13 @@ func streamResults(ctx context.Context, rows *sql.Rows, result *queryresult.Resu
 		result.Close()
 
 	}()
+	statushooks.Show(ctx)
+
+	rowCount := 0
 	for rows.Next() {
+		if ctx.Err() != nil {
+			return
+		}
 		// Create a slice to hold the values for each row
 		columnsData := make([]interface{}, len(colDefs))
 		columnPointers := make([]interface{}, len(colDefs))
@@ -77,12 +113,17 @@ func streamResults(ctx context.Context, rows *sql.Rows, result *queryresult.Resu
 		}
 
 		// Scan the current row into columnPointers
-		if err := rows.Scan(columnPointers...); err != nil { //nolint:staticcheck // TODO handle the error
-			// return result, err
+		if err := rows.Scan(columnPointers...); err != nil {
+			slog.Warn("Error scanning row", "error", err)
+			return
 		}
 
 		result.StreamRow(columnsData)
+		rowCount++
+
+		statushooks.SetStatus(ctx, fmt.Sprintf("Loading results: %3s", utils.HumanizeNumber(rowCount)))
 	}
+	statushooks.Done(ctx)
 }
 
 // FetchColumnDefs extracts column definitions from sql.Rows and returns a slice of ColumnDef.

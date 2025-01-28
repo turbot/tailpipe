@@ -10,7 +10,6 @@ func (c *InteractiveClient) initialiseSuggestions(ctx context.Context) error {
 
 	// reset suggestions
 	c.suggestions = newAutocompleteSuggestions()
-	// TODO #interactive populate autocomplete
 	c.suggestions.sort()
 	return nil
 }

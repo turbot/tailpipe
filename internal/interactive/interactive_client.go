@@ -151,17 +151,6 @@ func (c *InteractiveClient) ClosePrompt(afterClose AfterPromptCloseAction) {
 	c.cancelPrompt()
 }
 
-// retrieve both the raw query result and a sanitised version in list form
-//func (c *InteractiveClient) loadSchema() error {
-//	utils.LogTime("db_client.loadSchema start")
-//	defer utils.LogTime("db_client.loadSchema end")
-//
-//	// TODO #interactive load schema
-//	//c.schemaMetadata = metadata
-//
-//	return nil
-//}
-
 func (c *InteractiveClient) runInteractivePromptAsync(ctx context.Context, promptResultChan chan struct{}) {
 	go func() {
 		c.runInteractivePrompt(ctx)
@@ -357,6 +346,9 @@ func (c *InteractiveClient) executor(ctx context.Context, line string) {
 }
 
 func (c *InteractiveClient) executeQuery(ctx context.Context, queryCtx context.Context, resolvedQuery *ResolvedQuery) {
+	// add a spinner to the context
+	queryCtx = statushooks.AddStatusHooksToContext(queryCtx, statushooks.NewStatusSpinnerHook())
+
 	_, err := query.ExecuteQuery(queryCtx, resolvedQuery.ExecuteSQL, c.db)
 	if err != nil {
 		error_helpers.ShowError(ctx, error_helpers.HandleCancelError(err))

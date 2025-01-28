@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
@@ -84,6 +85,9 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 
 	// if an arg was passed, just execute the query
 	if len(args) == 0 {
+		// set the interactive flag - this is used by the query display code to decide whether to page the results
+		viper.Set(pconstants.ConfigKeyInteractive, true)
+
 		err = interactive.RunInteractivePrompt(ctx, db)
 	} else {
 		failures, err = query.ExecuteQuery(ctx, args[0], db)
