@@ -157,6 +157,8 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 			return err
 		}
 	}
+	// TODO pass errors to UI https://github.com/turbot/tailpipe/issues/180
+	//errs := c.Errors()
 
 	return nil
 }

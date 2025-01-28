@@ -3,7 +3,7 @@ package plugin_manager
 import (
 	"context"
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -216,10 +216,7 @@ func (p *PluginManager) Close() {
 // getExecutionId generates a unique id based on the current time
 // this can be passed into plugin calls to assist with tracking parallel calls
 func getExecutionId() string {
-	// include the connection name in the call ID
-	// include the connection name in the call ID
-	//- it is used to identify calls to the shared cache service so there is a chance of callId clash
-	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Intn(1000)) //nolint:gosec // TODO use math/rand/v2 for security
+	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Int32N(1000)) //nolint:gosec// strong enough for the execution id
 }
 
 func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
@@ -326,15 +323,16 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 	}()
 
 	// loop until the context is cancelled
-	// TODO think about cancellation/other completion scenarios https://github.com/turbot/tailpipe/issues/8
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case err := <-errChan:
 			if err != nil {
-				// TODO #error x WHAT TO DO HERE? send error to observers
-				fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo// TODO #error
+				// ignore EOF errors
+				if !strings.Contains(err.Error(), "EOF") {
+					fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo// TODO #error
+				}
 				return
 			}
 		case protoEvent := <-pluginEventChan:

@@ -129,6 +129,7 @@ func (c collectionModel) View() string {
 
 		downloadedDisplay := "0B" // Handle negative values gracefully
 		if c.downloadedBytes > 0 {
+			//nolint:gosec // we will not have a negative value
 			downloadedDisplay = strings.ReplaceAll(humanize.Bytes(uint64(c.downloadedBytes)), " ", "")
 		}
 

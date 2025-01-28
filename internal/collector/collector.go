@@ -47,6 +47,9 @@ type Collector struct {
 	// bubble tea app
 	app    *tea.Program
 	cancel context.CancelFunc
+
+	// errors which occurred during the collection
+	errors []string
 }
 
 func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
@@ -166,7 +169,11 @@ func (c *Collector) updateConvertedStatus() {
 // Notify implements observer.Observer
 // send an event down the channel to be picked up by the handlePluginEvent goroutine
 func (c *Collector) Notify(event *proto.Event) {
-	c.Events <- event
+	// only send the event if the execution is not complete - this is to handle the case where it has
+	// terminated with an error, causing the collector to close, closing the channel
+	if !c.execution.complete() {
+		c.Events <- event
+	}
 }
 
 // handlePluginEvent handles an event from a plugin
@@ -222,9 +229,12 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 
 	case *proto.Event_ErrorEvent:
 		ev := e.GetErrorEvent()
-		// set the error on the execution
-		c.execution.state = ExecutionState_ERROR
-		c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
+		// TODO think about fatal vs non fatal errors https://github.com/turbot/tailpipe/issues/179
+		// for now just store errors and display at end
+		//c.execution.state = ExecutionState_ERROR
+		//c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
+		slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
+		c.errors = append(c.errors, ev.Error)
 	}
 }
 
@@ -255,7 +265,7 @@ func (c *Collector) WaitForCompletion(ctx context.Context) error {
 		switch c.execution.state {
 		case ExecutionState_ERROR:
 			slog.Info("Execution in error state", "execution", c.execution.id)
-			return NewExecutionError(errors.New("execution in error state"), c.execution.id)
+			return NewExecutionError(fmt.Errorf("execution in error state: %s", c.execution.error.Error()), c.execution.id)
 		case ExecutionState_COMPLETE:
 			slog.Info("Execution complete", "execution", c.execution.id)
 			return nil
@@ -376,4 +386,8 @@ func (c *Collector) doCancel() {
 		c.cancel()
 	}
 	// todo cleanup
+}
+
+func (c *Collector) Errors() []string {
+	return c.errors
 }

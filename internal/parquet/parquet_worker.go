@@ -171,7 +171,8 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 	// Build the query
-	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, filepaths.GetParquetFileGlobForTable(destDir, table, fileRoot)) //nolint:gosec // fixed sql query
+	//nolint:gosec // cannot use params in parquet_file_metadata - and this is a trusted source
+	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, filepaths.GetParquetFileGlobForTable(destDir, table, fileRoot))
 
 	// Execute the query and scan the result directly
 	var rowCount int64

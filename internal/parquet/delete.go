@@ -46,17 +46,17 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
 func deletePartitionFrom(db *sql.DB, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
-	//nolint:gosec // TODO verify for SQL injection - c an we use params
+	//nolint:gosec // we cannot use params inside read_parquet - and this is a trusted source
 	query := fmt.Sprintf(`
     SELECT 
     DISTINCT '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date AS hive_path,
 	COUNT(*) OVER() AS total_files
     FROM read_parquet('%s', hive_partitioning=true)
-    WHERE tp_partition = '%s'
- 	AND tp_date >= '%s'`,
-		dataDir, parquetGlobPath, partition.ShortName, from)
+    WHERE tp_partition = ?
+ 	AND tp_date >= ?`,
+		dataDir, parquetGlobPath)
 
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, partition.ShortName, from)
 	if err != nil {
 		// is this an error because there are no files?
 		if isNoFilesFoundError(err) {
@@ -91,17 +91,18 @@ func deletePartition(db *sql.DB, dataDir string, partition *config.Partition) (i
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
 	// get count of parquet files
+	//nolint:gosec// have to build string for read_parquet
 	query := fmt.Sprintf(`
-		SELECT
-		COUNT(*)
-		FROM read_parquet('%s', hive_partitioning=true)
-		WHERE tp_partition = '%s'
-		`, parquetGlobPath, partition.ShortName)
+		SELECT COUNT(DISTINCT filename)
+		FROM read_parquet('%s', hive_partitioning=true, filename=true)
+		WHERE tp_partition = ?
+	`, parquetGlobPath)
 
-	row := db.QueryRow(query)
-
+	// Execute the query with a parameter for the tp_partition filter
+	q := db.QueryRow(query, partition.ShortName)
+	// read the result
 	var count int
-	err := row.Scan(&count)
+	err := q.Scan(&count)
 	if err != nil && !isNoFilesFoundError(err) {
 		return 0, fmt.Errorf("failed to query parquet file count: %w", err)
 	}

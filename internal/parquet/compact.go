@@ -165,7 +165,7 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 	}()
 
 	// compact files using duckdb
-	//nolint:gosec // this is a trusted source
+	//nolint:gosec // read_parquet and copy do not support params - and this is a trusted source
 	query := fmt.Sprintf(`
 		copy (
 			select * from read_parquet('%s/*.parquet')

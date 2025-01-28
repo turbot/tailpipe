@@ -52,3 +52,7 @@ func (e *execution) done(err error) {
 		e.state = ExecutionState_COMPLETE
 	}
 }
+
+func (e *execution) complete() bool {
+	return e.state == ExecutionState_COMPLETE || e.state == ExecutionState_ERROR
+}
