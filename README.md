@@ -17,8 +17,6 @@
 
 **Built to build with**. Define detections as code, extend functionality with plugins and write custom SQL queries.
 
-**Query instantly**. Slice through all those entries in seconds.
-
 ## Demo time!
 
 <img alt="tailpipe demo" width=500 src="https://tailpipe-io.vercel.app/images/steampipe-sql-demo.gif" >
