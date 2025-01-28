@@ -359,7 +359,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 }
 
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
-	// TODO #control_flow do we need to consider end conditions here - check context or nil event? https://github.com/turbot/tailpipe/issues/8
 	go func() {
 		for event := range c.Events {
 			c.handlePluginEvent(ctx, event)
