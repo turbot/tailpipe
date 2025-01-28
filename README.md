@@ -7,13 +7,15 @@
 
 ## select * from logs;
 
-[Tailpipe](https://tailpipe-io.vercel.app) is the **lightweight**, **developer-friendly** way to query logs. 
+[Tailpipe](https://tailpipe-io.vercel.app) is the **lightweight**, **developer-friendly** way to query logs.
 
-**Use SQL**. It's been the data access standard for decades.
+**Cloud logs, SQL insights**. Collects logs from cloud, container and application sources. Query and analyze your data instantly with the power of SQL, right from your terminal.
 
-**Run locally**. Collect logs from diverse sources direct to your laptop.
+**Fast, local, and efficient**. Runs locally, powered by DuckDB's in-memory analytics and Parquet's optimized storage.
 
-**Build huge collections**. Hundreds of millions of log entries? No problem.
+**An ecosystem of prebuilt intelligence**. MITRE ATT&CK-aligned queries, prebuilt detections, benchmarks, and dashboards, all open source and community-driven.
+
+**Built to build with**. Define detections as code, extend functionality with plugins and write custom SQL queries.
 
 **Query instantly**. Slice through all those entries in seconds.
 
@@ -72,7 +74,7 @@ partition "aws_cloudtrail_log" "prod" {
 ## Run a collection
 
 ```
-tailpipe collect aws_cloudtrail_log.prod
+tailpipe collect aws_cloudtrail_log
 ```
 
 This command will:
