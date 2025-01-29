@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/turbot/pipe-fittings/error_helpers"
+	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/constants"
 
 	"github.com/spf13/viper"

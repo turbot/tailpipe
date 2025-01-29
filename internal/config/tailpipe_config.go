@@ -2,9 +2,9 @@ package config
 
 import (
 	"fmt"
-	"github.com/turbot/pipe-fittings/modconfig"
-	"github.com/turbot/pipe-fittings/plugin"
-	"github.com/turbot/pipe-fittings/versionfile"
+	"github.com/turbot/pipe-fittings/v2/modconfig"
+	"github.com/turbot/pipe-fittings/v2/plugin"
+	"github.com/turbot/pipe-fittings/v2/versionfile"
 )
 
 type TailpipeConfig struct {

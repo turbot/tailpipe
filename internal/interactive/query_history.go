@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/turbot/pipe-fittings/filepaths"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/constants"
 )
 

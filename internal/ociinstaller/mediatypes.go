@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/turbot/pipe-fittings/ociinstaller"
+	"github.com/turbot/pipe-fittings/v2/ociinstaller"
 )
 
 type TailpipeMediaTypeProvider struct{}

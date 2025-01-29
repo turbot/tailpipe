@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/turbot/go-kit/helpers"
-	pconstants "github.com/turbot/pipe-fittings/constants"
-	"github.com/turbot/pipe-fittings/utils"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )

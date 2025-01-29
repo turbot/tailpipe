@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/dustin/go-humanize"
-	"github.com/turbot/pipe-fittings/printers"
-	"github.com/turbot/pipe-fittings/sanitize"
+	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/pipe-fittings/v2/sanitize"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"

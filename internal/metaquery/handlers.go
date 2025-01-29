@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/spf13/viper"
 	typeHelpers "github.com/turbot/go-kit/types"
-	pconstants "github.com/turbot/pipe-fittings/constants"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 )
 
 type handler func(ctx context.Context, input *HandlerInput) error

@@ -3,8 +3,8 @@ package config
 import (
 	"fmt"
 	"github.com/hashicorp/hcl/v2"
-	"github.com/turbot/pipe-fittings/hclhelpers"
-	"github.com/turbot/pipe-fittings/modconfig"
+	"github.com/turbot/pipe-fittings/v2/hclhelpers"
+	"github.com/turbot/pipe-fittings/v2/modconfig"
 )
 
 // TODO UNUSED AS YET - can we just use plugin.Plugin??? sort parsing

@@ -2,7 +2,7 @@ package parse
 
 import (
 	"fmt"
-	"github.com/turbot/pipe-fittings/perr"
+	"github.com/turbot/pipe-fittings/v2/perr"
 	"github.com/turbot/tailpipe/internal/config"
 	"strings"
 )

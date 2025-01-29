@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/pipe-fittings/querydisplay"
-	"github.com/turbot/pipe-fittings/queryresult"
-	"github.com/turbot/pipe-fittings/statushooks"
-	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/pipe-fittings/v2/querydisplay"
+	"github.com/turbot/pipe-fittings/v2/queryresult"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
 

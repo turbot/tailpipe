@@ -6,7 +6,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/turbot/pipe-fittings/printers"
+	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"github.com/turbot/tailpipe/internal/plugin_manager"

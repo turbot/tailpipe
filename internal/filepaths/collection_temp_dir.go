@@ -2,7 +2,7 @@ package filepaths
 
 import (
 	"fmt"
-	"github.com/turbot/pipe-fittings/utils"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 	"log/slog"
 	"os"

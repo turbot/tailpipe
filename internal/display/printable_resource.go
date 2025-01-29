@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/turbot/pipe-fittings/printers"
+	"github.com/turbot/pipe-fittings/v2/printers"
 )
 
 type PrintableResource[T printers.Listable] struct {
