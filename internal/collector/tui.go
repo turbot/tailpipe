@@ -150,7 +150,7 @@ func (c collectionModel) View() string {
 	b.WriteString(writeCountLine("Enriched:", rowDescriptionLen, c.rowsEnriched, rowCountLen, nil))
 	b.WriteString(writeCountLine("Saved:", rowDescriptionLen, c.rowsConverted, rowCountLen, nil))
 	if c.compactionStatus != nil {
-		filtered := c.rowsReceived - c.rowsConverted
+		filtered := c.rowsReceived - (c.rowsConverted + c.rowsErrors)
 		if filtered > 0 {
 			b.WriteString(writeCountLine("Filtered:", rowDescriptionLen, filtered, rowCountLen, nil))
 		}
