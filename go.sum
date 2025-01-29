@@ -745,6 +745,8 @@ github.com/turbot/steampipe-plugin-code v0.7.0 h1:SROYIo/TI/Q/YNfXK+sAIS71umypUF
 github.com/turbot/steampipe-plugin-code v0.7.0/go.mod h1:GvdjncWum4sZNmR0iM03SKkIzl7aZKAFtIsyAR+z4YI=
 github.com/turbot/steampipe-plugin-sdk/v5 v5.8.0 h1:e/5EYO7B7UZW6joxO/wqtJGYFu+7NMCqMk/tPVbquFY=
 github.com/turbot/steampipe-plugin-sdk/v5 v5.8.0/go.mod h1:tYRC7FDKPTZ3MSty/tGLtH6UnVpU3zs1osF5DuktB5Q=
+github.com/turbot/tailpipe-plugin-core v0.1.0-rc.9 h1:HHfKHi5E65fAtFDSKWmYvGozrPRi9WguExMhEijk8S4=
+github.com/turbot/tailpipe-plugin-core v0.1.0-rc.9/go.mod h1:thfPW5yCvKn0AeE0j3zJQ7C9XVrrt8yl1bVarH1JLXw=
 github.com/turbot/tailpipe-plugin-sdk v0.1.0-rc.0 h1:HYRJ4IqwUhGscb+WgG2P1SN3kH1n+XGPxafShYrd3rg=
 github.com/turbot/tailpipe-plugin-sdk v0.1.0-rc.0/go.mod h1:ISLG0B02WcUMFGcwOWOgioFkh4o/vOQSV/XWjTDZWnA=
 github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 h1:qDMxFVd8Zo0rIhnEBdCIbR+T6WgjwkxpFZMN8zZmmjg=
