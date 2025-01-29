@@ -3,12 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/thediveo/enumflag/v2"
-
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/constants"
@@ -16,7 +14,6 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/printers"
 	"github.com/turbot/pipe-fittings/utils"
-	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
 )
@@ -80,12 +77,6 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
-
 	// Get Resources
 	resources, err := display.ListTableResources(ctx)
 	error_helpers.FailOnError(err)
@@ -135,12 +126,6 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 			exitCode = pconstants.ExitCodeUnknownErrorPanic
 		}
 	}()
-
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
 
 	// Get Resources
 	resource, err := display.GetTableResource(ctx, args[0])

@@ -18,7 +18,6 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/pipe-fittings/printers"
 	"github.com/turbot/pipe-fittings/utils"
-	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
@@ -86,12 +85,6 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
-
 	// Get Resources
 	resources, err := display.ListPartitionResources(ctx)
 	error_helpers.FailOnError(err)
@@ -141,12 +134,6 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 			exitCode = pconstants.ExitCodeUnknownErrorPanic
 		}
 	}()
-
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
 
 	// Get Resources
 	partitionName := args[0]
@@ -198,12 +185,6 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 			error_helpers.FailOnError(helpers.ToError(r))
 		}
 	}()
-
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
 
 	// arg `fromTime` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
 	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)

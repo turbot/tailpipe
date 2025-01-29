@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,7 +23,6 @@ import (
 	"github.com/turbot/pipe-fittings/statushooks"
 	"github.com/turbot/pipe-fittings/utils"
 	"github.com/turbot/pipe-fittings/versionfile"
-	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
@@ -247,12 +245,6 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 			exitCode = pconstants.ExitCodeUnknownErrorPanic
 		}
 	}()
-
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
 
 	// args to 'plugin install' -- one or more plugins to install
 	// plugin names can be simple names for "standard" plugins, constraint suffixed names
@@ -693,12 +685,6 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 		}
 	}()
 
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
-
 	// Get Resource(s)
 	resources, err := display.ListPlugins(ctx)
 	error_helpers.FailOnError(err)
@@ -736,12 +722,6 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 			exitCode = pconstants.ExitCodeUnknownErrorPanic
 		}
 	}()
-
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return
-	}
 
 	// Get Resource(s)
 	resource, err := display.GetPluginResource(ctx, args[0])
