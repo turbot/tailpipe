@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"log/slog"
 	"os"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/turbot/pipe-fittings/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"golang.org/x/exp/maps"
 )
 
 func compactCmd() *cobra.Command {
