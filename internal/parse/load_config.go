@@ -98,7 +98,7 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}
-	content, diags := body.Content(parse.TpConfigBlockSchema)
+	content, diags := body.Content(parse.TailpipeConfigBlockSchema)
 	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
 	}

@@ -121,7 +121,7 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 		pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
 	}
 	// load workspace profile from the configured install dir
-	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TpWorkspaceProfile](parseOpts...)
+	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	error_helpers.FailOnError(err)
 
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
