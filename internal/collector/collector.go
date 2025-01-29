@@ -114,10 +114,11 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	go func() {
 		model, err := c.app.Run()
 		if model.(collectionModel).cancelled {
+			slog.Info("Collection UI returned cancelled")
 			c.doCancel()
 		}
 		if err != nil {
-			slog.Warn("Bubbletea app failed", "error", err)
+			slog.Warn("Collection UI returned error", "error", err)
 			c.doCancel()
 		}
 
