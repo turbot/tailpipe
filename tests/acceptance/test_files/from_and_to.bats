@@ -2,6 +2,7 @@ load "$LIB_BATS_ASSERT/load.bash"
 load "$LIB_BATS_SUPPORT/load.bash"
 
 @test "verify --from works in tailpipe query" {
+  export TAILPIPE_LOG_LEVEL=debug
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -28,6 +29,7 @@ EOF
 }
 
 @test "verify --from works when ISO 8601 datetime is passed" {
+  export TAILPIPE_LOG_LEVEL=debug
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -54,6 +56,7 @@ EOF
 }
 
 @test "verify --from works when ISO 8601 datetime with milliseconds is passed" {
+  export TAILPIPE_LOG_LEVEL=debug
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -80,6 +83,7 @@ EOF
 }
 
 @test "verify --from works when RFC 3339 datetime with timezone is passed" {
+  export TAILPIPE_LOG_LEVEL=debug
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
