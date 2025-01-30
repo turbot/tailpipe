@@ -5,9 +5,9 @@
 [![slack](https://img.shields.io/badge/slack-2695-blue)](https://turbot.com/community/join?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme) &nbsp;
 [![maintained by](https://img.shields.io/badge/maintained%20by-Turbot-blue)](https://turbot.com?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme)
 
-## select * from logs;
+# select * from logs;
 
-[Tailpipe](https://tailpipe-io.vercel.app) is the **lightweight**, **developer-friendly** way to query logs.
+[Tailpipe](https://tailpipe.io) is the **lightweight**, **developer-friendly** way to query logs.
 
 **Cloud logs, SQL insights**. Collects logs from cloud, container and application sources. Query and analyze your data instantly with the power of SQL, right from your terminal.
 
@@ -48,7 +48,7 @@ sudo /bin/sh -c "$(curl -fsSL https://tailpipe.io/install/tailpipe.sh)"
 
 ## Install a plugin
 
-Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://hub.tailpipe.io/plugins/turbot/azure), [GCP](https://hub.tailpipe.io/plugins/turbot/gcp), [Pipes](https://hub.tailpipe.io/plugins/turbot/pipes).
+Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://hub.tailpipe.io/plugins/turbot/azure), [GCP](https://hub.tailpipe.io/plugins/turbot/gcp), [Pipes](https://hub.tailpipe.io/plugins/turbot/pipes)).
 
 ```sh
 tailpipe plugin install aws
@@ -91,9 +91,12 @@ This command will:
 
 List the top 10 events and how many times they were called.
 
-```sql
+```sh
 tailpipe query
->  select
+```
+
+```sql
+select
   event_source,
   event_name,
   count(*) as event_count
