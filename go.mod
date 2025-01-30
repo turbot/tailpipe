@@ -2,7 +2,9 @@ module github.com/turbot/tailpipe
 
 go 1.23.2
 
-replace github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
+replace (
+	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
+)
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
@@ -12,7 +14,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v0.10.0-rc.0
 	github.com/turbot/pipe-fittings/v2 v2.0.0
-	github.com/turbot/tailpipe-plugin-core v0.1.2
+	github.com/turbot/tailpipe-plugin-core v0.1.3
 	github.com/turbot/tailpipe-plugin-sdk v0.1.0
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
@@ -172,6 +174,7 @@ require (
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
+	github.com/satyrius/gonx v1.4.0 // indirect
 	github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
