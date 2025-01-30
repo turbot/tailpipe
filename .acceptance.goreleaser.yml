@@ -1,0 +1,24 @@
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - id: tailpipe-linux-amd64
+    binary: tailpipe
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+    env:
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
+
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+archives:
+  - id: homebrew
+    format: tar.gz
+    name_template: "{{ .ProjectName }}.{{ .Os }}.{{ .Arch }}"
+    files:
+      - none*

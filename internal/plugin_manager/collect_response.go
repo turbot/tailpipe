@@ -1,0 +1,21 @@
+package plugin_manager
+
+import (
+	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/tailpipe-plugin-sdk/row_source"
+	"github.com/turbot/tailpipe-plugin-sdk/schema"
+)
+
+type CollectResponse struct {
+	ExecutionId string
+	Schema      *schema.RowSchema
+	FromTime    *row_source.ResolvedFromTime
+}
+
+func CollectResponseFromProto(resp *proto.CollectResponse) *CollectResponse {
+	return &CollectResponse{
+		ExecutionId: resp.ExecutionId,
+		Schema:      schema.RowSchemaFromProto(resp.Schema),
+		FromTime:    row_source.ResolvedFromTimeFromProto(resp.FromTime),
+	}
+}

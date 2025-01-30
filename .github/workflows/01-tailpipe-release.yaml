@@ -1,0 +1,225 @@
+name: "01 - Tailpipe: Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: 'Select Release Type'
+        options:
+        # to change the values in this option, we also need to update the condition test below in at least 3 location. Search for github.event.inputs.environment
+        - Development (alpha)
+        - Development (beta)
+        - Final (RC and final release)
+        required: true
+      version:
+        description: "Version (without 'v')"
+        required: true
+        default: 0.1.\invalid
+      confirmDevelop:
+        description: Confirm running on develop branch
+        required: true
+        type: boolean
+
+env:
+  TAILPIPE_UPDATE_CHECK: false
+  GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+  SPIPETOOLS_TOKEN: ${{ secrets.SPIPETOOLS_TOKEN }}
+
+jobs:
+  ensure_branch_in_homebrew:
+    name: Ensure branch exists in homebrew-tap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate version
+        id: calculate_version
+        run: |
+          echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@v1
+        with:
+          input_string: ${{ github.event.inputs.version }}
+
+      - name: Checkout
+        if: steps.semver_parser.outputs.prerelease == ''
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/homebrew-tap
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: main
+
+      - name: Delete base branch if exists
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          git fetch --all
+          git push origin --delete tailpipe-brew
+          git push origin --delete $VERSION
+        continue-on-error: true
+
+      - name: Create base branch
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          git checkout -b tailpipe-brew
+          git push --set-upstream origin tailpipe-brew
+
+  build_and_release:
+    name: Build and Release Tailpipe
+    needs: [ensure_branch_in_homebrew]
+    runs-on: ubuntu-latest
+    steps:
+      - name: validate
+        if: github.ref == 'refs/heads/develop'
+        env:
+          CONFIRM_MAIN: ${{ github.event.inputs.confirmDevelop }}
+        run: |
+          if [ "$CONFIRM_MAIN" == 'false' ]; then
+            echo "It looks like you've accidentally tried to run this action in develop branch. Either: "
+            echo " - Re-run the action and select the branch you wanted, or"
+            echo " - If you really do want to run this for develop, then re-run and tick the box to confirm"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: tailpipe
+          ref: ${{ github.event.ref }}
+
+      - name: Checkout Pipe Fittings Components repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/pipe-fittings
+          path: pipe-fittings
+          ref: develop
+
+      - name: Checkout Tailpipe plugin SDK repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/tailpipe-plugin-sdk
+          path: tailpipe-plugin-sdk
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: develop
+
+      - name: Checkout Tailpipe Core Plugin repository
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/tailpipe-plugin-core
+          path: tailpipe-plugin-core
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: develop
+
+      - name: Calculate version
+        id: calculate_version
+        run: |
+          if [ "${{ github.event.inputs.environment }}" = "Development (alpha)" ]; then
+            echo "VERSION=v${{ github.event.inputs.version }}-alpha.$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
+          elif [ "${{ github.event.inputs.environment }}" = "Development (beta)" ]; then
+            echo "VERSION=v${{ github.event.inputs.version }}-beta.$(date +'%Y%m%d%H%M')" >> $GITHUB_ENV
+          else
+            echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          fi
+
+      - name: Tag Release
+        run: |
+          cd tailpipe
+          git config user.name "Tailpipe GitHub Actions Bot"
+          git config user.email noreply@github.com
+          git tag $VERSION
+          git push origin $VERSION
+
+      # this is required, check golangci-lint-action docs
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+          cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
+
+      - name: Setup release environment
+        run: |-
+          cd tailpipe
+          echo 'GITHUB_TOKEN=${{secrets.GH_ACCESS_TOKEN}}' > .release-env
+
+      - name: Release publish
+        run: |-
+          cd tailpipe
+          make release
+
+  create_pr_in_homebrew:
+    name: Create PR in homebrew-tap
+    if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}
+    needs: [build_and_release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate version
+        id: calculate_version
+        run: |
+          echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@v1
+        with:
+          input_string: ${{ github.event.inputs.version }}
+
+      - name: Checkout
+        if: steps.semver_parser.outputs.prerelease == ''
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/homebrew-tap
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: main
+
+      - name: Create a new branch off the base branch
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          git fetch --all
+          git checkout tailpipe-brew
+          git checkout -b $VERSION
+          git push --set-upstream origin $VERSION
+
+      - name: Close pull request if already exists
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          gh pr close $VERSION
+        continue-on-error: true
+
+      - name: Create pull request
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          gh pr create --base main --head $VERSION --title "Tailpipe $VERSION" --body "Update formula"
+
+  update_pr_for_versioning:
+    name: Update PR
+    if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}
+    needs: [create_pr_in_homebrew]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate version
+        id: calculate_version
+        run: |
+          echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@v1
+        with:
+          input_string: ${{ github.event.inputs.version }}
+
+      - name: Checkout
+        if: steps.semver_parser.outputs.prerelease == ''
+        uses: actions/checkout@v4
+        with:
+          repository: turbot/homebrew-tap
+          token: ${{ secrets.GH_ACCESS_TOKEN }}
+          ref: v${{ github.event.inputs.version }}
+
+      - name: Update live version
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          scripts/formula_versioning_tailpipe.sh
+          git config user.name "Tailpipe GitHub Actions Bot"
+          git config user.email noreply@github.com
+          git add .
+          git commit -m "Versioning brew formulas"
+          git push origin $VERSION

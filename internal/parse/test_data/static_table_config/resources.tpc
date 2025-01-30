@@ -1,0 +1,23 @@
+
+# partition for static table with file_system source
+partition "aws_cloudtrail_log" "cloudtrail_logs" {
+    plugin = "aws"
+    source "file_system"  {
+    	paths = ["/Users/kai/tailpipe_data/flaws_cloudtrail_logs"]
+        extensions = [".gz"]
+    }
+}
+
+# partition for static table with aws_cloudwatch source
+partition "aws_vpc_flow_log" "flow_logs" {
+    plugin = "aws"
+    source "aws_cloudwatch"  {
+    	log_group_name = "/victor/vpc/flowlog"
+        start_time = "2024-08-12T07:56:26Z"
+        end_time = "2024-08-13T07:56:26Z"
+        access_key = "REPLACE"
+        secret_key = "REPLACE"
+        session_token = "REPLACE"
+    }
+}
+
