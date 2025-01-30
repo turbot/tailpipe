@@ -92,7 +92,7 @@ jobs:
         with:
           repository: turbot/pipe-fittings
           path: pipe-fittings
-          ref: tp
+          ref: develop
 
       - name: Checkout Tailpipe plugin SDK repository
         uses: actions/checkout@v4
@@ -189,7 +189,7 @@ jobs:
       - name: Create pull request
         if: steps.semver_parser.outputs.prerelease == ''
         run: |
-          gh pr create --base main --head $VERSION --title "$VERSION" --body "Update formula"
+          gh pr create --base main --head $VERSION --title "Tailpipe $VERSION" --body "Update formula"
 
   update_pr_for_versioning:
     name: Update PR
