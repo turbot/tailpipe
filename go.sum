@@ -755,7 +755,7 @@ github.com/turbot/steampipe-plugin-code v0.7.0 h1:SROYIo/TI/Q/YNfXK+sAIS71umypUF
 github.com/turbot/steampipe-plugin-code v0.7.0/go.mod h1:GvdjncWum4sZNmR0iM03SKkIzl7aZKAFtIsyAR+z4YI=
 github.com/turbot/steampipe-plugin-sdk/v5 v5.8.0 h1:e/5EYO7B7UZW6joxO/wqtJGYFu+7NMCqMk/tPVbquFY=
 github.com/turbot/steampipe-plugin-sdk/v5 v5.8.0/go.mod h1:tYRC7FDKPTZ3MSty/tGLtH6UnVpU3zs1osF5DuktB5Q=
-github.com/turbot/tailpipe-plugin-core v0.1.2/go.mod h1:Jy6e45GArIydUzmlrFUMvJJ+yJ8PZY0n8xPvrWyBQmY=
+github.com/turbot/tailpipe-plugin-core v0.1.3 h1:vjls5l500Oaqye0evXX2U5vn5Epux+AxWNhDH9zTmIk=
 github.com/turbot/tailpipe-plugin-core v0.1.3/go.mod h1:Jy6e45GArIydUzmlrFUMvJJ+yJ8PZY0n8xPvrWyBQmY=
 github.com/turbot/tailpipe-plugin-sdk v0.1.0 h1:uZwyTIogO2176TV69iNjHdo6LAqZuuUySw1kTH1tkLs=
 github.com/turbot/tailpipe-plugin-sdk v0.1.0/go.mod h1:ISLG0B02WcUMFGcwOWOgioFkh4o/vOQSV/XWjTDZWnA=
