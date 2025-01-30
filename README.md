@@ -32,6 +32,10 @@ See the [documentation](https://tailpipe.io/docs) for:
 - [Managing Tailpipe](https://tailpipe.io/docs/manage)
 - [CLI commands](https://tailpipe.io/docs/reference/cli)
 
+Plugins and query examples are on the [Tailpipe Hub](https://hub.tailpipe.io).
+
+Prebuilt detection benchmarks are on the [Powerpipe Hub](https://hub.powerpipe.io/?engines=tailpipe).
+
 ## Getting Started
 
 Install Tailpipe from the [downloads](https://tailpipe.io/downloads) page:
@@ -122,7 +126,7 @@ For example, the [AWS CloudTrail Logs Detections mod](https://hub.powerpipe.io/m
 
 Dashboards and detections are [open source](https://github.com/topics/tailpipe-mod), allowing easy customization and collaboration.
 
-To get started, choose a mod from the [Powerpipe Hub](https://hub.powerpipe.io/?engines=tailpipe&q=aws).
+To get started, choose a mod from the [Powerpipe Hub](https://hub.powerpipe.io/?engines=tailpipe).
 
 ## Developing
 
