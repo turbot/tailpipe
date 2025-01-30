@@ -11,9 +11,9 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v0.10.0-rc.0
-	github.com/turbot/pipe-fittings/v2 v2.0.0-rc.1
-	github.com/turbot/tailpipe-plugin-core v0.1.0-rc.9
-	github.com/turbot/tailpipe-plugin-sdk v0.1.0-rc.0
+	github.com/turbot/pipe-fittings/v2 v2.0.0
+	github.com/turbot/tailpipe-plugin-core v0.1.2
+	github.com/turbot/tailpipe-plugin-sdk v0.1.0
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 
@@ -26,14 +26,12 @@ require (
 	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fatih/color v1.17.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gosuri/uiprogress v0.0.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.1
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
-	github.com/karrick/gows v0.3.0
 	github.com/marcboeker/go-duckdb v1.8.3
 	github.com/sethvargo/go-retry v0.2.4
 	github.com/thediveo/enumflag/v2 v2.0.5
@@ -96,6 +94,7 @@ require (
 	github.com/dlclark/regexp2 v1.4.0 // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
+	github.com/fatih/color v1.17.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.3 // indirect
 	github.com/gertd/go-pluralize v0.2.1 // indirect
@@ -140,6 +139,7 @@ require (
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/karrick/gows v0.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
