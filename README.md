@@ -17,10 +17,6 @@
 
 **Built to build with**. Define detections as code, extend functionality with plugins and write custom SQL queries.
 
-## Demo time!
-
-<img alt="tailpipe demo" width=500 src="https://tailpipe-io.vercel.app/images/steampipe-sql-demo.gif" >
-
 ## Documentation
 
 See the [documentation](https://tailpipe-io.vercel.app/docs) for:
