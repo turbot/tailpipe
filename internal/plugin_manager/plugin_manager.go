@@ -25,6 +25,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe-plugin-core/sources"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
@@ -395,21 +396,26 @@ func ensureCorePlugin(ctx context.Context) error {
 		}
 		if !satisfy {
 			// install the core plugin
-			if err = installCorePlugin(ctx, state); err != nil {
+			if err = installCorePlugin(ctx, state, "Updating"); err != nil {
 				return err
 			}
 		}
 
 	} else {
 		// install the core plugin
-		if err = installCorePlugin(ctx, state); err != nil {
+		if err = installCorePlugin(ctx, state, "Installing"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func installCorePlugin(ctx context.Context, state installationstate.InstallationState) error {
+func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string) error {
+	spinner := statushooks.NewStatusSpinnerHook()
+	spinner.Show()
+	defer spinner.Hide()
+	spinner.SetStatus(fmt.Sprintf("%s core plugin", operation))
+
 	// get the latest version of the core plugin
 	ref := pociinstaller.NewImageRef(constants.CorePluginName)
 	org, name, constraint := ref.GetOrgNameAndStream()
