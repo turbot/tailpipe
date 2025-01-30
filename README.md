@@ -21,20 +21,20 @@
 
 **[Watch on YouTube →](https://www.youtube.com/watch?v=IR9MK1DMvW4)**
 
-<a href="https://www.youtube.com/watch?v=IR9MK1DMvW4"><img alt="tailpipe demo" width=500 src="https://tailpipe.io/images/tailpipe_hero_video_thumbnail.png"></a>
+<a href="https://www.youtube.com/watch?v=IR9MK1DMvW4"><img alt="tailpipe demo" width=500 src="https://tailpipe.io/images/video_preview.png"></a>
 
 ## Documentation
 
-See the [documentation](https://tailpipe-io.vercel.app/docs) for:
+See the [documentation](https://tailpipe.io/docs) for:
 
-- [Getting started](https://tailpipe-io.vercel.app/docs)
-- [It's just SQL!](https://tailpipe-io.vercel.app/docs/sql)
-- [Managing Tailpipe](https://tailpipe-io.vercel.app/docs/manage)
-- [CLI commands](https://tailpipe-io.vercel.app/docs/reference/cli)
+- [Getting started](https://tailpipe.io/docs)
+- [It's just SQL!](https://tailpipe.io/docs/sql)
+- [Managing Tailpipe](https://tailpipe.io/docs/manage)
+- [CLI commands](https://tailpipe.io/docs/reference/cli)
 
 ## Install Tailpipe
 
-Install Tailpipe from the [downloads](https://tailpipe-io.vercel.app/downloads) page:
+Install Tailpipe from the [downloads](https://tailpipe.io/downloads) page:
 
 ```sh
 # MacOS
@@ -43,12 +43,12 @@ brew install turbot/tap/tailpipe
 
 ```
 # Linux or Windows (WSL2)
-sudo /bin/sh -c "$(curl -fsSL https://tailpipe-io.vercel.app/install/tailpipe.sh)"
+sudo /bin/sh -c "$(curl -fsSL https://tailpipe.io/install/tailpipe.sh)"
 ```
 
 ## Install a plugin
 
-Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe-io.vercel.app/plugins/turbot/aws), [Azure](https://hub.tailpipe-io.vercel.app/plugins/turbot/azure), [GCP](https://hub.tailpipe-io.vercel.app/plugins/turbot/gcp), [Pipes](https://hub.tailpipe-io.vercel.app/plugins/turbot/pipes).
+Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://tailpipe.io/plugins/turbot/azure), [GCP](https://tailpipe.io/plugins/turbot/gcp), [Pipes](https://tailpipe.io/plugins/turbot/pipes).
 
 ```sh
 tailpipe plugin install aws
@@ -152,7 +152,7 @@ Tailpipe version 0.1.0
 
 This repository is published under the [AGPL 3.0](https://www.gnu.org/licenses/agpl-3.0.html) license. Please see our [code of conduct](https://github.com/turbot/.github/blob/main/CODE_OF_CONDUCT.md). Contributors must sign our [Contributor License Agreement](https://turbot.com/open-source#cla) as part of their first pull request. We look forward to collaborating with you!
 
-[Tailpipe](https://tailpipe-io.vercel.app) is a product produced from this open source software, exclusively by [Turbot HQ, Inc](https://turbot.com). It is distributed under our commercial terms. Others are allowed to make their own distribution of the software, but cannot use any of the Turbot trademarks, cloud services, etc. You can learn more in our [Open Source FAQ](https://turbot.com/open-source).
+[Tailpipe](https://tailpipe.io) is a product produced from this open source software, exclusively by [Turbot HQ, Inc](https://turbot.com). It is distributed under our commercial terms. Others are allowed to make their own distribution of the software, but cannot use any of the Turbot trademarks, cloud services, etc. You can learn more in our [Open Source FAQ](https://turbot.com/open-source).
 
 ## Get involved
 
