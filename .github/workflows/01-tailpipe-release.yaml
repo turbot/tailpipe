@@ -145,8 +145,6 @@ jobs:
           cd tailpipe
           make release
 
-  # TODO PSKR - create the versioning script in homebrew-tap repo before final release
-
   create_pr_in_homebrew:
     name: Create PR in homebrew-tap
     if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}

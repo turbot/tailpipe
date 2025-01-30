@@ -98,8 +98,7 @@ brews:
     directory: Formula
     url_template: "https://github.com/turbot/tailpipe/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     homepage: "https://tailpipe.io/"
-    # TODO - update this description
-    description: "TODO"
+    description: "Open source SIEM for instant log insights, powered by DuckDB. Analyze millions of events in seconds, right from your terminal."
     skip_upload: auto
     install: |-
       bin.install "tailpipe"
