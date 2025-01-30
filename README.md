@@ -1,4 +1,4 @@
-[<picture><source media="(prefers-color-scheme: dark)" srcset="https://tailpipe-io.vercel.app/images/tailpipe_wordmark.svg"><source media="(prefers-color-scheme: light)" srcset="https://tailpipe-io.vercel.app/images/tailpipe_wordmark.svg"><img width="67%" alt="Tailpipe Logo" src="https://tailpipe-io.vercel.app/images/tailpipe_wordmark.svg"></picture>](https://tailpipe-io.vercel.app)
+<a href="https://tailpipe.io"><img width="67%" src="https://tailpipe.io/images/pipeling-wordmarks/tailpipe_wordmark.svg" /></a>
 
 [![plugins](https://img.shields.io/badge/plugins-5-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
 [![plugins](https://img.shields.io/badge/mods-14-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
@@ -19,7 +19,9 @@
 
 ## Demo time!
 
-<img alt="tailpipe demo" width=500 src="https://tailpipe-io.vercel.app/images/steampipe-sql-demo.gif" >
+**[Watch on YouTube →](https://www.youtube.com/watch?v=IR9MK1DMvW4)**
+
+<a href="https://www.youtube.com/watch?v=IR9MK1DMvW4"><img alt="tailpipe demo" width=500 src="https://tailpipe.io/images/tailpipe_hero_video_thumbnail.png"></a>
 
 ## Documentation
 
