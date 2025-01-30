@@ -48,7 +48,7 @@ sudo /bin/sh -c "$(curl -fsSL https://tailpipe.io/install/tailpipe.sh)"
 
 ## Install a plugin
 
-Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://tailpipe.io/plugins/turbot/azure), [GCP](https://tailpipe.io/plugins/turbot/gcp), [Pipes](https://tailpipe.io/plugins/turbot/pipes).
+Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://hub.tailpipe.io/plugins/turbot/azure), [GCP](https://hub.tailpipe.io/plugins/turbot/gcp), [Pipes](https://hub.tailpipe.io/plugins/turbot/pipes).
 
 ```sh
 tailpipe plugin install aws

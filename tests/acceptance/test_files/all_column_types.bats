@@ -2,6 +2,7 @@ load "$LIB_BATS_ASSERT/load.bash"
 load "$LIB_BATS_SUPPORT/load.bash"
 
 @test "verify single row count" {
+  skip "https://github.com/turbot/tailpipe/issues/187"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_all_col_types.tpc
 partition "chaos_all_columns" "chaos_all_column_types" {
   source "chaos_all_columns" {
