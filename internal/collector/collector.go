@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -49,7 +50,9 @@ type Collector struct {
 	cancel context.CancelFunc
 
 	// errors which occurred during the collection
-	errors []string
+	errors        []string
+	errorFilePath string
+	errorFileMut  sync.Mutex
 }
 
 func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
@@ -108,6 +111,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	}
 
 	resolvedFromTime := collectResponse.FromTime
+
+	c.errorFilePath = fmt.Sprintf("%s/%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), collectResponse.ExecutionId)
 
 	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
 
@@ -236,6 +241,11 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		//c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
 		slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
 		c.errors = append(c.errors, ev.Error)
+		c.writeCollectorError(ev.Error)
+		// if we're displaying a tea.app, update its error collection
+		if c.app != nil {
+			c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
+		}
 	}
 }
 
@@ -390,4 +400,23 @@ func (c *Collector) doCancel() {
 
 func (c *Collector) Errors() []string {
 	return c.errors
+}
+
+func (c *Collector) writeCollectorError(errorString string) {
+	c.errorFileMut.Lock()
+	defer c.errorFileMut.Unlock()
+	// if a file exists append to it, else create a new file and insert the error
+	filePath := c.errorFilePath
+	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Error("Failed to open error file", "error", err, "file", filePath)
+		return
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(errorString + "\n")
+	if err != nil {
+		slog.Error("Failed to write error to file", "error", err, "file", filePath)
+		return
+	}
 }
