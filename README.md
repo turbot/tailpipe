@@ -1,4 +1,4 @@
-<a href="https://tailpipe.io"><img width="67%" src="https://tailpipe.io/images/pipeling-wordmarks/tailpipe_wordmark.svg" /></a>
+<a href="https://tailpipe.io"><img width="67%" src="https://tailpipe.io/images/pipeling-wordmarks/tailpipe_wordmark_white_outline.svg" /></a>
 
 [![plugins](https://img.shields.io/badge/plugins-5-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
 [![plugins](https://img.shields.io/badge/mods-14-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
