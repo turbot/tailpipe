@@ -11,7 +11,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v0.10.0-rc.0
-	github.com/turbot/pipe-fittings/v2 v2.0.0
+	github.com/turbot/pipe-fittings/v2 v2.0.1-rc.1
 	github.com/turbot/tailpipe-plugin-core v0.1.3
 	github.com/turbot/tailpipe-plugin-sdk v0.1.0
 	github.com/zclconf/go-cty v1.14.4
