@@ -112,7 +112,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 
 	resolvedFromTime := collectResponse.FromTime
 
-	c.errorFilePath = fmt.Sprintf("%s/%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), collectResponse.ExecutionId)
+	c.errorFilePath = fmt.Sprintf("%s/%s_%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), time.Now().Format("20060102T150405"), c.partition.GetUnqualifiedName())
 
 	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
 
