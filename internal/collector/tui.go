@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dustin/go-humanize"
+
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/parquet"
@@ -128,7 +129,6 @@ func (c collectionModel) View() string {
 
 		downloadedDisplay := "0B" // Handle negative values gracefully
 		if c.downloadedBytes > 0 {
-			//nolint:gosec // we will not have a negative value
 			downloadedDisplay = strings.ReplaceAll(humanize.Bytes(uint64(c.downloadedBytes)), " ", "")
 		}
 
