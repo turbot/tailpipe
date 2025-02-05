@@ -35,31 +35,6 @@ func setMultiLine(_ context.Context, input *HandlerInput) error {
 	return nil
 }
 
-//// .timing
-//// set the ArgHeader viper key with the boolean value evaluated from arg[0]
-//func setTiming(ctx context.Context, input *HandlerInput) error {
-//	if len(input.args()) == 0 {
-//		showTimingFlag()
-//		return nil
-//	}
-//
-//	viper.Set(pconstants.ArgTiming, input.args()[0])
-//	return nil
-//}
-
-//func showTimingFlag() {
-//	timing := viper.GetString(pconstants.ArgTiming)
-//
-//	fmt.Printf(`Timing is %s. Available options are: %s`,
-//		pconstants.Bold(timing),
-//		pconstants.Bold(strings.Join(maps.Keys(constants.QueryTimingValueLookup), ", ")))
-//	// add an empty line here so that the rendering buffer can start from the next line
-//	fmt.Println()
-//
-//	return
-//}
-//
-
 // .separator and .output
 // set the value of `viperKey` in `viper` with the value from `args[0]`
 func setViperConfigFromArg(viperKey string) handler {
