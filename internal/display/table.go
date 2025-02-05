@@ -124,7 +124,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 	if tableSchema, ok := desc.TableSchemas[tableName]; ok {
 		table := &TableResource{
 			Name:        tableName,
-			Description: "", // TODO: obtain table description, currently not available in TableSchemas
+			Description: tableSchema.Description,
 			Plugin:      p.Name,
 			Columns:     tableSchema.Columns,
 		}
