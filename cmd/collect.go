@@ -5,12 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/danwakefield/fnmatch"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/exp/maps"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
@@ -21,7 +24,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin_manager"
-	"golang.org/x/exp/maps"
 )
 
 // NOTE: the hard coded config that was previously defined here has been moved to hcl in the file tailpipe/internal/parse/test_data/configs/resources.tpc
@@ -48,7 +50,7 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
-		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information")
+		AddBoolFlag(pconstants.ArgQuiet, false, "Disables active UI in favor of static summary output")
 
 	return cmd
 }
@@ -160,6 +162,9 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	// TODO pass errors to UI https://github.com/turbot/tailpipe/issues/180
 	//errs := c.Errors()
 
+	if viper.GetBool(pconstants.ArgQuiet) {
+		fmt.Fprint(os.Stdout, c.StatusString())
+	}
 	return nil
 }
 
