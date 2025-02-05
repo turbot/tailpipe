@@ -50,7 +50,6 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
-		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information").
 		AddBoolFlag(pconstants.ArgQuiet, false, "Disables active UI in favor of static summary output")
 
 	return cmd
