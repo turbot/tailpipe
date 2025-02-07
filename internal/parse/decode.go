@@ -187,7 +187,7 @@ func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAtt
 		hclBytes := parseCtx.FileData[block.DefRange.Filename]
 		// extract the unknown hcl
 		u := config.HclBytesForRange(hclBytes, attr.Range)
-		// if we succeded in extracting the unknown hcl, add it to the list
+		// if we succeeded in extracting the unknown hcl, add it to the list
 		unknown.Merge(u)
 	}
 	for _, block := range unknownBlocks {

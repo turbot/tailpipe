@@ -1,8 +1,11 @@
 module github.com/turbot/tailpipe
 
-go 1.23.2
+go 1.23.6
 
-replace github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
+replace (
+	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
+	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+)
 
 require (
 	github.com/Masterminds/semver/v3 v3.2.1
@@ -10,12 +13,12 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
-	github.com/turbot/go-kit v0.10.0-rc.0
+	github.com/turbot/go-kit v1.0.0
 	github.com/turbot/pipe-fittings/v2 v2.0.0
 	github.com/turbot/tailpipe-plugin-core v0.1.3
 	github.com/turbot/tailpipe-plugin-sdk v0.1.0
 	github.com/zclconf/go-cty v1.14.4
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
+	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
 )
 
@@ -26,7 +29,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.2.4
 	github.com/danwakefield/fnmatch v0.0.0-20160403171240-cbb64ac3d964
 	github.com/dustin/go-humanize v1.0.1
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gosuri/uiprogress v0.0.1
 	github.com/hashicorp/go-hclog v1.6.3
 	github.com/hashicorp/go-plugin v1.6.1
@@ -185,10 +188,10 @@ require (
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.9 // indirect
 	github.com/tklauser/numcpus v0.3.0 // indirect
-	github.com/tkrajina/go-reflector v0.5.6 // indirect
-	github.com/turbot/pipes-sdk-go v0.9.1 // indirect
-	github.com/turbot/steampipe-plugin-code v0.7.0 // indirect
-	github.com/turbot/steampipe-plugin-sdk/v5 v5.8.0 // indirect
+	github.com/tkrajina/go-reflector v0.5.8 // indirect
+	github.com/turbot/pipes-sdk-go v0.12.0 // indirect
+	github.com/turbot/steampipe-plugin-code v1.0.1-alpha.1 // indirect
+	github.com/turbot/steampipe-plugin-sdk/v5 v5.10.4 // indirect
 	github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
@@ -202,14 +205,14 @@ require (
 	go.opentelemetry.io/otel/trace v1.26.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/mod v0.21.0 // indirect
-	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/crypto v0.32.0 // indirect
+	golang.org/x/mod v0.22.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/oauth2 v0.22.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/term v0.28.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.26.0 // indirect
+	golang.org/x/tools v0.29.0 // indirect
 	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	google.golang.org/api v0.189.0 // indirect
 	google.golang.org/genproto v0.0.0-20240722135656-d784300faade // indirect
