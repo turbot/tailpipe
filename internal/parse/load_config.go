@@ -15,7 +15,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
-	sdkconstants "github.com/turbot/tailpipe/internal/constants"
 )
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
@@ -90,7 +89,8 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	// parse the files
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []parse.ParseHclOpt{
-		parse.WithDisableTemplateForProperties(sdkconstants.GrokConfigProperties),
+		//parse.WithDisableTemplateForProperties(sdkconstants.GrokConfigProperties),
+		parse.WithApplyGrokFunction(true),
 	}
 
 	//
