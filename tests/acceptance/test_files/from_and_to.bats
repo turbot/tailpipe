@@ -2,7 +2,6 @@ load "$LIB_BATS_ASSERT/load.bash"
 load "$LIB_BATS_SUPPORT/load.bash"
 
 @test "verify --from works in tailpipe query" {
-  skip "https://github.com/turbot/tailpipe/issues/187"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -12,7 +11,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02"
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" > /dev/null
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25"
@@ -29,7 +28,6 @@ EOF
 }
 
 @test "verify --from works when ISO 8601 datetime is passed" {
-  skip "https://github.com/turbot/tailpipe/issues/187"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -39,7 +37,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02"
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" > /dev/null
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25T15:04:05"
@@ -56,7 +54,6 @@ EOF
 }
 
 @test "verify --from works when ISO 8601 datetime with milliseconds is passed" {
-  skip "https://github.com/turbot/tailpipe/issues/187"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -66,7 +63,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02"
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" > /dev/null
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25T15:04:05.000"
@@ -83,7 +80,6 @@ EOF
 }
 
 @test "verify --from works when RFC 3339 datetime with timezone is passed" {
-  skip "https://github.com/turbot/tailpipe/issues/187"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_date_time.tpc
 partition "chaos_date_time" "date_time_inc" {
   source "chaos_date_time" {
@@ -93,7 +89,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02"
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" > /dev/null
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25T15:04:05Z"
@@ -120,7 +116,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02"
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" > /dev/null
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="T-18Y"
