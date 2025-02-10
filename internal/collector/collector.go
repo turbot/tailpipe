@@ -12,9 +12,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
-	"github.com/spf13/viper"
-
-	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe/internal/config"
@@ -112,33 +109,20 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 
 	resolvedFromTime := collectResponse.FromTime
 
-	// if not in quiet mode display the active UI
-	if !viper.GetBool(pconstants.ArgQuiet) {
-		c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
+	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
 
-		go func() {
-			model, err := c.app.Run()
-			if model.(collectionModel).cancelled {
-				slog.Info("Collection UI returned cancelled")
-				c.doCancel()
-			}
-			if err != nil {
-				slog.Warn("Collection UI returned error", "error", err)
-				c.doCancel()
-			}
-
-		}()
-	} else {
-		// display summary line
-		rftSource := ""
-		if resolvedFromTime.Source != "" {
-			rftSource = fmt.Sprintf("(%s)", resolvedFromTime.Source)
+	go func() {
+		model, err := c.app.Run()
+		if model.(collectionModel).cancelled {
+			slog.Info("Collection UI returned cancelled")
+			c.doCancel()
 		}
-		_, err = fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), rftSource)
 		if err != nil {
-			return fmt.Errorf("failed to write to stdout: %w", err)
+			slog.Warn("Collection UI returned error", "error", err)
+			c.doCancel()
 		}
-	}
+
+	}()
 
 	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
 	if !resolvedFromTime.Time.IsZero() {
@@ -179,9 +163,7 @@ func (c *Collector) updateConvertedStatus() {
 	rowCount, err := c.parquetWriter.GetRowCount()
 	if err == nil {
 		c.status.SetRowsConverted(rowCount)
-		if c.app != nil {
-			c.app.Send(c.status)
-		}
+		c.app.Send(c.status)
 	}
 }
 
@@ -205,9 +187,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		if c.app != nil {
-			c.app.Send(c.status)
-		}
+		c.app.Send(c.status)
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
@@ -389,14 +369,9 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 
 func (c *Collector) Compact(ctx context.Context) error {
 	slog.Info("Compacting parquet files")
-	if c.app != nil {
-		c.app.Send(AwaitingCompactionMsg{})
-	}
-
+	c.app.Send(AwaitingCompactionMsg{})
 	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
-		if c.app != nil {
-			c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
-		}
+		c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)
 	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
