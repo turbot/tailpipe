@@ -1,13 +1,13 @@
-<a href="https://tailpipe.io"><img width="67%" src="https://tailpipe.io/images/pipeling-wordmarks/tailpipe_wordmark.svg" /></a>
+<a href="https://tailpipe.io"><img width="67%" src="https://tailpipe.io/images/pipeling-wordmarks/tailpipe_wordmark_white_outline.svg" /></a>
 
 [![plugins](https://img.shields.io/badge/plugins-5-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
 [![plugins](https://img.shields.io/badge/mods-14-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
 [![slack](https://img.shields.io/badge/slack-2695-blue)](https://turbot.com/community/join?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme) &nbsp;
 [![maintained by](https://img.shields.io/badge/maintained%20by-Turbot-blue)](https://turbot.com?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme)
 
-## select * from logs;
+# select * from logs;
 
-[Tailpipe](https://tailpipe-io.vercel.app) is the **lightweight**, **developer-friendly** way to query logs.
+[Tailpipe](https://tailpipe.io) is the **lightweight**, **developer-friendly** way to query logs.
 
 **Cloud logs, SQL insights**. Collects logs from cloud, container and application sources. Query and analyze your data instantly with the power of SQL, right from your terminal.
 
@@ -32,7 +32,11 @@ See the [documentation](https://tailpipe.io/docs) for:
 - [Managing Tailpipe](https://tailpipe.io/docs/manage)
 - [CLI commands](https://tailpipe.io/docs/reference/cli)
 
-## Install Tailpipe
+Plugins and query examples are on the [Tailpipe Hub](https://hub.tailpipe.io).
+
+Prebuilt detection benchmarks are on the [Powerpipe Hub](https://hub.powerpipe.io/?engines=tailpipe).
+
+## Getting Started
 
 Install Tailpipe from the [downloads](https://tailpipe.io/downloads) page:
 
@@ -41,88 +45,88 @@ Install Tailpipe from the [downloads](https://tailpipe.io/downloads) page:
 brew install turbot/tap/tailpipe
 ```
 
-```
-# Linux or Windows (WSL2)
+```sh
+# Linux or Windows (WSL)
 sudo /bin/sh -c "$(curl -fsSL https://tailpipe.io/install/tailpipe.sh)"
 ```
 
-## Install a plugin
-
-Install a plugin for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://hub.tailpipe.io/plugins/turbot/azure), [GCP](https://hub.tailpipe.io/plugins/turbot/gcp), [Pipes](https://hub.tailpipe.io/plugins/turbot/pipes).
+Install a plugin from the [Tailpipe Hub](https://hub.tailpipe.io) for your favorite service (e.g. [AWS](https://hub.tailpipe.io/plugins/turbot/aws), [Azure](https://hub.tailpipe.io/plugins/turbot/azure), [GCP](https://hub.tailpipe.io/plugins/turbot/gcp)):
 
 ```sh
 tailpipe plugin install aws
 ```
 
-## Configure a collection
+Configure your [connection](https://tailpipe.io/docs/manage/connection) credentials, table [partition](https://tailpipe.io/docs/manage/partition) and data [source](https://tailpipe.io/docs/manage/source). Here is an [AWS CloudTrail example](https://hub.tailpipe.io/plugins/turbot/aws/tables/aws_cloudtrail_log#example-configurations):
 
-Details vary by plugin and source. To collect AWS CloudTrail logs, config can be as simple as:
+```sh
+vi ~/.tailpipe/config/aws.tpc
+```
 
 ```hcl
-connection "aws" "prod" {
-  profile = "SSO-Admin-605...13981"
+connection "aws" "logging_account" {
+  profile = "my-logging-account"
 }
 
-partition "aws_cloudtrail_log" "prod" {
+partition "aws_cloudtrail_log" "my_logs" {
   source "aws_s3_bucket" {
-    connection = connection.aws.prod
-    bucket     = "aws-cloudtrail-logs-6054...81-fe67"
+    connection = connection.aws.logging_account
+    bucket     = "aws-cloudtrail-logs-bucket"
   }
 }
 ```
 
-## Run a collection
+Download, enrich, and save logs from your source ([examples](https://tailpipe.io/docs/reference/cli/collect)):
 
-```
+```sh
 tailpipe collect aws_cloudtrail_log
 ```
 
-This command will:
+Enter interactive query mode:
 
-- Acquire compressed (.gz) log files
+```sh
+tailpipe query
+```
 
-- Uncompress them
-
-- Parse all the .json log files and map fields of each line to the plugin-defined schema
-
-- Store the data in Parquet organized by date
-
-## Query!
-
-List the top 10 events and how many times they were called.
+Run a query:
 
 ```sql
-tailpipe query
->  select
+select
   event_source,
   event_name,
   count(*) as event_count
 from
   aws_cloudtrail_log
+where
+  not read_only
 group by
   event_source,
-  event_name,
+  event_name
 order by
-  event_count desc
-limit 10;
+  event_count desc;
 ```
 
+```sh
++----------------------+-----------------------+-------------+
+| event_source         | event_name            | event_count |
++----------------------+-----------------------+-------------+
+| logs.amazonaws.com   | CreateLogStream       | 793845      |
+| ecs.amazonaws.com    | RunTask               | 350836      |
+| ecs.amazonaws.com    | SubmitTaskStateChange | 190185      |
+| s3.amazonaws.com     | PutObject             | 60842       |
+| sns.amazonaws.com    | TagResource           | 25499       |
+| lambda.amazonaws.com | TagResource           | 20673       |
++----------------------+-----------------------+-------------+
 ```
-+-------------------+---------------------------+-------------+
-| event_source      | event_name                | event_count |
-+-------------------+---------------------------+-------------+
-| ec2.amazonaws.com | RunInstances              | 1225268     |
-| ec2.amazonaws.com | DescribeSnapshots         | 101158      |
-| sts.amazonaws.com | AssumeRole                | 78380       |
-| s3.amazonaws.com  | GetBucketAcl              | 19095       |
-| ec2.amazonaws.com | DescribeInstances         | 18366       |
-| sts.amazonaws.com | GetCallerIdentity         | 16512       |
-| iam.amazonaws.com | GetPolicyVersion          | 14737       |
-| s3.amazonaws.com  | ListBuckets               | 13206       |
-| ec2.amazonaws.com | DescribeSpotPriceHistory  | 10714       |
-| ec2.amazonaws.com | DescribeSnapshotAttribute | 9107        |
-+-------------------+---------------------------+-------------+
-```
+
+## Detections as Code with Powerpipe
+
+Pre-built dashboards and detections for the AWS plugin are available in [Powerpipe](https://powerpipe.io) mods, helping you monitor and analyze activity across your AWS accounts.
+
+For example, the [AWS CloudTrail Logs Detections mod](https://hub.powerpipe.io/mods/turbot/tailpipe-mod-aws-cloudtrail-log-detections) scans your CloudTrail logs for anomalies, such as an S3 bucket being made public or a change in your VPC network infrastructure.
+
+Dashboards and detections are [open source](https://github.com/topics/tailpipe-mod), allowing easy customization and collaboration.
+
+To get started, choose a mod from the [Powerpipe Hub](https://hub.powerpipe.io/?engines=tailpipe).
 
 ## Developing
 
