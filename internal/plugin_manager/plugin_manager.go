@@ -428,7 +428,7 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	progress := make(chan struct{}, 5)
 
 	// install plugin
-	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.TailpipeHubOCIBase, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
 	if err != nil {
 		return err
 	}
