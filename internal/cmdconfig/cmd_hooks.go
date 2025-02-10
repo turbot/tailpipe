@@ -18,7 +18,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"
@@ -118,7 +117,8 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []pparse.ParseHclOpt{
-		pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+		//pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+		pparse.WithApplyGrokFunction(true),
 	}
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)

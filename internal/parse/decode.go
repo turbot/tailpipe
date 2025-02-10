@@ -187,7 +187,9 @@ func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAtt
 	for _, attr := range unknownAttrs {
 		//	get the hcl bytes for the file
 		hclBytes := parseCtx.FileData[block.DefRange.Filename]
-		// extract the unknown hcl
+		// extract the unknown hcl - taking full lines
+		// (we do this in case the attribute value was a grok() function call, meaning it has been escaped,
+		// so the attribute byte range will not match the raw hcl filedata)
 		u := config.HclBytesForRange(hclBytes, attr.Range)
 		// if we succeeded in extracting the unknown hcl, add it to the list
 		unknown.Merge(u)
