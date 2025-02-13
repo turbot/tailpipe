@@ -190,7 +190,6 @@ require (
 	github.com/tklauser/numcpus v0.3.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
 	github.com/turbot/pipes-sdk-go v0.12.0 // indirect
-	github.com/turbot/steampipe-plugin-code v1.0.1-alpha.1 // indirect
 	github.com/turbot/steampipe-plugin-sdk/v5 v5.10.4 // indirect
 	github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect

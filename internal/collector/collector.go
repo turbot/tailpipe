@@ -224,7 +224,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		}
 	case *proto.Event_CompleteEvent:
 		completedEvent := e.GetCompleteEvent()
-		slog.Debug("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
+		slog.Info("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
 		// was there an error?
 		if completedEvent.Error != "" {
