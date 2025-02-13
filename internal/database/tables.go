@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/turbot/tailpipe/internal/config"
@@ -116,6 +117,21 @@ func getColumnNames(ctx context.Context, parquetPath string, db *sql.DB) ([]stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to get column names: %w", err)
 	}
+
+	// Sort column names alphabetically but with tp_ fields on the end
+	tpPrefix := "tp_"
+	slices.SortFunc(columns, func(a, b string) int {
+		isPrefixedA, isPrefixedB := strings.HasPrefix(a, tpPrefix), strings.HasPrefix(b, tpPrefix)
+		switch {
+		case isPrefixedA && !isPrefixedB:
+			return 1 // a > b
+		case !isPrefixedA && isPrefixedB:
+			return -1 // a < b
+		default:
+			return strings.Compare(a, b) // standard alphabetical sort
+		}
+	})
+
 	return columns, nil
 }
 
