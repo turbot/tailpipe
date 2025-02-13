@@ -41,7 +41,7 @@ func listViews(ctx context.Context, input *HandlerInput, views []string) error {
 		rows = append(rows, []string{view, p})
 	}
 
-	fmt.Println(buildTable(rows, true)) //nolint:forbidigo //UI output
+	fmt.Println(buildTable(rows, false)) //nolint:forbidigo //UI output
 	return nil
 }
 
@@ -64,7 +64,7 @@ func listViewSchema(ctx context.Context, input *HandlerInput, viewName string) e
 		rows = append(rows, []string{col, strings.ToLower(schema[col])})
 	}
 
-	fmt.Println(buildTable(rows, true)) //nolint:forbidigo //UI output
+	fmt.Println(buildTable(rows, false)) //nolint:forbidigo //UI output
 	return nil
 }
 
