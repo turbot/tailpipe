@@ -73,12 +73,13 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	}
 	var selectClauses []string
 	for _, col := range columns {
+		wrappedCol := fmt.Sprintf(`"%s"`, col)
 		if overrideType, ok := typeOverrides[col]; ok {
 			// Apply the override with casting
-			selectClauses = append(selectClauses, fmt.Sprintf("CAST(%s AS %s) AS %s", col, overrideType, col))
+			selectClauses = append(selectClauses, fmt.Sprintf("CAST(%s AS %s) AS %s", col, overrideType, wrappedCol))
 		} else {
 			// Add the column as-is
-			selectClauses = append(selectClauses, col)
+			selectClauses = append(selectClauses, wrappedCol)
 		}
 	}
 	selectClause := strings.Join(selectClauses, ", ")
