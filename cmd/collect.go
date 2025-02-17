@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -48,7 +49,7 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
-		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information")
+		AddBoolFlag(pconstants.ArgProgress, true, "Show active progress of collection, set to false to disable")
 
 	return cmd
 }
@@ -159,6 +160,11 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	}
 	// TODO pass errors to UI https://github.com/turbot/tailpipe/issues/180
 	//errs := c.Errors()
+
+	// if we suppressed progress display, we should write the summary
+	if !viper.GetBool(pconstants.ArgProgress) {
+		fmt.Fprint(os.Stdout, c.StatusString())
+	}
 
 	return nil
 }
