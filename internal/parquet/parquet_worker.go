@@ -139,7 +139,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// if the partition includes a filter, add a WHERE clause
-	// TODO add validation
+	// TODO add validation https://github.com/turbot/tailpipe/issues/209
 	if partition.Filter != "" {
 		selectQuery += fmt.Sprintf(" WHERE %s", partition.Filter)
 	}
