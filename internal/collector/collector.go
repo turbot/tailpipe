@@ -88,9 +88,7 @@ func (c *Collector) Close() {
 		c.parquetWriter.Close()
 	}
 
-	if c.app != nil {
-		c.app.Send(CollectionFinishedMsg{})
-	}
+	c.updateApp(CollectionFinishedMsg{})
 
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
@@ -178,9 +176,7 @@ func (c *Collector) updateConvertedStatus() {
 	rowCount, err := c.parquetWriter.GetRowCount()
 	if err == nil {
 		c.status.SetRowsConverted(rowCount)
-		if c.app != nil {
-			c.app.Send(c.status)
-		}
+		c.updateApp(c.status)
 	}
 }
 
@@ -204,9 +200,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		if c.app != nil {
-			c.app.Send(c.status)
-		}
+		c.updateApp(c.status)
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 
@@ -388,13 +382,11 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 
 func (c *Collector) Compact(ctx context.Context) error {
 	slog.Info("Compacting parquet files")
-	if c.app != nil {
-		c.app.Send(AwaitingCompactionMsg{})
-	}
+
+	c.updateApp(AwaitingCompactionMsg{})
+
 	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
-		if c.app != nil {
-			c.app.Send(CompactionStatusUpdateMsg{status: &compactionStatus})
-		}
+		c.updateApp(CompactionStatusUpdateMsg{status: &compactionStatus})
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)
 	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
@@ -413,4 +405,10 @@ func (c *Collector) doCancel() {
 
 func (c *Collector) Errors() []string {
 	return c.errors
+}
+
+func (c *Collector) updateApp(msg tea.Msg) {
+	if c.app != nil {
+		c.app.Send(msg)
+	}
 }
