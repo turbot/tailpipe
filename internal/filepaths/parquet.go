@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 )
 
+const TempParquetExtension = ".parquet.tmp"
+
 func GetParquetFileGlobForTable(dataDir, tableName, fileRoot string) string {
 	return filepath.Join(dataDir, fmt.Sprintf("tp_table=%s/*/*/*/%s*.parquet", tableName, fileRoot))
 }
