@@ -49,7 +49,7 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 
 func (f *Format) ToProto() *proto.ConfigData {
 	res := &proto.ConfigData{
-		Target: f.Type,
+		Target: "format." + f.Type,
 	}
 	if f.Config != nil {
 		res.Hcl = f.Config.Hcl
