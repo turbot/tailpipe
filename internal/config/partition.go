@@ -87,3 +87,56 @@ func (c *Partition) CollectionStatePath(collectionDir string) string {
 	// return the path to the collection state file
 	return filepath.Join(collectionDir, fmt.Sprintf("collection_state_%s_%s.json", c.TableName, c.ShortName))
 }
+
+func (c *Partition) Validate() hcl.Diagnostics {
+	diags := hcl.Diagnostics{}
+
+	// validate filter
+	if c.Filter != "" {
+		// check for `;` to prevent multiple statements
+		if strings.Contains(c.Filter, ";") {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Partition filter contains a semicolon",
+				Detail:   fmt.Sprintf("Partition %s should not contain ';' in filter.", c.GetUnqualifiedName()),
+			})
+		}
+		// check for `/*`, `*/`, `--` to prevent comments
+		if strings.Contains(c.Filter, "/*") || strings.Contains(c.Filter, "*/") || strings.Contains(c.Filter, "--") {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Filter contains a comment",
+				Detail:   fmt.Sprintf("Partition %s should not contain comment identifiers ('/*', '*/', '--') in filter.", c.GetUnqualifiedName()),
+			})
+		}
+
+		forbiddenStrings := []string{
+			"select ",
+			"insert ",
+			"update ",
+			"delete ",
+			"drop ",
+			"create ",
+			"alter ",
+			"truncate ",
+			"exec ",
+			"execute ",
+			"union ",
+			"with ",
+		}
+
+		lower := strings.ToLower(c.Filter)
+		for _, s := range forbiddenStrings {
+			if strings.Contains(lower, s) {
+				str := strings.Trim(s, " ")
+				diags = append(diags, &hcl.Diagnostic{
+					Severity: hcl.DiagError,
+					Summary:  "Filter contains a keyword",
+					Detail:   fmt.Sprintf("Partition %s should not contain keyword '%s' in filter, unless used as a quoted identifier ('\"%s\"').", c.GetUnqualifiedName(), str, str),
+				})
+			}
+		}
+	}
+
+	return diags
+}
