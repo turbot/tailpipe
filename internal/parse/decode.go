@@ -91,7 +91,6 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	//case schema.BlockTypeTable:
 
 	default:
-		// TODO what resources does this include?
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
 		res.HandleDecodeDiags(diags)
 	}

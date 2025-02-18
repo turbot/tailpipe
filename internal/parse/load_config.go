@@ -18,13 +18,13 @@ import (
 )
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
-func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeConfig, errorsAndWarnings error_helpers.ErrorAndWarnings) {
+func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeConfig, ew error_helpers.ErrorAndWarnings) {
 	utils.LogTime("TailpipeConfig.loadTailpipeConfig start")
 	defer utils.LogTime("TailpipeConfig.loadTailpipeConfig end")
 
 	defer func() {
 		if r := recover(); r != nil {
-			errorsAndWarnings = error_helpers.NewErrorsAndWarning(helpers.ToError(r))
+			ew = error_helpers.NewErrorsAndWarning(helpers.ToError(r))
 		}
 	}()
 
@@ -41,19 +41,21 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	}
 
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
-	ew := v.AddLocalPlugins(ctx)
-	if ew.GetError() != nil {
-		return nil, ew
+	err = v.AddLocalPlugins(ctx)
+	if err != nil {
+		return nil, error_helpers.NewErrorsAndWarning(err)
 	}
+
 	tailpipeConfig.PluginVersions = v.Plugins
 
 	// initialise all partitions - this populates the Plugin and CustomTable (where set) properties
 	tailpipeConfig.InitPartitions()
 
 	// now validate the config
-	ew.Error = tailpipeConfig.Validate()
+	diags := tailpipeConfig.Validate()
+	ew = DiagsToErrorsAndWarnings("", diags)
 
-	return tailpipeConfig, errorsAndWarnings
+	return tailpipeConfig, ew
 }
 
 // load config from the given folder and update TailpipeConfig

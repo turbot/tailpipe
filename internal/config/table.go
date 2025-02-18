@@ -1,17 +1,21 @@
 package config
 
 import (
+	"fmt"
 	"github.com/hashicorp/hcl/v2"
 	typehelpers "github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"strings"
 )
 
 type ColumnSchema struct {
-	Name   string  `hcl:"name,label" cty:"name"`
-	Type   *string `hcl:"type" cty:"type"`
-	Source *string `hcl:"source" cty:"source"`
+	Name     string  `hcl:"name,label" cty:"name"`
+	Type     *string `hcl:"type" cty:"type"`
+	Source   *string `hcl:"source" cty:"source"`
+	Required *bool   `hcl:"required" cty:"required"`
 }
 
 type Table struct {
@@ -60,6 +64,7 @@ func (t *Table) ToProtoSchema() *proto.Schema {
 			SourceName: col.Name,
 			ColumnName: col.Name,
 			Type:       typehelpers.SafeString(col.Type),
+			Required:   typehelpers.BoolValue(col.Required),
 		}
 		if col.Source != nil {
 			s.SourceName = *col.Source
@@ -74,4 +79,26 @@ func (t *Table) ToProto() *proto.Table {
 		Name:   t.ShortName,
 		Schema: t.ToProtoSchema(),
 	}
+}
+
+func (t *Table) Validate() hcl.Diagnostics {
+	var diags hcl.Diagnostics
+	// build list of failed columns
+	var failedColumns []string
+	for _, col := range t.Columns {
+		// if the column is options, a type must be specified
+		// - this is to ensure we can determine the column type in the case of the column being missing in the source data
+		// (if the column is required, the column being missing would cause an error so this problem will not arise)
+		if !typehelpers.BoolValue(col.Required) && col.Type == nil {
+			failedColumns = append(failedColumns, col.Name)
+		}
+	}
+	if len(failedColumns) > 0 {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("table '%s', %s '%s': column type must be specified if column is optional", t.ShortName, utils.Pluralize("column", len(failedColumns)), strings.Join(failedColumns, "`, `")),
+			Subject:  t.DeclRange.Ptr(),
+		})
+	}
+	return diags
 }
