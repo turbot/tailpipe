@@ -11,7 +11,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress false
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress=false
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25"
@@ -37,7 +37,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress false
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress=false
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25T15:04:05"
@@ -63,7 +63,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress false
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress=false
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25T15:04:05.000"
@@ -89,7 +89,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress false
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress=false
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="2007-01-25T15:04:05Z"
@@ -116,7 +116,7 @@ partition "chaos_date_time" "date_time_inc" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress false
+  tailpipe collect chaos_date_time.date_time_inc --from="2006-01-02" --progress=false
 
   # run tailpipe query with --from and verify the timestamps
   run tailpipe query "select tp_timestamp from chaos_date_time order by tp_timestamp asc" --output csv --from="T-18Y"

@@ -11,7 +11,7 @@ partition "chaos_all_columns" "chaos_all_column_types" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_all_columns.chaos_all_column_types --progress false
+  tailpipe collect chaos_all_columns.chaos_all_column_types --progress=false
 
   # run tailpipe query and verify the row counts
   run tailpipe query "select count(*) as count from chaos_all_columns;" --output csv
@@ -36,7 +36,7 @@ partition "chaos_all_columns" "chaos_high_row_count" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_all_columns.chaos_high_row_count --progress false
+  tailpipe collect chaos_all_columns.chaos_high_row_count --progress=false
 
   # run tailpipe query and verify the row counts
   run tailpipe query "select count(*) as count from chaos_all_columns;" --output csv
@@ -60,7 +60,7 @@ partition "chaos_all_columns" "chaos_very_high_row_count" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_all_columns.chaos_very_high_row_count --progress false
+  tailpipe collect chaos_all_columns.chaos_very_high_row_count --progress=false
 
   # run tailpipe query and verify the row counts
   run tailpipe query "select count(*) as count from chaos_all_columns;" --output csv
