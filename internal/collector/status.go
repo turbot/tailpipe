@@ -2,6 +2,10 @@ package collector
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/dustin/go-humanize"
+
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
@@ -36,5 +40,25 @@ func (s *status) SetRowsConverted(rowsConverted int64) {
 }
 
 func (s *status) String() string {
-	return fmt.Sprintf("Artifacts discovered: %d. Artifacts downloaded: %d. Artifacts extracted: %d. Rows enriched: %d. Rows converted: %d. Errors: %d.", s.ArtifactsDiscovered, s.ArtifactsDownloaded, s.ArtifactsExtracted, s.RowsEnriched, s.RowsConverted, s.Errors)
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("Artifacts discovered: %s. ", humanize.Comma(s.ArtifactsDiscovered)))
+	out.WriteString(fmt.Sprintf("Artifacts downloaded: %s. ", humanize.Comma(s.ArtifactsDownloaded)))
+	out.WriteString(fmt.Sprintf("Artifacts extracted: %s. ", humanize.Comma(s.ArtifactsExtracted)))
+	if s.ArtifactErrors > 0 {
+		out.WriteString(fmt.Sprintf("Artifact Errors: %s. ", humanize.Comma(s.ArtifactErrors)))
+	}
+
+	out.WriteString(fmt.Sprintf("Rows enriched: %s. ", humanize.Comma(s.RowsEnriched)))
+	out.WriteString(fmt.Sprintf("Rows saved: %s. ", humanize.Comma(s.RowsConverted)))
+	filteredRows := s.RowsReceived - (s.RowsConverted + s.Errors)
+	if filteredRows > 0 {
+		out.WriteString(fmt.Sprintf("Rows filtered: %s. ", humanize.Comma(filteredRows)))
+	}
+	if s.Errors > 0 {
+		out.WriteString(fmt.Sprintf("Row Errors: %s.", humanize.Comma(s.Errors)))
+	}
+
+	out.WriteString("\n")
+
+	return out.String()
 }
