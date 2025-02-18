@@ -96,7 +96,8 @@ func (t *Table) Validate() hcl.Diagnostics {
 	if len(failedColumns) > 0 {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("table '%s', %s '%s': column type must be specified if column is optional", t.ShortName, utils.Pluralize("column", len(failedColumns)), strings.Join(failedColumns, "`, `")),
+			Summary:  fmt.Sprintf("Table '%s' failed validation", t.ShortName),
+			Detail:   fmt.Sprintf("column type must be specified if column is optional (%s '%s')", utils.Pluralize("column", len(failedColumns)), strings.Join(failedColumns, "`, `")),
 			Subject:  t.DeclRange.Ptr(),
 		})
 	}
