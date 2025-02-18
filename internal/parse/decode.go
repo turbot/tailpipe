@@ -151,6 +151,8 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 		target.SetConfigHcl(unknown)
 	}
 
+	res.AddDiags(target.Validate())
+
 	return res
 }
 
