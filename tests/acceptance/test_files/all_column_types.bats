@@ -20,6 +20,7 @@ EOF
   assert_equal "$output" "count
 1"
 
+
   # remove the config file
   rm -rf $TAILPIPE_INSTALL_DIR/config/chaos_all_col_types.tpc
 }
