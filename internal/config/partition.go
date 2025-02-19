@@ -136,6 +136,15 @@ func (c *Partition) Validate() hcl.Diagnostics {
 				})
 			}
 		}
+
+		// check for `.` (dot notation) as we currently don't support this as structs aren't compiled at this stage
+		if strings.Contains(c.Filter, ".") {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagError,
+				Summary:  "Filter contains dot notation",
+				Detail:   fmt.Sprintf("Partition %s contains '.' in filter, dot-notation is currently unsupported, please use arrow-notation instead (field->>'sub_field' != 'value').", c.GetUnqualifiedName()),
+			})
+		}
 	}
 
 	return diags
