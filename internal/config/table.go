@@ -85,8 +85,8 @@ func (t *Table) ToProto() *proto.Table {
 
 func (t *Table) Validate() hcl.Diagnostics {
 	var diags hcl.Diagnostics
-	// build list of failed columns
-	var failedColumns []string
+	// build list of optional columns without types
+	var optionalColumnsWithNoType []string
 	for _, col := range t.Columns {
 		// if the column is options, a type must be specified
 		// - this is to ensure we can determine the column type in the case of the column being missing in the source data
@@ -98,14 +98,14 @@ func (t *Table) Validate() hcl.Diagnostics {
 		}
 
 		if !typehelpers.BoolValue(col.Required) && col.Type == nil {
-			failedColumns = append(failedColumns, col.Name)
+			optionalColumnsWithNoType = append(optionalColumnsWithNoType, col.Name)
 		}
 	}
-	if len(failedColumns) > 0 {
+	if len(optionalColumnsWithNoType) > 0 {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  fmt.Sprintf("Table '%s' failed validation", t.ShortName),
-			Detail:   fmt.Sprintf("column type must be specified if column is optional (%s '%s')", utils.Pluralize("column", len(failedColumns)), strings.Join(failedColumns, "`, `")),
+			Detail:   fmt.Sprintf("column type must be specified if column is optional (%s '%s')", utils.Pluralize("column", len(optionalColumnsWithNoType)), strings.Join(optionalColumnsWithNoType, "', '")),
 			Subject:  t.DeclRange.Ptr(),
 		})
 	}

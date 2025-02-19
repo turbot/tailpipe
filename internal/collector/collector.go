@@ -120,6 +120,16 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 
 	c.errorFilePath = fmt.Sprintf("%s/%s_%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), time.Now().Format("20060102T150405"), c.partition.GetUnqualifiedName())
 
+	// validate the schema returned by the plugin
+	err = collectResponse.Schema.Validate()
+	if err != nil {
+		err := fmt.Errorf("table '%s' returned invalid schema: %w", c.partition.TableName, err)
+		// set execution to errored
+		c.execution.done(err)
+		// and return error
+		return err
+	}
+
 	// display the progress UI
 	err = c.showCollectionStatus(resolvedFromTime)
 	if err != nil {
