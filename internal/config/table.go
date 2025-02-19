@@ -13,25 +13,20 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
-type ColumnSchema struct {
-	Name     string  `hcl:"name,label" cty:"name"`
-	Type     *string `hcl:"type" cty:"type"`
-	Source   *string `hcl:"source" cty:"source"`
-	Required *bool   `hcl:"required" cty:"required"`
-}
-
 type Table struct {
 	modconfig.HclResourceImpl
 
 	// the default format for this table (todo make a map keyed by source name?)
 	DefaultSourceFormat *Format `hcl:"format" cty:"format"`
 
-	Columns []ColumnSchema `hcl:"column,block" cty:"columns"`
+	Columns []Column `hcl:"column,block" cty:"columns"`
 
 	// should we include ALL source fields in addition to any defined columns, or ONLY include the columns defined
 	AutoMapSourceFields bool `hcl:"automap_source_fields,optional" cty:"automap_source_fields"`
 	// should we exclude any source fields from the output (only applicable if automap_source_fields is true)
 	ExcludeSourceFields []string `hcl:"exclude_source_fields,optional" cty:"exclude_source_fields"`
+	// the default null value for the table (may be overridden for specific columns)
+	NullValue string `hcl:"null_value,optional" cty:"null_value"`
 }
 
 func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -59,15 +54,20 @@ func (t *Table) ToProtoSchema() *proto.Schema {
 	var res = &proto.Schema{
 		AutomapSourceFields: t.AutoMapSourceFields,
 		ExcludeSourceFields: t.ExcludeSourceFields,
+		Description:         typehelpers.SafeString(t.Description),
+		NullValue:           typehelpers.SafeString(t.NullValue),
 	}
 	for _, col := range t.Columns {
 		s := &proto.ColumnSchema{
 			// default source to column name
-			SourceName: col.Name,
-			ColumnName: col.Name,
-			Type:       typehelpers.SafeString(col.Type),
-			Required:   typehelpers.BoolValue(col.Required),
+			SourceName:  col.Name,
+			ColumnName:  col.Name,
+			Type:        typehelpers.SafeString(col.Type),
+			Description: typehelpers.SafeString(col.Description),
+			NullValue:   typehelpers.SafeString(col.NullValue),
+			Required:    typehelpers.BoolValue(col.Required),
 		}
+		// override the source name if it is set
 		if col.Source != nil {
 			s.SourceName = *col.Source
 		}
@@ -87,6 +87,15 @@ func (t *Table) Validate() hcl.Diagnostics {
 	var diags hcl.Diagnostics
 	// build list of optional columns without types
 	var optionalColumnsWithNoType []string
+	if !t.AutoMapSourceFields && len(t.ExcludeSourceFields) > 0 {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Table '%s' failed validation", t.ShortName),
+			Detail:   "exclude_source_fields can only be set if automap_source_fields is true",
+			Subject:  t.DeclRange.Ptr(),
+		})
+	}
+
 	for _, col := range t.Columns {
 		// if the column is options, a type must be specified
 		// - this is to ensure we can determine the column type in the case of the column being missing in the source data
