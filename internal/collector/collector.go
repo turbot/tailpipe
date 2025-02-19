@@ -131,7 +131,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 		if resolvedFromTime.Source != "" {
 			rftSource = fmt.Sprintf("(%s)", resolvedFromTime.Source)
 		}
-		_, err = fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), rftSource)
+		_, err = fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), rftSource) //nolint:forbidigo // we are writing to stdout
 		if err != nil {
 			return fmt.Errorf("failed to write to stdout: %w", err)
 		}
