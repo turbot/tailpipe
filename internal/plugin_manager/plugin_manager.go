@@ -330,6 +330,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 			return
 		case err := <-errChan:
 			if err != nil {
+				// TODO #error handle error
 				// ignore EOF errors
 				if !strings.Contains(err.Error(), "EOF") {
 					fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo// TODO #error

@@ -2,13 +2,15 @@ package config
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
 	typehelpers "github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
-	"strings"
+	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
 type ColumnSchema struct {
@@ -89,6 +91,12 @@ func (t *Table) Validate() hcl.Diagnostics {
 		// if the column is options, a type must be specified
 		// - this is to ensure we can determine the column type in the case of the column being missing in the source data
 		// (if the column is required, the column being missing would cause an error so this problem will not arise)
+
+		// (tp columns are excluded from this as we know their types)
+		if schema.IsCommonField(col.Name) {
+			continue
+		}
+
 		if !typehelpers.BoolValue(col.Required) && col.Type == nil {
 			failedColumns = append(failedColumns, col.Name)
 		}

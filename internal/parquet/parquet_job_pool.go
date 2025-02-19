@@ -188,7 +188,10 @@ func (w *ParquetJobPool) inferSchemaIfNeeded(executionID string, chunks []int) e
 		}
 		w.schemaMut.Unlock()
 	}
-	return nil
+	// now validate the schema - we should have types for all columns
+	// (if we do not that indicates a custom table definition was used which does not specify types for all optional fields -
+	// this should have caused a config validation error earlier on
+	return w.schema.Validate()
 }
 
 func (w *ParquetJobPool) inferChunkSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
