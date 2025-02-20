@@ -17,5 +17,5 @@ type parquetJob struct {
 	rowCount *int64
 
 	Partition  *config.Partition
-	SchemaFunc func() *schema.RowSchema
+	SchemaFunc func() *schema.TableSchema
 }

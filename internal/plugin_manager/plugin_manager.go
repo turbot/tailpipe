@@ -129,7 +129,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		req.SourceFormat = partition.Source.Format.ToProto()
 	}
 	if partition.CustomTable != nil {
-		req.CustomTableDef = partition.CustomTable.ToProto()
+		req.CustomTableSchema = partition.CustomTable.ToProto()
 		// set the default source format if the source dow not provide one
 		if req.SourceFormat == nil && partition.CustomTable.DefaultSourceFormat != nil {
 			req.SourceFormat = partition.CustomTable.DefaultSourceFormat.ToProto()

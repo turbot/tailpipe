@@ -50,7 +50,7 @@ func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Dia
 	return c, nil
 }
 
-func (t *Table) ToProtoSchema() *proto.Schema {
+func (t *Table) ToProto() *proto.Schema {
 	var res = &proto.Schema{
 		AutomapSourceFields: t.AutoMapSourceFields,
 		ExcludeSourceFields: t.ExcludeSourceFields,
@@ -74,13 +74,6 @@ func (t *Table) ToProtoSchema() *proto.Schema {
 		res.Columns = append(res.Columns, s)
 	}
 	return res
-}
-
-func (t *Table) ToProto() *proto.Table {
-	return &proto.Table{
-		Name:   t.ShortName,
-		Schema: t.ToProtoSchema(),
-	}
 }
 
 func (t *Table) Validate() hcl.Diagnostics {

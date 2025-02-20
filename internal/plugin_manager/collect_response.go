@@ -8,7 +8,7 @@ import (
 
 type CollectResponse struct {
 	ExecutionId string
-	Schema      *schema.RowSchema
+	Schema      *schema.TableSchema
 	FromTime    *row_source.ResolvedFromTime
 }
 
