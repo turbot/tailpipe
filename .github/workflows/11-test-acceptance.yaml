@@ -132,14 +132,6 @@ jobs:
         run: |
           go install github.com/josephburnett/jd@latest
 
-      # TODO remove this step once tailpipe and its plugins are public
-      - name: Log in to the Container registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ secrets.GH_USERNAME }}
-          password: ${{ secrets.GH_PAT }}
-
       - name: Install Tailpipe and plugins
         run: |
           tailpipe plugin install chaos
