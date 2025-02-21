@@ -78,29 +78,30 @@ func TestHclBytes_Merge(t *testing.T) {
 		Range hclhelpers.Range
 	}
 	type args struct {
+		b     *HclBytes
 		other *HclBytes
 	}
 	tests := []struct {
-		name   string
-		fields fields
-		args   args
-		want   *HclBytes
+		name string
+		args args
+		want *HclBytes
 	}{
 		{
 			name: "Merge adjacent blocks",
-			fields: fields{
-				Hcl: []byte(`resource "aws_s3_bucket" "my_bucket" {
+
+			args: args{
+				b: &HclBytes{
+					Hcl: []byte(`resource "aws_s3_bucket" "my_bucket" {
   bucket = "my-bucket-name"
 }`),
-				Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 3}}),
-			},
-			args: args{
+					Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 3}}),
+				},
 				other: &HclBytes{
 					Hcl: []byte(`
 output "bucket_name" {
   value = aws_s3_bucket.my_bucket.bucket
 }`),
-					Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 4}, End: hcl.Pos{Line: 6}}),
+					Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 4}, End: hcl.Pos{Line: 6, Byte: 100}}),
 				},
 			},
 			want: &HclBytes{
@@ -111,20 +112,17 @@ output "bucket_name" {
 output "bucket_name" {
   value = aws_s3_bucket.my_bucket.bucket
 }`),
-				Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 6, Byte: 106}}),
+				Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 6, Byte: 100}}),
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			h := &HclBytes{
-				Hcl:   tt.fields.Hcl,
-				Range: tt.fields.Range,
-			}
-			h.Merge(tt.args.other)
-			if !reflect.DeepEqual(h, tt.want) {
-				t.Errorf("Merge() = \n%q, want \n%q", h.Hcl, tt.want.Hcl)
+
+			tt.args.b.Merge(tt.args.other)
+			if !reflect.DeepEqual(tt.args.b, tt.want) {
+				t.Errorf("Merge() = \n%s, want \n%s", tt.args.b, tt.want)
 			}
 		})
 	}

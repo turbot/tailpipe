@@ -1,14 +1,21 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
-	"strings"
 )
 
 type HclBytes struct {
 	Hcl   []byte           `cty:"hcl"`
 	Range hclhelpers.Range `cty:"range"`
+}
+
+// string
+func (h *HclBytes) String() string {
+	return fmt.Sprintf("HclBytes{Hcl: %s, Range: %s}", h.Hcl, h.Range)
 }
 
 // HclBytesForLines extracts the HCL bytes for a given range from a source HCL byte buffer,
