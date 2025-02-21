@@ -297,7 +297,7 @@ func (c *Collector) StatusString() string {
 		if c.execution.rowsReceived == 0 {
 			str.Reset()
 		}
-		str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", c.execution.id, c.execution.error))
+		str.WriteString(fmt.Sprintf("Execution failed: %s\n", c.execution.error))
 	}
 
 	return str.String()
@@ -313,12 +313,12 @@ func (c *Collector) WaitForCompletion(ctx context.Context) error {
 		switch c.execution.state {
 		case ExecutionState_ERROR:
 			slog.Info("Execution in error state", "execution", c.execution.id)
-			return NewExecutionError(fmt.Errorf("execution in error state: %s", c.execution.error.Error()), c.execution.id)
+			return c.execution.error
 		case ExecutionState_COMPLETE:
 			slog.Info("Execution complete", "execution", c.execution.id)
 			return nil
 		default:
-			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))
+			return retry.RetryableError(errors.New("execution not complete"))
 		}
 	})
 	if err != nil {

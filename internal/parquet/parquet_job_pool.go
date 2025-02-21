@@ -152,7 +152,7 @@ func (w *ParquetJobPool) GetChunksWritten(id string) (int32, error) {
 	defer w.errorsLock.RUnlock()
 	if len(w.errors) > 0 {
 		err := errors.Join(w.errors...)
-		return -1, fmt.Errorf("job group %s has errors: %w", id, err)
+		return -1, err
 	}
 	return w.completionCount, nil
 }

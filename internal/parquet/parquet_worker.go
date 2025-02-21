@@ -157,7 +157,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 
 	_, err := w.db.Exec(exportQuery)
 	if err != nil {
-		return 0, fmt.Errorf("failed to export data to parquet: %w", err)
+		return 0, fmt.Errorf("conversion query failed: %w", err)
 	}
 
 	// now read row count
