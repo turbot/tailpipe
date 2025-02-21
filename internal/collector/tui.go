@@ -7,10 +7,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dustin/go-humanize"
+	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/parquet"
 )
+
+const uiErrorsToDisplay = 3
 
 type collectionModel struct {
 	partitionName string
@@ -36,6 +39,10 @@ type collectionModel struct {
 
 	// compaction
 	compactionStatus *parquet.CompactionStatus
+
+	// errors
+	errorList     []string
+	errorFilePath string
 }
 
 type CollectionFinishedMsg struct{}
@@ -44,6 +51,11 @@ type AwaitingCompactionMsg struct{}
 
 type CompactionStatusUpdateMsg struct {
 	status *parquet.CompactionStatus
+}
+
+type CollectionErrorsMsg struct {
+	errorFilePath string
+	errors        []string
 }
 
 func newCollectionModel(partitionName string, fromTime row_source.ResolvedFromTime) collectionModel {
@@ -94,6 +106,10 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.compactionStatus.Update(*t.status)
 			return c, nil
 		}
+	case CollectionErrorsMsg:
+		c.errorList = t.errors
+		c.errorFilePath = t.errorFilePath
+		return c, nil
 	}
 	return c, nil
 }
@@ -167,6 +183,21 @@ func (c collectionModel) View() string {
 		} else {
 			b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source+c.compactionStatus.Uncompacted, c.compactionStatus.Dest+c.compactionStatus.Uncompacted))
 		}
+		b.WriteString("\n")
+	}
+
+	// errors
+	if len(c.errorList) > 0 {
+		b.WriteString("Errors:\n")
+		for i, e := range c.errorList {
+			if i <= (uiErrorsToDisplay - 1) {
+				b.WriteString(fmt.Sprintf("  %s\n", helpers.TruncateString(e, 120)))
+			} else {
+				b.WriteString(fmt.Sprintf("  … and %d more.\n", len(c.errorList)-uiErrorsToDisplay))
+				break
+			}
+		}
+		b.WriteString(fmt.Sprintf("See %s for full details.\n", c.errorFilePath))
 		b.WriteString("\n")
 	}
 
