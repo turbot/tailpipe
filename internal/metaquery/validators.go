@@ -2,10 +2,10 @@ package metaquery
 
 import (
 	"fmt"
-	"github.com/spf13/viper"
+	"slices"
 	"strings"
 
-	"github.com/turbot/go-kit/helpers"
+	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"golang.org/x/text/cases"
@@ -156,7 +156,7 @@ var allowedArgValues = func(caseSensitive bool, allowedValues ...string) validat
 		}
 
 		for _, arg := range args {
-			if !helpers.StringSliceContains(allowedValues, arg) {
+			if !slices.Contains(allowedValues, arg) {
 				return ValidationResult{
 					Err: fmt.Errorf("valid values for this command are %v - got %s", allowedValues, arg),
 				}

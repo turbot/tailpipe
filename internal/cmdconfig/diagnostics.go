@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 
 	"github.com/spf13/viper"
-	"github.com/turbot/go-kit/helpers"
 )
 
 // DisplayConfig prints all config set via WorkspaceProfile or HCL options
@@ -23,7 +23,7 @@ func DisplayConfig() {
 	}
 	diagnostics = strings.ToLower(diagnostics)
 	configFormats := []string{"config", "config_json"}
-	if !helpers.StringSliceContains(configFormats, diagnostics) {
+	if !slices.Contains(configFormats, diagnostics) {
 		error_helpers.ShowWarning("invalid value for TAILPIPE_CONFIG_DUMP, expected values: config,config_json")
 		return
 	}

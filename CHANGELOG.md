@@ -1,3 +1,11 @@
+## v0.1.2 [2025-02-21]
+_What's new_
+- The `--from` and `--to` arguments now support a wider range of time formats. ([#223](https://github.com/turbot/tailpipe/issues/223))
+
+_Bug fixes_
+- Fixes issue where passing the sql file name to tailpipe query was not working. ([#216](https://github.com/turbot/tailpipe/issues/216))
+- Fixes issue where tailpipe was failing to install private turbot-hosted plugins. ([#201](https://github.com/turbot/tailpipe/issues/201))
+
 ## v0.1.1 [2025-02-10]
 _Bug fixes_
 - The `table show` command now correctly shows table description. ([#181](https://github.com/turbot/tailpipe/issues/181))
