@@ -96,6 +96,7 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 	}
 	// if there were any row errors or any missing view errors, exit with a non-zero code
 	if failures > 0 || len(errs) > 0 {
+		// if there were any errors, they would have been shown already from `RunBatchSession` - just set the exit code
 		exitCode = pconstants.ExitCodeQueryExecutionFailed
 	}
 
