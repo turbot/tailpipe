@@ -73,10 +73,6 @@ output "bucket_name" {
 
 // Test for merging HCL byte ranges
 func TestHclBytes_Merge(t *testing.T) {
-	type fields struct {
-		Hcl   []byte
-		Range hclhelpers.Range
-	}
 	type args struct {
 		b     *HclBytes
 		other *HclBytes
