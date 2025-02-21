@@ -14,10 +14,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/sethvargo/go-retry"
 	"github.com/spf13/viper"
-
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
@@ -105,6 +105,9 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 		return errors.New("collection already in progress")
 	}
 
+	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
+	c.execution = newExecution(c.partition)
+
 	// tell plugin to start collecting
 	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, c.collectionTempDir)
 	if err != nil {
@@ -112,34 +115,25 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	}
 
 	resolvedFromTime := collectResponse.FromTime
+	// now set the execution id
+	c.execution.id = collectResponse.ExecutionId
 
 	c.errorFilePath = fmt.Sprintf("%s/%s_%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), time.Now().Format("20060102T150405"), c.partition.GetUnqualifiedName())
 
-	if viper.GetBool(pconstants.ArgProgress) {
-		c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
+	// validate the schema returned by the plugin
+	err = collectResponse.Schema.Validate()
+	if err != nil {
+		err := fmt.Errorf("table '%s' returned invalid schema: %w", c.partition.TableName, err)
+		// set execution to errored
+		c.execution.done(err)
+		// and return error
+		return err
+	}
 
-		go func() {
-			model, err := c.app.Run()
-			if model.(collectionModel).cancelled {
-				slog.Info("Collection UI returned cancelled")
-				c.doCancel()
-			}
-			if err != nil {
-				slog.Warn("Collection UI returned error", "error", err)
-				c.doCancel()
-			}
-
-		}()
-	} else {
-		// display initial message
-		rftSource := ""
-		if resolvedFromTime.Source != "" {
-			rftSource = fmt.Sprintf("(%s)", resolvedFromTime.Source)
-		}
-		_, err = fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), rftSource) //nolint:forbidigo // we are writing to stdout
-		if err != nil {
-			return fmt.Errorf("failed to write to stdout: %w", err)
-		}
+	// display the progress UI
+	err = c.showCollectionStatus(resolvedFromTime)
+	if err != nil {
+		return err
 	}
 
 	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
@@ -147,12 +141,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 		c.partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
 	}
 
-	executionId := collectResponse.ExecutionId
-	// add the execution to the map
-	c.execution = newExecution(executionId, c.partition)
-
 	// create a parquet writer
-	parquetWriter, err := parquet.NewParquetJobPool(executionId, c.partition, c.sourcePath, collectResponse.Schema)
+	parquetWriter, err := parquet.NewParquetJobPool(c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -175,6 +165,41 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	c.listenToEventsAsync(ctx)
 
 	return nil
+}
+
+func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+	if viper.GetBool(pconstants.ArgProgress) {
+		return c.showTeaAppAsync(resolvedFromTime)
+	}
+
+	return c.showMinimalCollectionStatus(resolvedFromTime)
+}
+
+func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTime) error {
+	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
+
+	go func() {
+		model, err := c.app.Run()
+		if model.(collectionModel).cancelled {
+			slog.Info("Collection UI returned cancelled")
+			c.doCancel()
+		}
+		if err != nil {
+			slog.Warn("Collection UI returned error", "error", err)
+			c.doCancel()
+		}
+	}()
+	return nil
+}
+
+func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+	// display initial message
+	fromTimeSourceStr := ""
+	if resolvedFromTime.Source != "" {
+		fromTimeSourceStr = fmt.Sprintf("(%s)", resolvedFromTime.Source)
+	}
+	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr) //nolint:forbidigo //desired output
+	return err
 }
 
 func (c *Collector) updateConvertedStatus() {
@@ -201,14 +226,13 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	// switch based on the struct of the event
 	switch e.GetEvent().(type) {
 	case *proto.Event_StartedEvent:
-		slog.Debug("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
+		slog.Info("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
 		c.updateApp(c.status)
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
-
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
 
@@ -220,32 +244,32 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		err := c.parquetWriter.AddChunk(executionId, chunkNumber)
 		if err != nil {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
-			// TODO #errors what to do with this error?  https://github.com/turbot/tailpipe/issues/106
+			c.execution.done(err)
 		}
 	case *proto.Event_CompleteEvent:
 		completedEvent := e.GetCompleteEvent()
-		slog.Debug("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
+		slog.Info("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
 		// was there an error?
 		if completedEvent.Error != "" {
 			slog.Error("execution error", "execution", completedEvent.ExecutionId, "error", completedEvent.Error)
 			// retrieve the execution
-			c.execution.state = ExecutionState_ERROR
-			c.execution.error = fmt.Errorf("plugin error: %s", completedEvent.Error)
+			c.execution.done(fmt.Errorf("plugin error: %s", completedEvent.Error))
 		}
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file
 
 		// start thread waiting for execution to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
-		// TODO #errors x what to do with an error here?  https://github.com/turbot/tailpipe/issues/106
 		go func() {
 			err := c.waitForConversions(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
+				c.execution.done(err)
 			}
 		}()
 
+		// TODO #errors non fatal errors should be aggregated by the plugin - only fatal errors should be sent as error event
 	case *proto.Event_ErrorEvent:
 		ev := e.GetErrorEvent()
 		// TODO think about fatal vs non fatal errors https://github.com/turbot/tailpipe/issues/179
@@ -273,7 +297,7 @@ func (c *Collector) StatusString() string {
 		if c.execution.rowsReceived == 0 {
 			str.Reset()
 		}
-		str.WriteString(fmt.Sprintf("Execution %s failed: %s\n", c.execution.id, c.execution.error))
+		str.WriteString(fmt.Sprintf("Execution failed: %s\n", c.execution.error))
 	}
 
 	return str.String()
@@ -289,12 +313,12 @@ func (c *Collector) WaitForCompletion(ctx context.Context) error {
 		switch c.execution.state {
 		case ExecutionState_ERROR:
 			slog.Info("Execution in error state", "execution", c.execution.id)
-			return NewExecutionError(fmt.Errorf("execution in error state: %s", c.execution.error.Error()), c.execution.id)
+			return c.execution.error
 		case ExecutionState_COMPLETE:
 			slog.Info("Execution complete", "execution", c.execution.id)
 			return nil
 		default:
-			return retry.RetryableError(NewExecutionError(errors.New("execution not complete"), c.execution.id))
+			return retry.RetryableError(errors.New("execution not complete"))
 		}
 	})
 	if err != nil {
@@ -387,6 +411,14 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 		for event := range c.Events {
 			c.handlePluginEvent(ctx, event)
 		}
+		//TODO #control-flow KAI re-add
+		// adding this causes a stall - AND - when cancelling out of the stall with control c, get a panic: send on closed channel
+		//select {
+		//case <-ctx.Done():
+		//	return
+		//case event := <-c.Events:
+		//	c.handlePluginEvent(ctx, event)
+		//}
 	}()
 }
 

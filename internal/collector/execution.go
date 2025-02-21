@@ -29,9 +29,8 @@ type execution struct {
 	table        string
 }
 
-func newExecution(executionId string, part *config.Partition) *execution {
+func newExecution(part *config.Partition) *execution {
 	e := &execution{
-		id:        executionId,
 		partition: part.UnqualifiedName,
 		table:     part.TableName,
 		plugin:    part.Plugin.Alias,

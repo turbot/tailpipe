@@ -114,7 +114,7 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) erro
 }
 
 // convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.RowSchema) (int64, error) {
+func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.TableSchema) (int64, error) {
 	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "partitionName", partitionName)
 	//defer slog.Debug("worker.convertFile - done", "error", err)
 
@@ -139,7 +139,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
 
 	// if the partition includes a filter, add a WHERE clause
-	// TODO add validation
+	// TODO add validation https://github.com/turbot/tailpipe/issues/209
 	if partition.Filter != "" {
 		selectQuery += fmt.Sprintf(" WHERE %s", partition.Filter)
 	}
@@ -157,7 +157,7 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 
 	_, err := w.db.Exec(exportQuery)
 	if err != nil {
-		return 0, fmt.Errorf("failed to export data to parquet: %w", err)
+		return 0, fmt.Errorf("conversion query failed: %w", err)
 	}
 
 	// now read row count
@@ -188,7 +188,7 @@ func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 	return rowCount, nil
 }
 
-func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.RowSchema) interface{} {
+func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.TableSchema) interface{} {
 	query, ok := w.viewQueries[partitionName]
 	if !ok {
 		query = buildViewQuery(rowSchema)
@@ -197,7 +197,7 @@ func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *
 	return query
 }
 
-func buildViewQuery(rowSchema *schema.RowSchema) string {
+func buildViewQuery(rowSchema *schema.TableSchema) string {
 	var structSliceColumns []*schema.ColumnSchema
 
 	// first build the columns to select from the jsonl file
@@ -249,7 +249,7 @@ FROM
 }
 
 // return the column definitions for the row schema, in the format required for the duck db read_json_auto function
-func getReadJSONColumnDefinitions(rowSchema *schema.RowSchema) string {
+func getReadJSONColumnDefinitions(rowSchema *schema.TableSchema) string {
 	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
 	var str strings.Builder
 	str.WriteString("columns = {")
@@ -264,7 +264,7 @@ func getReadJSONColumnDefinitions(rowSchema *schema.RowSchema) string {
 	return str.String()
 }
 
-func getViewQueryForStructSlices(q string, rowSchema *schema.RowSchema, structSliceColumns []*schema.ColumnSchema) string {
+func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, structSliceColumns []*schema.ColumnSchema) string {
 	var str strings.Builder
 
 	/* this is the what we want

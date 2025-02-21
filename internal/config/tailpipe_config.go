@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+
+	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
@@ -46,9 +48,17 @@ func (c *TailpipeConfig) Add(resource modconfig.HclResource) error {
 	}
 }
 
-func (c *TailpipeConfig) Validate() error {
-	// TODO K
-	return nil
+func (c *TailpipeConfig) Validate() hcl.Diagnostics {
+	var diags hcl.Diagnostics
+
+	for _, partition := range c.Partitions {
+		diags = append(diags, partition.Validate()...)
+	}
+	for _, customTable := range c.CustomTables {
+		diags = append(diags, customTable.Validate()...)
+	}
+
+	return diags
 }
 
 func (c *TailpipeConfig) InitPartitions() {

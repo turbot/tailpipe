@@ -58,7 +58,7 @@ func Test_buildViewQuery(t *testing.T) {
 	defer teardown()
 
 	type args struct {
-		schema    *schema.RowSchema
+		schema    *schema.TableSchema
 		json      string
 		sqlColumn string
 	}
@@ -91,7 +91,7 @@ func Test_buildViewQuery(t *testing.T) {
 		{
 			name: "struct",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructField",
@@ -127,7 +127,7 @@ FROM
 		{
 			name: "json",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "JsonField",
@@ -154,7 +154,7 @@ FROM
 		{
 			name: "struct with keyword names",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "end",
@@ -188,7 +188,7 @@ FROM
 		{
 			name: "null struct",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "end",
@@ -222,7 +222,7 @@ FROM
 		{
 			name: "nested struct",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructField",
@@ -278,7 +278,7 @@ FROM
 		{
 			name: "null nested struct",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructField",
@@ -335,7 +335,7 @@ FROM
 		{
 			name: "nested struct with keyword names",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "end",
@@ -385,7 +385,7 @@ FROM
 		{
 			name: "scalar types",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
 						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
@@ -443,7 +443,7 @@ FROM
 		{
 			name: "scalar types - reserved names",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{SourceName: "end", ColumnName: "end", Type: "BOOLEAN"},
 						{SourceName: "for", ColumnName: "for", Type: "TINYINT"},
@@ -468,7 +468,7 @@ FROM
 		{
 			name: "scalar types - missing some data",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
 						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
@@ -526,7 +526,7 @@ FROM
 		{
 			name: "scalar types - some rows missing some data",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
 						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
@@ -586,7 +586,7 @@ FROM
 		{
 			name: "scalar types, missing all data",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "BOOLEAN"},
 						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "TINYINT"},
@@ -644,7 +644,7 @@ FROM
 		{
 			name: "array types",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{SourceName: "BooleanArrayField", ColumnName: "boolean_array_field", Type: "BOOLEAN[]"},
 						{SourceName: "TinyIntArrayField", ColumnName: "tinyint_array_field", Type: "TINYINT[]"},
@@ -702,7 +702,7 @@ FROM
 		{
 			name: "array of simple structs",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructArrayField",
@@ -769,7 +769,7 @@ LEFT JOIN
 		//		{
 		//			name: "struct with struct array field",
 		//			args: args{
-		//				schema: &schema.RowSchema{
+		//				schema: &schema.TableSchema{
 		//					Columns: []*schema.ColumnSchema{
 		//						{
 		//							SourceName: "StructWithArrayField",
@@ -838,7 +838,7 @@ LEFT JOIN
 		{
 			name: "array of simple structs plus other fields",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructArrayField",
@@ -951,7 +951,7 @@ LEFT JOIN
 		{
 			name: "null array of simple structs plus other fields",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructArrayField",
@@ -1063,7 +1063,7 @@ LEFT JOIN
 		{
 			name: "array of simple structs with null value",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructArrayField",
@@ -1126,7 +1126,7 @@ LEFT JOIN
 		{
 			name: "array of simple structs with null value and non null value",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructArrayField",
@@ -1192,7 +1192,7 @@ LEFT JOIN
 		{
 			name: "2 arrays of simple structs",
 			args: args{
-				schema: &schema.RowSchema{
+				schema: &schema.TableSchema{
 					Columns: []*schema.ColumnSchema{
 						{
 							SourceName: "StructArrayField",
@@ -1294,7 +1294,7 @@ LEFT JOIN
 		//		{
 		//			name: "map types",
 		//			args: args{
-		//				schema: &schema.RowSchema{
+		//				schema: &schema.TableSchema{
 		//					Columns: []*schema.ColumnSchema{
 		//						{SourceName: "BooleanMapField", ColumnName: "boolean_map_field", Type: "MAP<VARCHAR, BOOLEAN>"},
 		//						{SourceName: "TinyIntMapField", ColumnName: "tinyint_map_field", Type: "MAP<VARCHAR, TINYINT>"},

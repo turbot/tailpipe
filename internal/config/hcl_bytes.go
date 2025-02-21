@@ -1,14 +1,49 @@
 package config
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
-	"strings"
 )
 
 type HclBytes struct {
 	Hcl   []byte           `cty:"hcl"`
 	Range hclhelpers.Range `cty:"range"`
+}
+
+// string
+func (h *HclBytes) String() string {
+	return fmt.Sprintf("HclBytes{Hcl: %s, Range: %s}", h.Hcl, h.Range)
+}
+
+// HclBytesForLines extracts the HCL bytes for a given range from a source HCL byte buffer,
+// ensuring that it includes full lines rather than using byte-based slicing.
+func HclBytesForLines(sourceHcl []byte, r hcl.Range) *HclBytes {
+	// Convert HCL bytes to a string and split into lines.
+	lines := strings.Split(string(sourceHcl), "\n")
+
+	// Ensure the range is within bounds.
+	if r.Start.Line < 1 || r.Start.Line > len(lines) || r.End.Line < 1 {
+		return &HclBytes{Hcl: []byte{}, Range: hclhelpers.NewRange(r)}
+	}
+
+	// Extract full lines from the start to end line (inclusive).
+	extractedLines := lines[r.Start.Line-1 : r.End.Line]
+
+	// Reconstruct the HCL snippet from the extracted lines, ensuring a trailing newline.
+	hclForRange := []byte(strings.Join(extractedLines, "\n") + "\n")
+
+	// TACTICAL FIX: If the HCL snippet ends with "EOT", add an extra newline to prevent parser errors.
+	if strings.HasSuffix(strings.TrimSpace(string(hclForRange)), "EOT") {
+		hclForRange = append(hclForRange, '\n')
+	}
+
+	return &HclBytes{
+		Hcl:   hclForRange,
+		Range: hclhelpers.NewRange(r),
+	}
 }
 
 // HclBytesForRange extracts the HCL bytes for a given range from a source HCL byte buffer
@@ -27,6 +62,7 @@ func HclBytesForRange(sourceHcl []byte, r hcl.Range) *HclBytes {
 		Range: hclhelpers.NewRange(r),
 	}
 }
+
 func (h *HclBytes) Merge(other *HclBytes) {
 	if len(h.Hcl) == 0 {
 		h.Hcl = other.Hcl

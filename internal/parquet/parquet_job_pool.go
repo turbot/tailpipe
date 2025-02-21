@@ -63,13 +63,13 @@ type ParquetJobPool struct {
 	// channel to mark ParquetJobPool completion
 	done chan struct{}
 
-	schema    *schema.RowSchema
+	schema    *schema.TableSchema
 	schemaMut sync.RWMutex
 
 	Partition *config.Partition
 }
 
-func NewParquetJobPool(executionId string, partition *config.Partition, sourceDir string, schema *schema.RowSchema) (*ParquetJobPool, error) {
+func NewParquetJobPool(executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema) (*ParquetJobPool, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -152,7 +152,7 @@ func (w *ParquetJobPool) GetChunksWritten(id string) (int32, error) {
 	defer w.errorsLock.RUnlock()
 	if len(w.errors) > 0 {
 		err := errors.Join(w.errors...)
-		return -1, fmt.Errorf("job group %s has errors: %w", id, err)
+		return -1, err
 	}
 	return w.completionCount, nil
 }
@@ -188,10 +188,13 @@ func (w *ParquetJobPool) inferSchemaIfNeeded(executionID string, chunks []int) e
 		}
 		w.schemaMut.Unlock()
 	}
-	return nil
+	// now validate the schema is complete - we should have types for all columns
+	// (if we do not that indicates a custom table definition was used which does not specify types for all optional fields -
+	// this should have caused a config validation error earlier on
+	return w.schema.EnsureComplete()
 }
 
-func (w *ParquetJobPool) inferChunkSchema(executionId string, chunkNumber int) (*schema.RowSchema, error) {
+func (w *ParquetJobPool) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
@@ -213,7 +216,7 @@ func (w *ParquetJobPool) inferChunkSchema(executionId string, chunkNumber int) (
 	}
 	defer rows.Close()
 
-	var res = &schema.RowSchema{
+	var res = &schema.TableSchema{
 		// NOTE: set autoMap to false as we have inferred the schema
 		AutoMapSourceFields: false,
 	}
@@ -353,6 +356,6 @@ func (w *ParquetJobPool) readJobErrors() {
 	}
 }
 
-func (w *ParquetJobPool) GetSchema() *schema.RowSchema {
+func (w *ParquetJobPool) GetSchema() *schema.TableSchema {
 	return w.schema
 }

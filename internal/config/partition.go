@@ -89,63 +89,69 @@ func (c *Partition) CollectionStatePath(collectionDir string) string {
 }
 
 func (c *Partition) Validate() hcl.Diagnostics {
-	diags := hcl.Diagnostics{}
+	var diags hcl.Diagnostics
 
 	// validate filter
 	if c.Filter != "" {
-		// check for `;` to prevent multiple statements
-		if strings.Contains(c.Filter, ";") {
+		diags = append(diags, c.validateFilter()...)
+	}
+
+	return diags
+}
+
+func (c *Partition) validateFilter() hcl.Diagnostics {
+	var diags hcl.Diagnostics
+	// check for `;` to prevent multiple statements
+	if strings.Contains(c.Filter, ";") {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
+			Detail:   "multiple expressions are not supported in partition filters, should not contain ';'.",
+		})
+	}
+	// check for `/*`, `*/`, `--` to prevent comments
+	if strings.Contains(c.Filter, "/*") || strings.Contains(c.Filter, "*/") || strings.Contains(c.Filter, "--") {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
+			Detail:   "comments are not supported in partition filters, should not contain  comment identifiers '/*', '*/' or '--'.",
+		})
+	}
+
+	forbiddenStrings := []string{
+		"select ",
+		"insert ",
+		"update ",
+		"delete ",
+		"drop ",
+		"create ",
+		"alter ",
+		"truncate ",
+		"exec ",
+		"execute ",
+		"union ",
+		"with ",
+	}
+
+	lower := strings.ToLower(c.Filter)
+	for _, s := range forbiddenStrings {
+		if strings.Contains(lower, s) {
+			str := strings.Trim(s, " ")
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
 				Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
-				Detail:   "multiple expressions are not supported in partition filters, should not contain ';'.",
-			})
-		}
-		// check for `/*`, `*/`, `--` to prevent comments
-		if strings.Contains(c.Filter, "/*") || strings.Contains(c.Filter, "*/") || strings.Contains(c.Filter, "--") {
-			diags = append(diags, &hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
-				Detail:   "comments are not supported in partition filters, should not contain  comment identifiers '/*', '*/' or '--'.",
-			})
-		}
-
-		forbiddenStrings := []string{
-			"select ",
-			"insert ",
-			"update ",
-			"delete ",
-			"drop ",
-			"create ",
-			"alter ",
-			"truncate ",
-			"exec ",
-			"execute ",
-			"union ",
-			"with ",
-		}
-
-		lower := strings.ToLower(c.Filter)
-		for _, s := range forbiddenStrings {
-			if strings.Contains(lower, s) {
-				str := strings.Trim(s, " ")
-				diags = append(diags, &hcl.Diagnostic{
-					Severity: hcl.DiagError,
-					Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
-					Detail:   fmt.Sprintf("should not contain keyword '%s' in filter, unless used as a quoted identifier ('\"%s\"') to prevent unintended behavior.", str, str),
-				})
-			}
-		}
-
-		// check for `.` (dot notation) as we currently don't support this as structs aren't compiled at this stage
-		if strings.Contains(c.Filter, ".") {
-			diags = append(diags, &hcl.Diagnostic{
-				Severity: hcl.DiagError,
-				Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
-				Detail:   "dot-notation is currently unsupported in partition filters, please use arrow-notation instead (field->>'sub_field' != 'value').",
+				Detail:   fmt.Sprintf("should not contain keyword '%s' in filter, unless used as a quoted identifier ('\"%s\"') to prevent unintended behavior.", str, str),
 			})
 		}
 	}
 
+	// check for `.` (dot notation) as we currently don't support this as structs aren't compiled at this stage
+	if strings.Contains(c.Filter, ".") {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
+			Detail:   "dot-notation is currently unsupported in partition filters, please use arrow-notation instead (field->>'sub_field' != 'value').",
+		})
+	}
 	return diags
 }
