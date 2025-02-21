@@ -52,7 +52,8 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	tailpipeConfig.InitPartitions()
 
 	// now validate the config
-	ew = tailpipeConfig.Validate()
+	// TODO update this once Validate actually validates the config, currently always nil
+	// ew = tailpipeConfig.Validate()
 
 	return tailpipeConfig, errorsAndWarnings
 }
