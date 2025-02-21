@@ -10,8 +10,8 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
-	github.com/turbot/go-kit v1.0.0
-	github.com/turbot/pipe-fittings/v2 v2.1.1
+	github.com/turbot/go-kit v1.1.0
+	github.com/turbot/pipe-fittings/v2 v2.2.0-rc.0
 	github.com/turbot/tailpipe-plugin-core v0.1.3
 	github.com/turbot/tailpipe-plugin-sdk v0.1.0
 	github.com/zclconf/go-cty v1.14.4
@@ -187,7 +187,6 @@ require (
 	github.com/tklauser/numcpus v0.3.0 // indirect
 	github.com/tkrajina/go-reflector v0.5.6 // indirect
 	github.com/turbot/pipes-sdk-go v0.12.0 // indirect
-	github.com/turbot/steampipe-plugin-code v1.0.1-alpha.1 // indirect
 	github.com/turbot/steampipe-plugin-sdk/v5 v5.10.4 // indirect
 	github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 // indirect
 	github.com/ulikunitz/xz v0.5.10 // indirect

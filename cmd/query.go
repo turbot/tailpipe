@@ -24,7 +24,7 @@ var queryOutputMode = constants.QueryOutputModeTable
 func queryCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:              "query [sql] [flags]",
-		Args:             cobra.MaximumNArgs(1),
+		Args:             cobra.ArbitraryArgs,
 		TraverseChildren: true,
 		Run:              runQueryCmd,
 		Short:            "Execute a query against the workspace database",
@@ -64,6 +64,7 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 
 	var err error
 	var failures int
+	var errs []error
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -89,12 +90,13 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		viper.Set(pconstants.ConfigKeyInteractive, true)
 
 		err = interactive.RunInteractivePrompt(ctx, db)
-	} else {
-		failures, err = query.ExecuteQuery(ctx, args[0], db)
-	}
-	if failures > 0 {
-		exitCode = pconstants.ExitCodeQueryExecutionFailed
 		error_helpers.FailOnError(err)
+	} else {
+		failures, errs = query.RunBatchSession(ctx, args, db)
+	}
+	// if there were any row errors or any missing view errors, exit with a non-zero code
+	if failures > 0 || len(errs) > 0 {
+		exitCode = pconstants.ExitCodeQueryExecutionFailed
 	}
 
 }

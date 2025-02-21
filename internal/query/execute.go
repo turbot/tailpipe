@@ -9,12 +9,37 @@ import (
 	"strings"
 	"time"
 
+	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/pipe-fittings/v2/query"
 	"github.com/turbot/pipe-fittings/v2/querydisplay"
 	"github.com/turbot/pipe-fittings/v2/queryresult"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
+
+func RunBatchSession(ctx context.Context, args []string, db *sql.DB) (int, []error) {
+
+	var totalFailedRows int
+	var errors []error
+
+	// get the queries from the args
+	queries, err := query.GetQueriesFromArgs(args)
+	error_helpers.FailOnErrorWithMessage(err, "failed to get queries from args")
+
+	for i, arg := range queries {
+		// increment failures if the query fails
+		failures, err := ExecuteQuery(ctx, arg, db)
+		// accumulate the failures
+		totalFailedRows += failures
+		if err != nil {
+			error_helpers.ShowWarning(fmt.Sprintf("query %d of %d failed: %v", i+1, len(args), err))
+			errors = append(errors, err)
+		}
+	}
+
+	return totalFailedRows, errors
+}
 
 func ExecuteQuery(ctx context.Context, query string, db *sql.DB) (int, error) {
 	// Run the query
