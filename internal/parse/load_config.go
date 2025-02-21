@@ -43,8 +43,8 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
 	ew := v.AddLocalPlugins(ctx)
-	if ew != nil {
-		return nil, error_helpers.NewErrorsAndWarning(ew)
+	if ew.GetError() != nil {
+		return nil, ew
 	}
 	tailpipeConfig.PluginVersions = v.Plugins
 
@@ -52,8 +52,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	tailpipeConfig.InitPartitions()
 
 	// now validate the config
-	// TODO update this once Validate actually validates the config, currently always nil
-	// ew = tailpipeConfig.Validate()
+	ew.Error = tailpipeConfig.Validate()
 
 	return tailpipeConfig, errorsAndWarnings
 }
