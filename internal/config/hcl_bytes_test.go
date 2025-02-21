@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// ✅ Test for extracting HCL based on line range
+// Test for extracting HCL based on line range
 func TestHclBytesForLines(t *testing.T) {
 	type args struct {
 		sourceHcl []byte
@@ -71,17 +71,15 @@ output "bucket_name" {
 	}
 }
 
-// ✅ Test for merging HCL byte ranges
+// Test for merging HCL byte ranges
 func TestHclBytes_Merge(t *testing.T) {
 	type fields struct {
 		Hcl   []byte
 		Range hclhelpers.Range
 	}
-
 	type args struct {
 		other *HclBytes
 	}
-
 	tests := []struct {
 		name   string
 		fields fields
@@ -91,12 +89,17 @@ func TestHclBytes_Merge(t *testing.T) {
 		{
 			name: "Merge adjacent blocks",
 			fields: fields{
-				Hcl:   []byte("resource \"aws_s3_bucket\" \"my_bucket\" {\n  bucket = \"my-bucket-name\"\n}"),
+				Hcl: []byte(`resource "aws_s3_bucket" "my_bucket" {
+  bucket = "my-bucket-name"
+}`),
 				Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 3}}),
 			},
 			args: args{
 				other: &HclBytes{
-					Hcl:   []byte("\noutput \"bucket_name\" {\n  value = aws_s3_bucket.my_bucket.bucket\n}"),
+					Hcl: []byte(`
+output "bucket_name" {
+  value = aws_s3_bucket.my_bucket.bucket
+}`),
 					Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 4}, End: hcl.Pos{Line: 6}}),
 				},
 			},
@@ -104,10 +107,11 @@ func TestHclBytes_Merge(t *testing.T) {
 				Hcl: []byte(`resource "aws_s3_bucket" "my_bucket" {
   bucket = "my-bucket-name"
 }
+
 output "bucket_name" {
   value = aws_s3_bucket.my_bucket.bucket
 }`),
-				Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 6}}),
+				Range: hclhelpers.NewRange(hcl.Range{Start: hcl.Pos{Line: 1}, End: hcl.Pos{Line: 6, Byte: 106}}),
 			},
 		},
 	}
