@@ -198,7 +198,7 @@ func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.Res
 	if resolvedFromTime.Source != "" {
 		fromTimeSourceStr = fmt.Sprintf("(%s)", resolvedFromTime.Source)
 	}
-	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr)
+	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr) //nolint:forbidigo //desired output
 	return err
 }
 
