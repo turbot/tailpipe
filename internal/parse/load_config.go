@@ -92,7 +92,7 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []parse.ParseHclOpt{
 		//parse.WithDisableTemplateForProperties(sdkconstants.GrokConfigProperties),
-		parse.WithApplyGrokFunction(true),
+		parse.WithEscapeBackticks(true),
 	}
 
 	//

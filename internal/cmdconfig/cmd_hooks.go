@@ -118,7 +118,7 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []pparse.ParseHclOpt{
 		//pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
-		pparse.WithApplyGrokFunction(true),
+		pparse.WithEscapeBackticks(true),
 	}
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
