@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/exp/maps"
@@ -101,8 +100,8 @@ func generateDbFile(ctx context.Context) (string, error) {
 	}
 
 	// Open a DuckDB connection (creates the file if it doesn't exist)
-	var db *sql.DB
-	db, err = sql.Open("duckdb", databaseFilePath)
+	db, err := database.NewDuckDb(database.WithDbFile(databaseFilePath))
+
 	if err != nil {
 		return "", fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -276,7 +275,7 @@ func cleanupOldDbFiles() error {
 		}
 
 		// check for a lock on the file
-		db, err := sql.Open("duckdb", path)
+		db, err := database.NewDuckDb(database.WithDbFile(path))
 		if err != nil {
 			log.Printf("[INFO] Skipping deletion of file %s due to error: %v\n", path, err)
 			return nil

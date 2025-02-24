@@ -1,8 +1,8 @@
 package parquet
 
 import (
-	"database/sql"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"log/slog"
 	"os"
 	"strings"
@@ -13,7 +13,7 @@ import (
 )
 
 func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error) {
-	db, err := sql.Open("duckdb", "")
+	db, err :=  database.NewDuckDb()
 	if err != nil {
 		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -44,7 +44,7 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
 	return rowCount, nil
 }
 
-func deletePartitionFrom(db *sql.DB, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
+func deletePartitionFrom(db *database.DuckDb, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
 	//nolint:gosec // we cannot use params inside read_parquet - and this is a trusted source
@@ -88,7 +88,7 @@ func deletePartitionFrom(db *sql.DB, dataDir string, partition *config.Partition
 	return len(folders), nil
 }
 
-func deletePartition(db *sql.DB, dataDir string, partition *config.Partition) (int, error) {
+func deletePartition(db *database.DuckDb, dataDir string, partition *config.Partition) (int, error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
 	// get count of parquet files

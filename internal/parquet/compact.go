@@ -2,8 +2,8 @@ package parquet
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"golang.org/x/sync/semaphore"
 	"log/slog"
 	"os"
@@ -70,7 +70,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	baseDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	// open a duckdb connection
-	db, err := sql.Open("duckdb", "")
+	db, err :=  database.NewDuckDb()
 	if err != nil {
 		return fmt.Errorf("failed to open duckdb connection: %w", err)
 	}
@@ -79,7 +79,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	// traverse the directory and compact files
 	return traverseAndCompact(ctx, db, baseDir, updateFunc, patterns)
 }
-func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
+func traverseAndCompact(ctx context.Context, db *database.DuckDb, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	// if this is the partition folder, check if it matches the patterns before descending further
 	if table, partition, ok := getPartitionFromPath(dirPath); ok {
 		if !PartitionMatchesPatterns(table, partition, patterns) {
@@ -129,7 +129,7 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateF
 	return nil
 }
 
-// if this filepath ends with the partition segment, return the table and partition
+// if this parquetFile ends with the partition segment, return the table and partition
 func getPartitionFromPath(dirPath string) (string, string, bool) {
 	// if this is a partition folder, check if it matches the patterns
 	parts := strings.Split(dirPath, "/")
@@ -143,7 +143,7 @@ func getPartitionFromPath(dirPath string) (string, string, bool) {
 	return "", "", false
 }
 
-func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string, inputPath string) (err error) {
+func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles []string, inputPath string) (err error) {
 	now := time.Now()
 	compactedFileName := fmt.Sprintf("snap_%s_%06d.parquet", now.Format("20060102150405"), now.Nanosecond()/1000)
 
