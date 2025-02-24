@@ -79,7 +79,7 @@ func pluginInstallCmd() *cobra.Command {
 		Short: "Install one or more plugins",
 		Long: `Install one or more plugins.
 
-Install a Steampipe plugin, making it available for queries and configuration.
+Install a Tailpipe plugin, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
 registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
@@ -118,7 +118,7 @@ func pluginUpdateCmd() *cobra.Command {
 		Short: "Update one or more plugins",
 		Long: `Update plugins.
 
-Update one or more Steampipe plugins, making it available for queries and configuration.
+Update one or more Tailpipe plugins, making it available for queries and configuration.
 The plugin name format is [registry/org/]name[@version]. The default
 registry is hub.tailpipe.io, default org is turbot and default version
 is latest. The name is a required argument.
@@ -156,7 +156,7 @@ func pluginListCmd() *cobra.Command {
 		Short: "List currently installed plugins",
 		Long: `List currently installed plugins.
 
-List all Steampipe plugins installed for this user.
+List all Tailpipe plugins installed for this user.
 
 Examples:
 
@@ -208,7 +208,7 @@ func pluginUninstallCmd() *cobra.Command {
 		Short: "Uninstall a plugin",
 		Long: `Uninstall a plugin.
 
-Uninstall a Steampipe plugin, removing it from use. The plugin name format is
+Uninstall a Tailpipe plugin, removing it from use. The plugin name format is
 [registry/org/]name. (Version is not relevant in uninstall, since only one
 version of a plugin can be installed at a time.)
 
