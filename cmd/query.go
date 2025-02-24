@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -77,7 +77,7 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 	}()
 
 	// get a connection to the database
-	var db *sql.DB
+	var db *database.DuckDb
 	db, err = openDatabaseConnection(ctx)
 	if err != nil {
 		return
@@ -103,13 +103,13 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 }
 
 // generate a db file - this will respect any time/index filters specified in the command args
-func openDatabaseConnection(ctx context.Context) (*sql.DB, error) {
+func openDatabaseConnection(ctx context.Context) (*database.DuckDb, error) {
 	dbFilePath, err := generateDbFile(ctx)
 	if err != nil {
 		return nil, err
 	}
 	// Open a DuckDB connection
-	return sql.Open("duckdb", dbFilePath)
+	return database.NewDuckDb(database.WithDbFile(dbFilePath))
 }
 
 func setExitCodeForQueryError(err error) {

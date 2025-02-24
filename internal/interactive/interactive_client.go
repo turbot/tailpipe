@@ -3,7 +3,6 @@ package interactive
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -16,7 +15,6 @@ import (
 	"github.com/alecthomas/chroma/styles"
 	"github.com/c-bata/go-prompt"
 	"github.com/spf13/viper"
-
 	"github.com/turbot/go-kit/helpers"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
@@ -56,7 +54,7 @@ type InteractiveClient struct {
 	hidePrompt bool
 
 	suggestions *autoCompleteSuggestions
-	db          *sql.DB
+	db          *database.DuckDb
 }
 
 func getHighlighter(theme string) *Highlighter {
@@ -67,7 +65,7 @@ func getHighlighter(theme string) *Highlighter {
 	)
 }
 
-func newInteractiveClient(ctx context.Context, db *sql.DB) (*InteractiveClient, error) {
+func newInteractiveClient(ctx context.Context, db *database.DuckDb) (*InteractiveClient, error) {
 	interactiveQueryHistory, err := newQueryHistory()
 	if err != nil {
 		return nil, err

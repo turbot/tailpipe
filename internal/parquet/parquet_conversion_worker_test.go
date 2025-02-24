@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,9 +12,10 @@ import (
 	"github.com/spf13/viper"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/cmdconfig"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
-var db *duckDb
+var testDb *database.DuckDb
 
 const testDir = "buildViewQuery_test_data"
 
@@ -22,7 +24,7 @@ var jsonlFilePath string
 
 func setup() error {
 	var err error
-	db, err = newDuckDb()
+	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
 	if err != nil {
 		return fmt.Errorf("error creating duckdb: %w", err)
 	}
@@ -41,8 +43,8 @@ func setup() error {
 
 func teardown() {
 	os.RemoveAll("test_data")
-	if db != nil {
-		db.Close()
+	if testDb != nil {
+		testDb.Close()
 	}
 }
 
@@ -1364,7 +1366,7 @@ func executeQuery(t *testing.T, queryFormat, json, sqlColumn string) (any, error
 	// execute in duckdb
 	// build select queryz
 	testQuery := fmt.Sprintf("SELECT %s from (%s)", sqlColumn, query)
-	rows, err := db.Query(testQuery) //nolint:sqlclosecheck // rows.Close() is called in the defer
+	rows, err := testDb.Query(testQuery) //nolint:sqlclosecheck // rows.Close() is called in the defer
 
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)

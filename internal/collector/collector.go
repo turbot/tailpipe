@@ -2,7 +2,6 @@ package collector
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -354,7 +353,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 
 	// so we are done writing chunks - now update the db to add a view to this data
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := database.NewDuckDb(database.WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return err
 	}

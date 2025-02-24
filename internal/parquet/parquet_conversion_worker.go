@@ -37,7 +37,7 @@ type conversionWorker struct {
 
 	// helper struct which provides unique filename roots
 	fileRootProvider *FileRootProvider
-	db               *duckDb
+	db               *database.DuckDb
 }
 
 func newParquetConversionWorker(converter *Converter) (*conversionWorker, error) {
@@ -50,7 +50,7 @@ func newParquetConversionWorker(converter *Converter) (*conversionWorker, error)
 	}
 
 	// create a new DuckDB instance
-	db, err := newDuckDb()
+	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
 	}
@@ -236,7 +236,7 @@ FROM
 
 }
 
-// return the column definitions for the row schema, in the format required for the duck db read_json_auto function
+// return the column definitions for the row schema, in the format required for the duck testDb read_json_auto function
 func getReadJSONColumnDefinitions(rowSchema *schema.TableSchema) string {
 	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
 	var str strings.Builder
