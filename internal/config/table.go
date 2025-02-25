@@ -56,6 +56,7 @@ func (t *Table) ToProto() *proto.Schema {
 		ExcludeSourceFields: t.ExcludeSourceFields,
 		Description:         typehelpers.SafeString(t.Description),
 		NullValue:           typehelpers.SafeString(t.NullValue),
+		Name:                t.ShortName,
 	}
 	for _, col := range t.Columns {
 		s := &proto.ColumnSchema{
