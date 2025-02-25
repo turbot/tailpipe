@@ -8,6 +8,10 @@ import (
 
 // PruneTree recursively deletes empty directories in the given folder.
 func PruneTree(folder string) error {
+	// if folder does not exist, return
+	if _, err := os.Stat(folder); os.IsNotExist(err) {
+		return nil
+	}
 	isEmpty, err := isDirEmpty(folder)
 	if err != nil {
 		return err

@@ -116,7 +116,6 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 				errList = append(errList, err)
 				continue
 			}
-			error_helpers.FailOnError(err)
 		}
 		// do the collection
 		err = collectPartition(ctx, cancel, partition, fromTime, pluginManager)
