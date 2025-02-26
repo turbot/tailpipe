@@ -24,7 +24,7 @@ var (
 var jobQueue = make(chan int)
 
 // Function to add a job (only updates maxIndex)
-func UpdateUserTimestamp() {
+func receiveChunks() {
 	atomic.AddInt64(&maxIndex, 1)
 	fmt.Printf("Job received: %d\n", maxIndex)
 
@@ -34,8 +34,7 @@ func UpdateUserTimestamp() {
 }
 
 // Enqueue jobs in order, running continuously
-func enqueueJobsWorker(ctx context.Context) {
-
+func scheduler(ctx context.Context) {
 	// run goroutine which signals on a channel each time the cond is triggered
 	jobChannel := make(chan struct{})
 	go func() {
@@ -63,25 +62,21 @@ func enqueueJobsWorker(ctx context.Context) {
 			return
 		case <-jobChannel:
 			// if there are jobs to enqueue, do so
-			queueJob()
+			currentNext := atomic.LoadInt64(&nextIndex)
+			currentMax := atomic.LoadInt64(&maxIndex)
+
+			for currentNext <= currentMax {
+				wg.Add(1) // Track job being enqueued
+				jobQueue <- int(currentNext)
+				fmt.Printf("Job enqueued: %d\n", currentNext)
+				atomic.AddInt64(&nextIndex, 1)
+				// if there are jobs to enqueue, do so
+				currentNext = atomic.LoadInt64(&nextIndex)
+				currentMax = atomic.LoadInt64(&maxIndex)
+			}
 		}
 
 	}
-}
-
-// Try to enqueue a job
-func queueJob() bool {
-	currentNext := atomic.LoadInt64(&nextIndex)
-	currentMax := atomic.LoadInt64(&maxIndex)
-
-	if currentNext <= currentMax {
-		wg.Add(1) // Track job being enqueued
-		jobQueue <- int(currentNext)
-		fmt.Printf("Job enqueued: %d\n", currentNext)
-		atomic.AddInt64(&nextIndex, 1)
-		return true
-	}
-	return false
 }
 
 func main() {
@@ -89,23 +84,23 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Start job enqueuing worker
-	go enqueueJobsWorker(ctx)
+	go scheduler(ctx)
 
 	// Start the worker
-	go updateUserTimestampWorker(ctx)
+	go workers(ctx)
 
 	// Simulate incoming jobs
 	for i := 0; i < 20; i++ {
-		UpdateUserTimestamp()
-		time.Sleep(1000 * time.Millisecond)
+		receiveChunks()
+
 	}
 
-	go func() {
-		time.Sleep(2 * time.Second)
-		fmt.Println("Cancelling context.")
-		cancel() // Cancel the context after 1 second
-
-	}()
+	//go func() {
+	//	time.Sleep(2 * time.Second)
+	//	fmt.Println("Cancelling context.")
+	//	cancel() // Cancel the context after 1 second
+	//
+	//}()
 	// Wait for all jobs to be processed before exiting
 	waitForCompletion(ctx, &wg)
 	fmt.Printf("All jobs processed: cancelling")
@@ -129,14 +124,14 @@ func waitForCompletion(ctx context.Context, wg *sync.WaitGroup) {
 }
 
 // Worker function that reads job indices from the channel
-func updateUserTimestampWorker(ctx context.Context) {
+func workers(ctx context.Context) {
 	ids := rill.FromChan(jobQueue, nil)
 
 	_ = rill.ForEach(ids, 5, func(idx int) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		//time.Sleep(2 * time.Second) // Simulate processing time
+		time.Sleep(5 * time.Second) // Simulate processing time
 		fmt.Printf("Executed: UPDATE users SET last_active_at = NOW() WHERE id = %d\n", idx)
 		atomic.AddInt64(&processedJobs, 1)
 		wg.Done() // Mark job as processed

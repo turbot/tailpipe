@@ -41,6 +41,8 @@ type Collector struct {
 
 	// the current plugin status - used to update the spinner
 	status status
+	// lock to protect the status
+	statusLock sync.Mutex
 
 	// the subdirectory of ~/.tailpipe/internal which will be used to store all file data for this collection
 	// this will have the form ~/.tailpipe/internal/collection/<profile>/<pid>
@@ -152,24 +154,11 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 
 	// create a parquet writer
 	//parquetWriter, err := parquet.NewParquetJobPool(c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
-	parquetWriter, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
+	parquetWriter, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 	c.parquetWriter = parquetWriter
-
-	// update the status with the chunks written
-	// TODO #design tactical push this from writer???
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(250 * time.Millisecond):
-				c.updateConvertedStatus()
-			}
-		}
-	}()
 
 	// start listening to plugin event
 	c.listenToEventsAsync(ctx)
@@ -177,56 +166,60 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	return nil
 }
 
-func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
-	if viper.GetBool(pconstants.ArgProgress) {
-		return c.showTeaAppAsync(resolvedFromTime)
-	}
-
-	return c.showMinimalCollectionStatus(resolvedFromTime)
-}
-
-func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTime) error {
-	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
-
-	go func() {
-		model, err := c.app.Run()
-		if model.(collectionModel).cancelled {
-			slog.Info("Collection UI returned cancelled")
-			c.doCancel()
-		}
-		if err != nil {
-			slog.Warn("Collection UI returned error", "error", err)
-			c.doCancel()
-		}
-	}()
-	return nil
-}
-
-func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
-	// display initial message
-	fromTimeSourceStr := ""
-	if resolvedFromTime.Source != "" {
-		fromTimeSourceStr = fmt.Sprintf("(%s)", resolvedFromTime.Source)
-	}
-	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr) //nolint:forbidigo //desired output
-	return err
-}
-
-func (c *Collector) updateConvertedStatus() {
-	rowCount := c.parquetWriter.GetRowCount()
-	c.status.SetRowsConverted(rowCount)
-	c.updateApp(c.status)
-}
-
 // Notify implements observer.Observer
 // send an event down the channel to be picked up by the handlePluginEvent goroutine
-func (c *Collector) Notify(ctx context.Context, event *proto.Event) {
+func (c *Collector) Notify(event *proto.Event) {
 	// only send the event if the execution is not complete - this is to handle the case where it has
 	// terminated with an error, causing the collector to close, closing the channel
 	if !c.execution.complete() {
 		slog.Debug("Collector.Notify", "event", event)
 		c.Events <- event
 	}
+}
+
+// WaitForCompletion waits for our execution to have state ExecutionState_COMPLETE
+func (c *Collector) WaitForCompletion(ctx context.Context) error {
+	// TODO KAI use wg in execution
+	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
+	executionTimeout := executionMaxDuration
+	retryInterval := 100 * time.Millisecond
+
+	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
+		switch c.execution.state {
+		case ExecutionState_ERROR:
+			slog.Info("Execution in error state", "execution", c.execution.id)
+			return c.execution.error
+		case ExecutionState_COMPLETE:
+			slog.Info("Execution complete", "execution", c.execution.id)
+			return nil
+		default:
+			return retry.RetryableError(errors.New("execution not complete"))
+		}
+	})
+	if err != nil {
+		if err.Error() == "execution not complete" {
+			return fmt.Errorf("not all execution completed after %s", executionTimeout.String())
+		}
+		return err
+	}
+
+	return nil
+}
+
+func (c *Collector) Compact(ctx context.Context) error {
+	slog.Info("Compacting parquet files")
+
+	c.updateApp(AwaitingCompactionMsg{})
+
+	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
+		c.updateApp(CompactionStatusUpdateMsg{status: &compactionStatus})
+	}
+	partitionPattern := parquet.NewPartitionPattern(c.partition)
+	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
+	if err != nil {
+		return fmt.Errorf("failed to compact data files: %w", err)
+	}
+	return nil
 }
 
 // handlePluginEvent handles an event from a plugin
@@ -241,7 +234,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
 		c.updateApp(c.status)
 	case *proto.Event_ChunkWrittenEvent:
-		slog.Info("Event_ChunkWrittenEvent")
 		ev := e.GetChunkWrittenEvent()
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
@@ -259,7 +251,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	case *proto.Event_CompleteEvent:
 
 		completedEvent := e.GetCompleteEvent()
-		slog.Info("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
+		slog.Info("handlePluginEvent received Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
 		// was there an error?
 		if completedEvent.Error != "" {
@@ -297,6 +289,51 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	}
 }
 
+func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+	if viper.GetBool(pconstants.ArgProgress) {
+		return c.showTeaAppAsync(resolvedFromTime)
+	}
+
+	return c.showMinimalCollectionStatus(resolvedFromTime)
+}
+
+func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTime) error {
+	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
+
+	go func() {
+		model, err := c.app.Run()
+		if model.(collectionModel).cancelled {
+			slog.Info("Collection UI returned cancelled")
+			c.doCancel()
+		}
+		if err != nil {
+			slog.Warn("Collection UI returned error", "error", err)
+			c.doCancel()
+		}
+	}()
+	return nil
+}
+
+func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+	// display initial message
+	fromTimeSourceStr := ""
+	if resolvedFromTime.Source != "" {
+		fromTimeSourceStr = fmt.Sprintf("(%s)", resolvedFromTime.Source)
+	}
+	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr) //nolint:forbidigo //desired output
+	return err
+}
+
+// updateRowCount is called directly by the parquet writer to update the row count
+func (c *Collector) updateRowCount(rowCount int64) {
+	slog.Warn("updateRowCount", "rowCount", rowCount)
+	c.statusLock.Lock()
+	defer c.statusLock.Unlock()
+
+	c.status.SetRowsConverted(rowCount)
+	c.updateApp(c.status)
+}
+
 func (c *Collector) StatusString() string {
 	var str strings.Builder
 	str.WriteString("Collection complete.\n\n")
@@ -314,39 +351,10 @@ func (c *Collector) StatusString() string {
 	return str.String()
 }
 
-// WaitForCompletion waits for our execution to have state ExecutionState_COMPLETE
-func (c *Collector) WaitForCompletion(ctx context.Context) error {
-	// TODO KAI use wg in execution
-	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
-	executionTimeout := executionMaxDuration
-	retryInterval := 100 * time.Millisecond
-
-	err := retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
-		switch c.execution.state {
-		case ExecutionState_ERROR:
-			slog.Info("Execution in error state", "execution", c.execution.id)
-			return c.execution.error
-		case ExecutionState_COMPLETE:
-			slog.Info("Execution complete", "execution", c.execution.id)
-			return nil
-		default:
-			return retry.RetryableError(errors.New("execution not complete"))
-		}
-	})
-	if err != nil {
-		if err.Error() == "execution not complete" {
-			return fmt.Errorf("not all execution completed after %s", executionTimeout.String())
-		}
-		return err
-	}
-
-	return nil
-}
-
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
 func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
-	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
+	slog.Info("waitForConversions - waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
 
 	// set the rows received and chunk count
 	// TODO does this need to be done here?
@@ -391,8 +399,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 	//	return nil
 	//})
 
-	slog.Debug("waitForConversions - all chunks written", "execution", c.execution.id)
-
 	// mark execution as complete and record the end time
 	c.execution.done(err)
 
@@ -420,7 +426,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
 	go func() {
 		for event := range c.Events {
-			slog.Info("handling plugin event", "event", event)
 			c.handlePluginEvent(ctx, event)
 		}
 		//TODO #control-flow KAI re-add
@@ -434,22 +439,6 @@ func (c *Collector) listenToEventsAsync(ctx context.Context) {
 	}()
 }
 
-func (c *Collector) Compact(ctx context.Context) error {
-	slog.Info("Compacting parquet files")
-
-	c.updateApp(AwaitingCompactionMsg{})
-
-	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
-		c.updateApp(CompactionStatusUpdateMsg{status: &compactionStatus})
-	}
-	partitionPattern := parquet.NewPartitionPattern(c.partition)
-	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
-	if err != nil {
-		return fmt.Errorf("failed to compact data files: %w", err)
-	}
-	return nil
-}
-
 func (c *Collector) doCancel() {
 	if c.cancel != nil {
 		c.cancel()
@@ -457,9 +446,9 @@ func (c *Collector) doCancel() {
 	// todo cleanup
 }
 
-func (c *Collector) Errors() []string {
-	return c.errors
-}
+//func (c *Collector) Errors() []string {
+//	return c.errors
+//}
 
 func (c *Collector) updateApp(msg tea.Msg) {
 	if c.app != nil {

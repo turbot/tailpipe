@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 )
 
+const parquetWorkerCount = 5
+
 // ParquetConverter struct represents all the conversions that need to be done for a single collection
 // it therefore has a unique execution id, and will potentially involve the conversion of multiple JSONL files
 // each file is assumed to have the filename format <execution_id>_<chunkNumber>.jsonl
@@ -23,9 +25,9 @@ type ParquetConverter struct {
 	id string
 
 	// the (1 based) chunk number of the last chunk to process
-	maxChunk int64
+	lastChunk int64
 	// the (1 based) chunk number of the next chunk to process
-	nextIndex int64
+	nextChunk int64
 
 	// the number of chunks processed so far
 	completionCount int32
@@ -33,7 +35,7 @@ type ParquetConverter struct {
 	rowCount int64
 
 	// The channel to send execution to the workers
-	jobChan chan *simpleParquetJob
+	jobChan chan *parquetJob
 
 	// WaitGroup to track job completion
 	wg sync.WaitGroup
@@ -62,25 +64,28 @@ type ParquetConverter struct {
 
 	// the partition being collected
 	Partition *config.Partition
+	// func which we call with updated row count
+	statusFunc func(rowCount int64)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema) (*ParquetConverter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(rowCount int64)) (*ParquetConverter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	w := &ParquetConverter{
 		id:                 executionId,
 		chunkWrittenSignal: sync.NewCond(&sync.Mutex{}),
-		// start with nextIndex = 1, and maxChunk = -0 (i.e. no chunks yet)
-		nextIndex: 1,
+		// start with nextChunk = 1, and lastChunk = -0 (i.e. no chunks yet)
+		nextChunk: 1,
 
 		Partition: partition,
-		jobChan:   make(chan *simpleParquetJob, parquetWorkerCount*2),
+		jobChan:   make(chan *parquetJob, parquetWorkerCount*2),
 		cancel:    cancel,
 
-		sourceDir: sourceDir,
-		destDir:   destDir,
-		schema:    schema,
+		sourceDir:  sourceDir,
+		destDir:    destDir,
+		schema:     schema,
+		statusFunc: statusFunc,
 
 		fileRootProvider: &FileRootProvider{},
 	}
@@ -90,7 +95,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 
 	// start the workers
 	for i := 0; i < parquetWorkerCount; i++ {
-		wk, err := newParquetConversionWorkerSimple(w)
+		wk, err := newParquetConversionWorker(w)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker: %w", err)
 
@@ -109,19 +114,11 @@ func (w *ParquetConverter) Close() {
 	w.cancel()
 }
 
-//
-//func (w *ParquetConverter) JobGroupComplete(id string) error {
-//	slog.Info("ParquetConverter - ParquetConverter complete", "execution id", id)
-//	// close the done channel to signal the scheduler to exit
-//	close(w.done)
-//	return nil
-//}
-
 // AddChunk adds a new chunk to the list of chunks to be processed
 // if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 // signal the scheduler that chunks are available
 func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
-	if w.maxChunk == -1 {
+	if w.lastChunk == 0 {
 		// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 		err := w.inferSchemaIfNeeded(executionId, chunks)
 		if err != nil {
@@ -134,7 +131,9 @@ func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
 
 	}
 	// add the chunks to the list
-	atomic.AddInt64(&w.maxChunk, int64(len(chunks)))
+	atomic.AddInt64(&w.lastChunk, int64(len(chunks)))
+	// increment the wait group
+	w.wg.Add(len(chunks))
 
 	// signal the scheduler that there are new chunks
 	w.chunkWrittenSignal.L.Lock()
@@ -144,13 +143,9 @@ func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
 	return nil
 }
 
-func (w *ParquetConverter) GetRowCount() int64 {
-	return w.rowCount
-}
-
 // WaitForCompletion waits for all jobs to be processed or for the context to be cancelled
 func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
-	slog.Info("WaitForCompletion - waiting for all jobs to be processed or context to be cancelled.")
+	slog.Info("ParquetConverter.WaitForCompletion - waiting for all jobs to be processed or context to be cancelled.")
 	// wait for the wait group within a goroutine so we can also check the context
 	done := make(chan struct{})
 	go func() {
@@ -201,24 +196,25 @@ func (w *ParquetConverter) scheduler(ctx context.Context) {
 			// if there are jobs to enqueue, do so
 
 			// check if we have any chunks to process
-			currentNext := atomic.LoadInt64(&w.nextIndex)
-			currentMax := atomic.LoadInt64(&w.maxChunk)
-			if currentNext <= currentMax {
-				// so we have a chunk to process
+			// NOTE: no need for atomic access to nextChunk as we are the only writer
+			lastChunk := atomic.LoadInt64(&w.lastChunk)
 
-				// increment the wait group
-				w.wg.Add(1)
-
-				// send the job to the worker
-				w.jobChan <- &simpleParquetJob{currentNext}
-
-				slog.Info("enqueued job", "job", currentNext)
-
-				// increment the nextIndex
-				// NOTE: as this function is the only place where nextIndex is incremented,
-				// we can safely read and increment it without a lock without risk of a race condition
-				atomic.AddInt64(&w.nextIndex, 1)
+			if w.nextChunk <= lastChunk {
+				slog.Info("enqueuing jobs", "lastChunk-nextChunk", lastChunk-w.nextChunk)
 			}
+			for w.nextChunk <= lastChunk {
+				// check context
+				if ctx.Err() != nil {
+					slog.Info("context cancelled - scheduler shutting down.")
+					// Now it's safe to close the queue
+					close(w.jobChan)
+					return
+				}
+				w.jobChan <- &parquetJob{w.nextChunk}
+				w.nextChunk++
+				lastChunk = atomic.LoadInt64(&w.lastChunk)
+			}
+
 		}
 	}
 }
@@ -311,4 +307,10 @@ func (w *ParquetConverter) addJobErrors(errors ...error) {
 	w.errorsLock.Lock()
 	w.errors = append(w.errors, errors...)
 	w.errorsLock.Unlock()
+}
+
+// updateRowCount atomically increments the row count and calls the statusFunc
+func (w *ParquetConverter) updateRowCount(count int64) {
+	atomic.AddInt64(&w.rowCount, count)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount))
 }
