@@ -107,7 +107,6 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(chunkNumber int) err
 
 	// update the row count
 	w.converter.updateRowCount(rowCount)
-	slog.Warn("atomic.AddInt64(&w.converter.rowCount, rowCount)", "rows", rowCount)
 
 	// delete JSON file (configurable?)
 	if err := os.Remove(jsonFilePath); err != nil {
