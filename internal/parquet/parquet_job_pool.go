@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const parquetWorkerCount = 5
@@ -126,10 +127,11 @@ func (w *ParquetConverter) Close() {
 // AddChunk adds a new chunk to the list of chunks to be processed
 // if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 // signal the scheduler that chunks are available
-func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
+func (w *ParquetConverter) AddChunk(executionId string, chunk int) error {
+	time.Sleep(250 * time.Millisecond)
 	if w.lastChunk == 0 {
 		// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
-		err := w.inferSchemaIfNeeded(executionId, chunks)
+		err := w.inferSchemaIfNeeded(executionId, chunk)
 		if err != nil {
 			return err
 		}
@@ -139,22 +141,18 @@ func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
 		w.viewQueryFormat = buildViewQuery(w.schema)
 
 	}
-	// add the chunks to the list
-	atomic.AddInt64(&w.lastChunk, int64(len(chunks)))
+	// set the last chunk
+	atomic.AddInt64(&w.lastChunk, 1)
+
 	// increment the wait group
-	w.wg.Add(len(chunks))
+	w.wg.Add(1)
 
 	// PREV SCHEDULER
 	// add the chunks to the list
 	w.chunkLock.Lock()
-	w.chunks = append(w.chunks, chunks...)
+	w.chunks = append(w.chunks, chunk)
 	w.chunkLock.Unlock()
 	// PREV SCHEDULER
-
-	// signal the scheduler that there are new chunks
-	w.chunkWrittenSignal.L.Lock()
-	w.chunkWrittenSignal.Broadcast()
-	w.chunkWrittenSignal.L.Unlock()
 
 	return nil
 }
@@ -181,58 +179,39 @@ func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
 // the scheduler is responsible for sending jobs to the workere
 // it listens for signals on the chunkWrittenSignal channel and enqueues jobs when they arrive
 func (w *ParquetConverter) newScheduler(ctx context.Context) {
-	// listen to the chunkWrittenSignal in a goroutine and raise an event on the chunkChannel
-	// this allows us to also check context cancellation
-	chunkChannel := make(chan struct{})
-	go func() {
-		for {
-			w.chunkWrittenSignal.L.Lock()
-			w.chunkWrittenSignal.Wait()
-			w.chunkWrittenSignal.L.Unlock()
-
-			select {
-			case <-ctx.Done(): // Ensure clean exit
-				slog.Info("context cancelled - chunkWrittenSignal thread shutting down.")
-				return
-			case chunkChannel <- struct{}{}:
-			}
-		}
-	}()
+	// close the job channel on exit
+	defer close(w.jobChan)
 
 	// select either a signal from the chunkWrittenSignal or a signal from the context
 	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("context cancelled - scheduler shutting down.")
-			// Now it's safe to close the queue
-			close(w.jobChan)
+		// if there are jobs to enqueue, do so
 
-			return
-		case <-chunkChannel:
-			// if there are jobs to enqueue, do so
+		// check if we have any chunks to process
+		// NOTE: no need for atomic access to nextChunk as we are the only writer
+		lastChunk := atomic.LoadInt64(&w.lastChunk)
 
-			// check if we have any chunks to process
-			// NOTE: no need for atomic access to nextChunk as we are the only writer
-			lastChunk := atomic.LoadInt64(&w.lastChunk)
-
-			if w.nextChunk <= lastChunk {
-				slog.Info("enqueuing jobs", "lastChunk-nextChunk", lastChunk-w.nextChunk)
-			}
+		if w.nextChunk <= lastChunk {
+			//	slog.Info("enqueuing jobs", "lastChunk-nextChunk", lastChunk-w.nextChunk)
+			//}
 			for w.nextChunk <= lastChunk {
 				// check context
 				if ctx.Err() != nil {
 					slog.Info("context cancelled - scheduler shutting down.")
-					// Now it's safe to close the queue
-					close(w.jobChan)
+
 					return
 				}
+				slog.Warn("enqueuing job", "lastChunk", lastChunk, "nextChunk", w.nextChunk)
+
 				w.jobChan <- &parquetJob{w.nextChunk}
 				w.nextChunk++
-				lastChunk = atomic.LoadInt64(&w.lastChunk)
-			}
-		}
 
+				lastChunk = atomic.LoadInt64(&w.lastChunk)
+
+			}
+			slog.Warn("no more chunks for now")
+		}
 	}
+
 }
 
 // the scheduler is responsible for sending jobs to the workere
@@ -319,7 +298,7 @@ func (w *ParquetConverter) waitForNextChunk() int {
 	}
 }
 
-func (w *ParquetConverter) inferSchemaIfNeeded(executionID string, chunks []int) error {
+func (w *ParquetConverter) inferSchemaIfNeeded(executionID string, chunk int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
@@ -338,7 +317,7 @@ func (w *ParquetConverter) inferSchemaIfNeeded(executionID string, chunks []int)
 		// check again if schema is still not full (to avoid race condition as another worker may have filled it)
 		if !w.schema.Complete() {
 			// do the inference
-			s, err := w.inferChunkSchema(executionID, chunks[0])
+			s, err := w.inferChunkSchema(executionID, chunk)
 			if err != nil {
 				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
 			}
