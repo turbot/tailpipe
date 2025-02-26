@@ -131,8 +131,6 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string) (int64, erro
 		return 0, fmt.Errorf("file does not exist: %s", jsonlFilePath)
 	}
 
-	// determine the root based on the partition
-
 	if err := os.MkdirAll(filepath.Dir(w.destDir), 0755); err != nil {
 		return 0, fmt.Errorf("failed to create parquet folder: %w", err)
 	}
