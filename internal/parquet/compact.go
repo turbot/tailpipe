@@ -82,7 +82,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	// if this is the partition folder, check if it matches the patterns before descending further
 	if table, partition, ok := getPartitionFromPath(dirPath); ok {
-		if !ParquetPathMatchesPatterns(table, partition, patterns) {
+		if !PartitionMatchesPatterns(table, partition, patterns) {
 			return nil
 		}
 	}

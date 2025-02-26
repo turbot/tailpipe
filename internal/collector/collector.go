@@ -37,7 +37,7 @@ type Collector struct {
 	// the execution
 	execution *execution
 
-	parquetWriter *parquet.ParquetJobPool
+	parquetWriter *parquet.ParquetConverter
 
 	// the current plugin status - used to update the spinner
 	status status
@@ -101,6 +101,10 @@ func (c *Collector) Close() {
 }
 
 func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
+	// create a cancel context to pass to the parquet converter
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
@@ -142,7 +146,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
 	}
 
 	// create a parquet writer
-	parquetWriter, err := parquet.NewParquetJobPool(c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
+	//parquetWriter, err := parquet.NewParquetJobPool(c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
+	parquetWriter, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -203,11 +208,9 @@ func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.Res
 }
 
 func (c *Collector) updateConvertedStatus() {
-	rowCount, err := c.parquetWriter.GetRowCount()
-	if err == nil {
-		c.status.SetRowsConverted(rowCount)
-		c.updateApp(c.status)
-	}
+	rowCount := c.parquetWriter.GetRowCount()
+	c.status.SetRowsConverted(rowCount)
+	c.updateApp(c.status)
 }
 
 // Notify implements observer.Observer
@@ -305,6 +308,7 @@ func (c *Collector) StatusString() string {
 
 // WaitForCompletion waits for our execution to have state ExecutionState_COMPLETE
 func (c *Collector) WaitForCompletion(ctx context.Context) error {
+	// TODO KAI use wg in execution
 	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
 	executionTimeout := executionMaxDuration
 	retryInterval := 100 * time.Millisecond
@@ -336,10 +340,8 @@ func (c *Collector) WaitForCompletion(ctx context.Context) error {
 func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
 	slog.Info("waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
 
-	// TODO #config configure timeout https://github.com/turbot/tailpipe/issues/1
-	executionTimeout := executionMaxDuration
-	retryInterval := 200 * time.Millisecond
-	//retryInterval := 200 * time.Millisecond
+	// set the rows received and chunk count
+	// TODO does this need to be done here?
 	c.execution.rowsReceived = ce.RowCount
 	c.execution.chunkCount = ce.ChunkCount
 
@@ -354,31 +356,32 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 		return nil
 	}
 
-	// so there was no error
+	// so there was no plugin error - wait for the conversions to complete
+	c.parquetWriter.WaitForCompletion(ctx)
 
-	err = retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
-		// check chunk count - ask the parquet writer how many chunks have been converted
-		chunksWritten, err := c.parquetWriter.GetChunksWritten(ce.ExecutionId)
-		if err != nil {
-			return err
-		}
-
-		// if no chunks have been written, we are done
-		if c.execution.chunkCount == 0 {
-			slog.Warn("waitForConversions - no chunks to write", "execution", c.execution.id)
-			return nil
-		}
-
-		slog.Debug("waitForConversions", "execution", c.execution.id, "chunk written", chunksWritten, "total chunks", c.execution.chunkCount)
-
-		if chunksWritten < c.execution.chunkCount {
-			slog.Debug("waiting for parquet conversion", "execution", c.execution.id, "chunks written", chunksWritten, "total chunksWritten", c.execution.chunkCount)
-			// not all chunks have been written
-			return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
-		}
-
-		return nil
-	})
+	//err = retry.Do(ctx, retry.WithMaxDuration(executionTimeout, retry.NewConstant(retryInterval)), func(ctx context.Context) error {
+	//	// check chunk count - ask the parquet writer how many chunks have been converted
+	//	chunksWritten, err := c.parquetWriter.GetChunksWritten()
+	//	if err != nil {
+	//		return err
+	//	}
+	//
+	//	// if no chunks have been written, we are done
+	//	if c.execution.chunkCount == 0 {
+	//		slog.Warn("waitForConversions - no chunks to write", "execution", c.execution.id)
+	//		return nil
+	//	}
+	//
+	//	slog.Debug("waitForConversions", "execution", c.execution.id, "chunk written", chunksWritten, "total chunks", c.execution.chunkCount)
+	//
+	//	if chunksWritten < c.execution.chunkCount {
+	//		slog.Debug("waiting for parquet conversion", "execution", c.execution.id, "chunks written", chunksWritten, "total chunksWritten", c.execution.chunkCount)
+	//		// not all chunks have been written
+	//		return retry.RetryableError(fmt.Errorf("not all chunks have been written"))
+	//	}
+	//
+	//	return nil
+	//})
 
 	slog.Debug("waitForConversions - all chunks written", "execution", c.execution.id)
 
@@ -403,7 +406,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 		return err
 	}
 	// notify the writer that the collection is complete
-	return c.parquetWriter.JobGroupComplete(ce.ExecutionId)
+	return nil
 }
 
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
