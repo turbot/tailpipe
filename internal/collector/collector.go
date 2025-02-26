@@ -100,10 +100,15 @@ func (c *Collector) Close() {
 	_ = os.RemoveAll(c.collectionTempDir)
 }
 
-func (c *Collector) Collect(ctx context.Context, fromTime time.Time) error {
+func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
 	// create a cancel context to pass to the parquet converter
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	// cancel the execution context if there is an error
+	defer func() {
+		if err != nil {
+			cancel()
+		}
+	}()
 
 	if c.execution != nil {
 		return errors.New("collection already in progress")
@@ -215,10 +220,11 @@ func (c *Collector) updateConvertedStatus() {
 
 // Notify implements observer.Observer
 // send an event down the channel to be picked up by the handlePluginEvent goroutine
-func (c *Collector) Notify(event *proto.Event) {
+func (c *Collector) Notify(ctx context.Context, event *proto.Event) {
 	// only send the event if the execution is not complete - this is to handle the case where it has
 	// terminated with an error, causing the collector to close, closing the channel
 	if !c.execution.complete() {
+		slog.Debug("Collector.Notify", "event", event)
 		c.Events <- event
 	}
 }
@@ -235,6 +241,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
 		c.updateApp(c.status)
 	case *proto.Event_ChunkWrittenEvent:
+		slog.Info("Event_ChunkWrittenEvent")
 		ev := e.GetChunkWrittenEvent()
 		executionId := ev.ExecutionId
 		chunkNumber := int(ev.ChunkNumber)
@@ -250,6 +257,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			c.execution.done(err)
 		}
 	case *proto.Event_CompleteEvent:
+
 		completedEvent := e.GetCompleteEvent()
 		slog.Info("Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
@@ -412,6 +420,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 func (c *Collector) listenToEventsAsync(ctx context.Context) {
 	go func() {
 		for event := range c.Events {
+			slog.Info("handling plugin event", "event", event)
 			c.handlePluginEvent(ctx, event)
 		}
 		//TODO #control-flow KAI re-add

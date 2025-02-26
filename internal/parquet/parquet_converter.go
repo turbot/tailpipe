@@ -23,7 +23,7 @@ type ParquetConverter struct {
 	id string
 
 	// the index of the last chunk number
-	maxIndex int64
+	maxChunk int64
 	// the index into 'chunks' of the next chunk number to process
 	nextIndex int64
 
@@ -71,7 +71,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	w := &ParquetConverter{
 		id:                 executionId,
 		chunkWrittenSignal: sync.NewCond(&sync.Mutex{}),
-		maxIndex:           -1,
+		maxChunk:           -1,
 
 		Partition: partition,
 		jobChan:   make(chan *simpleParquetJob, parquetWorkerCount*2),
@@ -120,7 +120,7 @@ func (w *ParquetConverter) Close() {
 // if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 // signal the scheduler that chunks are available
 func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
-	if w.maxIndex == -1 {
+	if w.maxChunk == -1 {
 		// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 		err := w.inferSchemaIfNeeded(executionId, chunks)
 		if err != nil {
@@ -133,7 +133,7 @@ func (w *ParquetConverter) AddChunk(executionId string, chunks ...int) error {
 
 	}
 	// add the chunks to the list
-	atomic.AddInt64(&w.maxIndex, int64(len(chunks)))
+	atomic.AddInt64(&w.maxChunk, int64(len(chunks)))
 
 	// signal the scheduler that there are new chunks
 	w.chunkWrittenSignal.L.Lock()
@@ -179,7 +179,7 @@ func (w *ParquetConverter) scheduler(ctx context.Context) {
 
 			select {
 			case <-ctx.Done(): // Ensure clean exit
-				fmt.Println("Stopping scheduler.")
+				slog.Info("context cancelled - chunkWrittenSignal thread shutting down.")
 				return
 			case chunkChannel <- struct{}{}:
 			}
@@ -190,7 +190,7 @@ func (w *ParquetConverter) scheduler(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Println("scheduler shutting down.")
+			slog.Info("context cancelled - scheduler shutting down.")
 			// Now it's safe to close the queue
 			close(w.jobChan)
 
@@ -200,7 +200,7 @@ func (w *ParquetConverter) scheduler(ctx context.Context) {
 
 			// check if we have any chunks to process
 			currentNext := atomic.LoadInt64(&w.nextIndex)
-			currentMax := atomic.LoadInt64(&w.maxIndex)
+			currentMax := atomic.LoadInt64(&w.maxChunk)
 			if currentNext <= currentMax {
 				// so we have a chunk to process
 
@@ -210,7 +210,7 @@ func (w *ParquetConverter) scheduler(ctx context.Context) {
 				// send the job to the worker
 				w.jobChan <- &simpleParquetJob{currentNext}
 
-				fmt.Printf("Job enqueued: %d\n", currentNext)
+				slog.Info("enqueued job", "job", currentNext)
 
 				// increment the nextIndex
 				// NOTE: as this function is the only place where nextIndex is incremented,

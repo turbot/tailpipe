@@ -344,7 +344,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 				// TODO #error unexpected - raise an error - send error to observers
 				return
 			}
-			p.obs.Notify(protoEvent)
+			p.obs.Notify(ctx, protoEvent)
 			// TODO #error should we stop polling if we get an error event?
 			// if this is a completion event (or other error event???), stop polling
 			if protoEvent.GetCompleteEvent() != nil {
