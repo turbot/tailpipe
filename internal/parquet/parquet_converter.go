@@ -22,9 +22,9 @@ type ParquetConverter struct {
 	// the execution id
 	id string
 
-	// the index of the last chunk number
+	// the (1 based) chunk number of the last chunk to process
 	maxChunk int64
-	// the index into 'chunks' of the next chunk number to process
+	// the (1 based) chunk number of the next chunk to process
 	nextIndex int64
 
 	// the number of chunks processed so far
@@ -71,7 +71,8 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	w := &ParquetConverter{
 		id:                 executionId,
 		chunkWrittenSignal: sync.NewCond(&sync.Mutex{}),
-		maxChunk:           -1,
+		// start with nextIndex = 1, and maxChunk = -0 (i.e. no chunks yet)
+		nextIndex: 1,
 
 		Partition: partition,
 		jobChan:   make(chan *simpleParquetJob, parquetWorkerCount*2),
@@ -149,6 +150,7 @@ func (w *ParquetConverter) GetRowCount() int64 {
 
 // WaitForCompletion waits for all jobs to be processed or for the context to be cancelled
 func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
+	slog.Info("WaitForCompletion - waiting for all jobs to be processed or context to be cancelled.")
 	// wait for the wait group within a goroutine so we can also check the context
 	done := make(chan struct{})
 	go func() {
@@ -159,9 +161,9 @@ func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
 	// check whether the context is cancelled or all jobs are processed
 	select {
 	case <-ctx.Done():
-		fmt.Println("Context cancelled.")
+		slog.Info("WaitForCompletion - context cancelled.")
 	case <-done:
-		fmt.Println("All jobs processed.")
+		slog.Info("WaitForCompletion - all jobs processed.")
 	}
 }
 

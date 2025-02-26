@@ -90,6 +90,12 @@ func (w *parquetConversionWorkerSimple) close() {
 }
 
 func (w *parquetConversionWorkerSimple) doJSONToParquetConversion(chunkNumber int) error {
+	slog.Info("converting JSONL to Parquet", "chunk", chunkNumber)
+	defer slog.Info("finished converting JSONL to Parquet", "chunk", chunkNumber)
+
+	// ensure we signal the converter when we are done
+	defer w.converter.wg.Done()
+
 	startTime := time.Now()
 
 	// build the source filename
