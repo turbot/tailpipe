@@ -153,17 +153,37 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	}
 
 	// create a parquet writer
-	//parquetWriter, err := parquet.NewParquetJobPool(c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
-	parquetWriter, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount)
+	parquetWriter, err := parquet.NewParquetJobPool(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
 	c.parquetWriter = parquetWriter
 
+	// update the status with the chunks written
+	// TODO #design tactical push this from writer???
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(250 * time.Millisecond):
+				c.updateConvertedStatus()
+			}
+		}
+	}()
+
 	// start listening to plugin event
 	c.listenToEventsAsync(ctx)
 
 	return nil
+}
+
+func (c *Collector) updateConvertedStatus() {
+	rowCount, err := c.parquetWriter.GetRowCount()
+	if err == nil {
+		c.status.SetRowsConverted(rowCount)
+		c.updateApp(c.status)
+	}
 }
 
 // Notify implements observer.Observer
@@ -326,9 +346,6 @@ func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.Res
 
 // updateRowCount is called directly by the parquet writer to update the row count
 func (c *Collector) updateRowCount(rowCount int64) {
-	c.statusLock.Lock()
-	defer c.statusLock.Unlock()
-
 	c.status.SetRowsConverted(rowCount)
 	c.updateApp(c.status)
 }
