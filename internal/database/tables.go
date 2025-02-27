@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
@@ -57,7 +58,7 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	columns, err := getColumnNames(ctx, parquetPath, db)
 	if err != nil {
 		// if this is because no parquet files match, suppress the error
-		if strings.Contains(err.Error(), "IO Error: No files found that match the pattern") {
+		if strings.Contains(err.Error(), "IO Error: No files found that match the pattern") || error_helpers.IsCancelledError(err) {
 			return nil
 		}
 		return err
@@ -109,14 +110,14 @@ func getColumnNames(ctx context.Context, parquetPath string, db *sql.DB) ([]stri
 	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath) //nolint: gosec // this is a controlled query
 	rows, err := db.QueryContext(ctx, columnQuery)
 	if err != nil {
-		return nil, fmt.Errorf("failed to infer schema: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
 	// Retrieve column names
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get column names: %w", err)
+		return nil, err
 	}
 
 	// Sort column names alphabetically but with tp_ fields on the end

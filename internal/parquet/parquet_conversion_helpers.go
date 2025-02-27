@@ -3,11 +3,11 @@ package parquet
 import (
 	"database/sql"
 	"fmt"
+	"strings"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"log/slog"
-	"strings"
 )
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
@@ -25,11 +25,6 @@ func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 		}
 		return 0, fmt.Errorf("failed to query row count: %w", err)
 	}
-
-	if rowCount < 10000 {
-		slog.Warn("row count is less than 10000", "rows", rowCount)
-	}
-
 	return rowCount, nil
 }
 

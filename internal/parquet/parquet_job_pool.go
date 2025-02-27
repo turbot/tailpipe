@@ -4,54 +4,43 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe-plugin-sdk/table"
-	"github.com/turbot/tailpipe/internal/config"
 	"log"
 	"log/slog"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-	"time"
+
+	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 const parquetWorkerCount = 5
+const chunkBufferLength = 1000
 
-// ParquetConverter struct represents all the conversions that need to be done for a single collection
-// it therefore has a unique execution id, and will potentially involve the conversion of multiple JSONL files
+// ParquetConverter struct executes all the conversions for a single collection
+// it therefore has a unique execution id, and will potentially convert of multiple JSONL files
 // each file is assumed to have the filename format <execution_id>_<chunkNumber>.jsonl
-// so when new input files are available, we simply store the chunkNumber number
+// so when new input files are available, we simply store the chunk number
 type ParquetConverter struct {
 	// the execution id
 	id string
 
-	// the (1 based) chunk number of the last chunk to process
-	lastChunk int64
-	// the (1 based) chunk number of the next chunk to process
-	nextChunk int64
-
-	// PREV SCHEDULER
 	// the file chunks numbers available to process
-	chunks    []int
-	chunkLock sync.RWMutex
-	// the index into 'chunks' of the next chunk number to process
-	nextChunkIndex int
-	// PREV SCHEDULER
+	chunks      []int
+	chunkLock   sync.Mutex
+	chunkSignal *sync.Cond
+	// the channel to send execution to the workers
+	jobChan chan *parquetJob
+	// waitGroup to track job completion
+	wg sync.WaitGroup
+	// the cancel function for the context used to manage the job
+	cancel context.CancelFunc
 
 	// the number of chunks processed so far
 	completionCount int32
 	// the number of rows written
 	rowCount int64
-
-	// The channel to send execution to the workers
-	jobChan chan *parquetJob
-
-	// WaitGroup to track job completion
-	wg sync.WaitGroup
-	// sync.Cond to wait for the next chunkNumber to be available
-	chunkWrittenSignal *sync.Cond
-	// the cancel function for the context used to manage the job
-	cancel context.CancelFunc
 
 	// the source file location
 	sourceDir string
@@ -82,26 +71,22 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	w := &ParquetConverter{
-		id:                 executionId,
-		chunkWrittenSignal: sync.NewCond(&sync.Mutex{}),
-		// start with nextChunk = 1, and lastChunk = -0 (i.e. no chunks yet)
-		nextChunk: 1,
-
-		Partition: partition,
-		jobChan:   make(chan *parquetJob, parquetWorkerCount*2),
-		cancel:    cancel,
-
-		sourceDir:  sourceDir,
-		destDir:    destDir,
-		schema:     schema,
-		statusFunc: statusFunc,
-
+		id:               executionId,
+		chunks:           make([]int, 0, chunkBufferLength), // Pre-allocate reasonable capacity
+		Partition:        partition,
+		jobChan:          make(chan *parquetJob, parquetWorkerCount*2),
+		cancel:           cancel,
+		sourceDir:        sourceDir,
+		destDir:          destDir,
+		schema:           schema,
+		statusFunc:       statusFunc,
 		fileRootProvider: &FileRootProvider{},
 	}
+	// create the condition variable using the same lock
+	w.chunkSignal = sync.NewCond(&w.chunkLock)
 
 	// start the goroutine to schedule the jobs
-	//go w.scheduler(ctx)
-	go w.newScheduler(ctx)
+	go w.scheduler(ctx)
 
 	// start the workers
 	for i := 0; i < parquetWorkerCount; i++ {
@@ -126,32 +111,25 @@ func (w *ParquetConverter) Close() {
 
 // AddChunk adds a new chunk to the list of chunks to be processed
 // if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
-// signal the scheduler that chunks are available
+// signal the scheduler that `chunks are available
 func (w *ParquetConverter) AddChunk(executionId string, chunk int) error {
-	if w.lastChunk == 0 {
-		// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
-		err := w.inferSchemaIfNeeded(executionId, chunk)
-		if err != nil {
+	w.chunkLock.Lock()
+	// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
+	if len(w.chunks) == 0 {
+		if err := w.inferSchemaIfNeeded(executionId, chunk); err != nil {
+			w.chunkLock.Unlock()
 			return err
 		}
-
-		// now we are sure to have a complete schema, build the view query
-
 		w.viewQueryFormat = buildViewQuery(w.schema)
-
 	}
-	// set the last chunk
-	atomic.AddInt64(&w.lastChunk, 1)
-
-	// increment the wait group
-	w.wg.Add(1)
-
-	// PREV SCHEDULER
-	// add the chunks to the list
-	w.chunkLock.Lock()
 	w.chunks = append(w.chunks, chunk)
 	w.chunkLock.Unlock()
-	// PREV SCHEDULER
+
+	w.wg.Add(1)
+
+	// Signal that new chunk is available
+	// Using Signal instead of Broadcast as only one worker needs to wake up
+	w.chunkSignal.Signal()
 
 	return nil
 }
@@ -166,7 +144,6 @@ func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
 		close(done)
 	}()
 
-	// check whether the context is cancelled or all jobs are processed
 	select {
 	case <-ctx.Done():
 		slog.Info("WaitForCompletion - context cancelled.")
@@ -175,126 +152,57 @@ func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
 	}
 }
 
-// the scheduler is responsible for sending jobs to the workere
-// it listens for signals on the chunkWrittenSignal channel and enqueues jobs when they arrive
-func (w *ParquetConverter) newScheduler(ctx context.Context) {
-	// close the job channel on exit
-	defer close(w.jobChan)
+// waitForSignal waits for the condition signal or context cancellation
+// returns true if context was cancelled
+func (w *ParquetConverter) waitForSignal(ctx context.Context) bool {
+	w.chunkLock.Lock()
+	defer w.chunkLock.Unlock()
 
-	// select either a signal from the chunkWrittenSignal or a signal from the context
-	for {
-		// if there are jobs to enqueue, do so
-
-		// check if we have any chunks to process
-		// NOTE: no need for atomic access to nextChunk as we are the only writer
-		lastChunk := atomic.LoadInt64(&w.lastChunk)
-
-		if w.nextChunk <= lastChunk {
-			//	slog.Info("enqueuing jobs", "lastChunk-nextChunk", lastChunk-w.nextChunk)
-			//}
-			for w.nextChunk <= lastChunk {
-				// check context
-				if ctx.Err() != nil {
-					slog.Info("context cancelled - scheduler shutting down.")
-
-					return
-				}
-				slog.Warn("enqueuing job", "lastChunk", lastChunk, "nextChunk", w.nextChunk)
-
-				w.jobChan <- &parquetJob{w.nextChunk}
-				w.nextChunk++
-
-				lastChunk = atomic.LoadInt64(&w.lastChunk)
-
-			}
-			slog.Warn("no more chunks for now")
-		}
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		w.chunkSignal.Wait()
+		return false
 	}
-
 }
 
 // the scheduler is responsible for sending jobs to the workere
 // it listens for signals on the chunkWrittenSignal channel and enqueues jobs when they arrive
 func (w *ParquetConverter) scheduler(ctx context.Context) {
+	defer close(w.jobChan)
+
 	for {
-		// try to write to the ParquetConverter channel
-		// if we can't, wait for a ParquetConverter to be processed
-
-		// build the filename we assume the filename is <execution_id>_<chunkNumber>.jsonl
-		// this will wait until there is a chunkNumber available to process
-		// if the ParquetConverter is complete, it will return -1
-		nextChunk := w.waitForNextChunk()
-		// if no nextChunk returned, either the writer is closing or the ParquetConverter is complete
-		if nextChunk == -1 {
-			slog.Debug("exiting scheduler", "execution id", w.id)
-			return
-		}
-
-		// send the ParquetConverter to the workers
-		// do in a goroutine so we can also check for completion/closure
-		j := &parquetJob{
-			chunkNumber: int64(nextChunk),
-		}
-		// TODO #conversion is this costly to do thousands of times?
-		sendChan := make(chan struct{})
-		go func() {
-			select {
-			case w.jobChan <- j:
-				close(sendChan)
+		chunk, ok := w.getNextChunk()
+		if !ok {
+			if w.waitForSignal(ctx) {
+				slog.Debug("scheduler shutting down due to context cancellation")
+				return
 			}
-		}()
+			continue
+		}
 
 		select {
-		// wait for send completion
-		case <-sendChan:
-			//slog.Debug("sent ParquetConverter to worker", "chunk", j.chunkNumber, "completion count", *j.completionCount)
-			// so we sent a ParquetConverter
-			// update the next chunkNumber
-			w.nextChunkIndex++
-
+		case <-ctx.Done():
+			return
+		case w.jobChan <- &parquetJob{chunkNumber: int64(chunk)}:
 		}
 	}
 }
 
-func (w *ParquetConverter) waitForNextChunk() int {
-	// if we have chunks available, build a filename from the next chunkNumber
-	if w.nextChunkIndex < len(w.chunks) {
-		return w.chunks[w.nextChunkIndex]
+func (w *ParquetConverter) getNextChunk() (int, bool) {
+	w.chunkLock.Lock()
+	defer w.chunkLock.Unlock()
+
+	if len(w.chunks) == 0 {
+		return 0, false
 	}
 
-	// so there are no chunks available
-	// wait for chunkWrittenSignal to be signalled
-
-	// do in a goroutine so we can also check for completion/closure
-	var chunkChan = make(chan struct{})
-	go func() {
-		// wait for chunkWrittenSignal to be signalled
-		w.chunkWrittenSignal.L.Lock()
-		w.chunkWrittenSignal.Wait()
-		w.chunkWrittenSignal.L.Unlock()
-		close(chunkChan)
-	}()
-
-	select {
-	case <-chunkChan:
-		// get chunkNumber
-		w.chunkLock.RLock()
-		defer w.chunkLock.RUnlock()
-
-		// NOTE: trim the buffer
-		w.chunks = w.chunks[w.nextChunkIndex:]
-		// update the index to point to the start of the trimmed buffer
-		w.nextChunkIndex = 0
-
-		if len(w.chunks) == 0 {
-			slog.Warn("no more chunks - ParquetConverter is done", "execution id", w.id)
-			// no more chunks - ParquetConverter is done
-			return -1
-		}
-		// we have new chunks - return the next
-		return w.chunks[w.nextChunkIndex]
-
-	}
+	// Take from end - more efficient as it avoids shifting elements
+	lastIdx := len(w.chunks) - 1
+	chunk := w.chunks[lastIdx]
+	w.chunks = w.chunks[:lastIdx]
+	return chunk, true
 }
 
 func (w *ParquetConverter) inferSchemaIfNeeded(executionID string, chunk int) error {
