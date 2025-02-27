@@ -18,11 +18,11 @@ import (
 const parquetWorkerCount = 5
 const chunkBufferLength = 1000
 
-// ParquetConverter struct executes all the conversions for a single collection
+// Converter struct executes all the conversions for a single collection
 // it therefore has a unique execution id, and will potentially convert of multiple JSONL files
 // each file is assumed to have the filename format <execution_id>_<chunkNumber>.jsonl
 // so when new input files are available, we simply store the chunk number
-type ParquetConverter struct {
+type Converter struct {
 	// the execution id
 	id string
 
@@ -66,11 +66,11 @@ type ParquetConverter struct {
 	statusFunc func(rowCount int64)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(rowCount int64)) (*ParquetConverter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(rowCount int64)) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
-	w := &ParquetConverter{
+	w := &Converter{
 		id:               executionId,
 		chunks:           make([]int, 0, chunkBufferLength), // Pre-allocate reasonable capacity
 		Partition:        partition,
@@ -103,8 +103,8 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	return w, nil
 }
 
-func (w *ParquetConverter) Close() {
-	slog.Info("closing ParquetConverter")
+func (w *Converter) Close() {
+	slog.Info("closing Converter")
 	// close the close channel to signal to the job schedulers to exit
 	w.cancel()
 }
@@ -112,7 +112,7 @@ func (w *ParquetConverter) Close() {
 // AddChunk adds a new chunk to the list of chunks to be processed
 // if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 // signal the scheduler that `chunks are available
-func (w *ParquetConverter) AddChunk(executionId string, chunk int) error {
+func (w *Converter) AddChunk(executionId string, chunk int) error {
 	w.chunkLock.Lock()
 	// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 	if len(w.chunks) == 0 {
@@ -134,9 +134,9 @@ func (w *ParquetConverter) AddChunk(executionId string, chunk int) error {
 	return nil
 }
 
-// WaitForCompletion waits for all jobs to be processed or for the context to be cancelled
-func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
-	slog.Info("ParquetConverter.WaitForCompletion - waiting for all jobs to be processed or context to be cancelled.")
+// WaitForConversions waits for all jobs to be processed or for the context to be cancelled
+func (w *Converter) WaitForConversions(ctx context.Context) {
+	slog.Info("Converter.WaitForConversions - waiting for all jobs to be processed or context to be cancelled.")
 	// wait for the wait group within a goroutine so we can also check the context
 	done := make(chan struct{})
 	go func() {
@@ -146,15 +146,15 @@ func (w *ParquetConverter) WaitForCompletion(ctx context.Context) {
 
 	select {
 	case <-ctx.Done():
-		slog.Info("WaitForCompletion - context cancelled.")
+		slog.Info("WaitForConversions - context cancelled.")
 	case <-done:
-		slog.Info("WaitForCompletion - all jobs processed.")
+		slog.Info("WaitForConversions - all jobs processed.")
 	}
 }
 
 // waitForSignal waits for the condition signal or context cancellation
 // returns true if context was cancelled
-func (w *ParquetConverter) waitForSignal(ctx context.Context) bool {
+func (w *Converter) waitForSignal(ctx context.Context) bool {
 	w.chunkLock.Lock()
 	defer w.chunkLock.Unlock()
 
@@ -169,7 +169,7 @@ func (w *ParquetConverter) waitForSignal(ctx context.Context) bool {
 
 // the scheduler is responsible for sending jobs to the workere
 // it listens for signals on the chunkWrittenSignal channel and enqueues jobs when they arrive
-func (w *ParquetConverter) scheduler(ctx context.Context) {
+func (w *Converter) scheduler(ctx context.Context) {
 	defer close(w.jobChan)
 
 	for {
@@ -190,7 +190,7 @@ func (w *ParquetConverter) scheduler(ctx context.Context) {
 	}
 }
 
-func (w *ParquetConverter) getNextChunk() (int, bool) {
+func (w *Converter) getNextChunk() (int, bool) {
 	w.chunkLock.Lock()
 	defer w.chunkLock.Unlock()
 
@@ -205,7 +205,7 @@ func (w *ParquetConverter) getNextChunk() (int, bool) {
 	return chunk, true
 }
 
-func (w *ParquetConverter) inferSchemaIfNeeded(executionID string, chunk int) error {
+func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 	//  determine if we have a full schema yet and if not infer from the chunk
 	// NOTE: schema mode will be MUTATED once we infer it
 
@@ -238,7 +238,7 @@ func (w *ParquetConverter) inferSchemaIfNeeded(executionID string, chunk int) er
 	return w.schema.EnsureComplete()
 }
 
-func (w *ParquetConverter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
+func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
@@ -289,14 +289,14 @@ func (w *ParquetConverter) inferChunkSchema(executionId string, chunkNumber int)
 
 }
 
-func (w *ParquetConverter) addJobErrors(errors ...error) {
+func (w *Converter) addJobErrors(errors ...error) {
 	w.errorsLock.Lock()
 	w.errors = append(w.errors, errors...)
 	w.errorsLock.Unlock()
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc
-func (w *ParquetConverter) updateRowCount(count int64) {
+func (w *Converter) updateRowCount(count int64) {
 	atomic.AddInt64(&w.rowCount, count)
 	w.statusFunc(atomic.LoadInt64(&w.rowCount))
 }

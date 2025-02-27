@@ -18,13 +18,13 @@ type parquetJob struct {
 	chunkNumber int64
 }
 
-// parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
-type parquetConversionWorker struct {
+// conversionWorker is an implementation of worker that converts JSONL files to Parquet
+type conversionWorker struct {
 	// channel to receive jobs from the writer
 	jobChan chan *parquetJob
 
 	// the parent converter
-	converter *ParquetConverter
+	converter *Converter
 
 	// source file location
 	sourceDir string
@@ -36,8 +36,8 @@ type parquetConversionWorker struct {
 	db               *duckDb
 }
 
-func newParquetConversionWorker(converter *ParquetConverter) (*parquetConversionWorker, error) {
-	w := &parquetConversionWorker{
+func newParquetConversionWorker(converter *Converter) (*conversionWorker, error) {
+	w := &conversionWorker{
 		jobChan:          converter.jobChan,
 		sourceDir:        converter.sourceDir,
 		destDir:          converter.destDir,
@@ -55,7 +55,7 @@ func newParquetConversionWorker(converter *ParquetConverter) (*parquetConversion
 }
 
 // this is the worker function run by all workers, which all read from the ParquetJobPool channel
-func (w *parquetConversionWorker) start(ctx context.Context) {
+func (w *conversionWorker) start(ctx context.Context) {
 	slog.Debug("worker start")
 	// this function runs as long as the worker is running
 
@@ -85,11 +85,11 @@ func (w *parquetConversionWorker) start(ctx context.Context) {
 	}
 }
 
-func (w *parquetConversionWorker) close() {
+func (w *conversionWorker) close() {
 	_ = w.db.Close()
 }
 
-func (w *parquetConversionWorker) doJSONToParquetConversion(chunkNumber int) error {
+func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int) error {
 	// ensure we signal the converter when we are done
 	defer w.converter.wg.Done()
 	defer slog.Info("****worker done", "chunk", chunkNumber)
@@ -118,12 +118,12 @@ func (w *parquetConversionWorker) doJSONToParquetConversion(chunkNumber int) err
 }
 
 // convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath string) (int64, error) {
+func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	partition := w.converter.Partition
 
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
-		return 0, fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
+		return 0, fmt.Errorf("invalid file type - conversionWorker only supports JSONL files: %s", jsonlFilePath)
 	}
 	// verify file exists
 	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {

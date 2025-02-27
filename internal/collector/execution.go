@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"context"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -22,19 +23,18 @@ type execution struct {
 	state     ExecutionState
 	// if the execution state is in error, this is the error
 	error error
-	// the chunks written
-	chunkCount int32
-	// total rows returned by the plugin
-	rowsReceived int64
-	table        string
+	table string
+	// use to signal to the collector that we are complete
+	completionChan chan error
 }
 
 func newExecution(part *config.Partition) *execution {
 	e := &execution{
-		partition: part.UnqualifiedName,
-		table:     part.TableName,
-		plugin:    part.Plugin.Alias,
-		state:     ExecutionState_PENDING,
+		partition:      part.UnqualifiedName,
+		table:          part.TableName,
+		plugin:         part.Plugin.Alias,
+		state:          ExecutionState_PENDING,
+		completionChan: make(chan error, 1),
 	}
 
 	return e
@@ -50,8 +50,18 @@ func (e *execution) done(err error) {
 		// if state has not already been set to error, set to complete
 		e.state = ExecutionState_COMPLETE
 	}
+	e.completionChan <- err
 }
 
 func (e *execution) complete() bool {
 	return e.state == ExecutionState_COMPLETE || e.state == ExecutionState_ERROR
+}
+
+func (e *execution) waitForCompletion(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case err := <-e.completionChan:
+		return err
+	}
 }
