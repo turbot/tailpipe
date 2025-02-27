@@ -128,7 +128,6 @@ func (w *ParquetConverter) Close() {
 // if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 // signal the scheduler that chunks are available
 func (w *ParquetConverter) AddChunk(executionId string, chunk int) error {
-	time.Sleep(250 * time.Millisecond)
 	if w.lastChunk == 0 {
 		// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
 		err := w.inferSchemaIfNeeded(executionId, chunk)
