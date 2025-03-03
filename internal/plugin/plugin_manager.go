@@ -1,4 +1,4 @@
-package plugin_manager
+package plugin
 
 import (
 	"context"
@@ -33,7 +33,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
-	"github.com/turbot/tailpipe/internal/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
@@ -48,7 +47,7 @@ type PluginManager struct {
 	pluginPath  string
 }
 
-func New() *PluginManager {
+func NewPluginManager() *PluginManager {
 	return &PluginManager{
 		Plugins:    make(map[string]*grpc.PluginClient),
 		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
@@ -429,7 +428,7 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	progress := make(chan struct{}, 5)
 
 	// install plugin
-	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	_, err = Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
 	if err != nil {
 		return err
 	}

@@ -9,7 +9,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 type PluginListDetails struct {
@@ -69,7 +68,7 @@ type PluginResource struct {
 
 func GetPluginResource(ctx context.Context, name string) (*PluginResource, error) {
 
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
 	desc, err := pluginManager.Describe(ctx, name)
