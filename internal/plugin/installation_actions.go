@@ -28,6 +28,7 @@ func Remove(ctx context.Context, image string) (*PluginRemoveReport, error) {
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("plugin '%s' not found", image)
 	}
+
 	// remove from file system
 	err = os.RemoveAll(installedTo)
 	if err != nil {

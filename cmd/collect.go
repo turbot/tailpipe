@@ -21,7 +21,7 @@ import (
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
+	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
 
@@ -102,7 +102,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	// now we have the partitions, we can start collecting
 
 	// start the plugin manager
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
 	// collect each partition serially
@@ -133,7 +133,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	return nil
 }
 
-func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) error {
+func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin.PluginManager) error {
 	c, err := collector.New(pluginManager, partition, cancel)
 	if err != nil {
 		return fmt.Errorf("failed to create collector: %w", err)

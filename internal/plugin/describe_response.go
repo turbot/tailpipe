@@ -1,4 +1,4 @@
-package plugin_manager
+package plugin
 
 import (
 	"github.com/turbot/tailpipe-plugin-sdk/formats"

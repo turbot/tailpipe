@@ -15,7 +15,6 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/plugin"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 type TableResource struct {
@@ -62,7 +61,7 @@ func (r *TableResource) GetListData() *printers.RowData {
 
 func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 	var res []*TableResource
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
 	plugins, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, nil)
@@ -101,7 +100,7 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 }
 
 func GetTableResource(ctx context.Context, tableName string) (*TableResource, error) {
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 	pluginName := strings.Split(tableName, "_")[0]
 

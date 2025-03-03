@@ -7,7 +7,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 type SourceResource struct {
@@ -36,7 +35,7 @@ func (r *SourceResource) GetListData() *printers.RowData {
 func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 	var res []*SourceResource
 
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
 	plugins, err := plugin.List(ctx, config.GlobalConfig.PluginVersions, nil)

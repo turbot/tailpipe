@@ -22,7 +22,7 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
+	"github.com/turbot/tailpipe/internal/plugin"
 )
 
 const eventBufferSize = 100
@@ -31,7 +31,7 @@ const executionMaxDuration = 2 * time.Hour
 type Collector struct {
 	Events chan *proto.Event
 
-	pluginManager *plugin_manager.PluginManager
+	pluginManager *plugin.PluginManager
 	// the partition to collect
 	partition *config.Partition
 	// the execution
@@ -58,7 +58,7 @@ type Collector struct {
 	errorFileMut  sync.Mutex
 }
 
-func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
+func New(pluginManager *plugin.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	collectionTempDir := filepaths.GetCollectionTempDir()

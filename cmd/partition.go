@@ -23,7 +23,7 @@ import (
 	"github.com/turbot/tailpipe/internal/display"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
+	"github.com/turbot/tailpipe/internal/plugin"
 )
 
 func partitionCmd() *cobra.Command {
@@ -227,7 +227,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	} else {
 		// update collection state
 		// start the plugin manager
-		pluginManager := plugin_manager.New()
+		pluginManager := plugin.NewPluginManager()
 		defer pluginManager.Close()
 		err = pluginManager.UpdateCollectionState(ctx, partition, fromTime, collectionStatePath)
 		error_helpers.FailOnError(err)
