@@ -2,11 +2,14 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
+	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func init() {
@@ -56,6 +59,13 @@ func (f *Format) ToProto() *proto.ConfigData {
 		res.Range = proto.RangeToProto(f.Config.Range.HclRange())
 	}
 	return res
+}
+
+// CtyValue implements CtyValueProvider
+// (note this must be implemented by each resource, we cannot rely on the HclResourceImpl implementation as it will
+// only serialise its own properties) )
+func (f *Format) CtyValue() (cty.Value, error) {
+	return cty_helpers.GetCtyValue(f)
 }
 
 func (f *Format) SetConfigHcl(u *HclBytes) {

@@ -54,20 +54,10 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 // AddResource stores this resource as a variable to be added to the eval context.
 func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Diagnostics {
 	name := resource.Name()
-	// TODO look at using GetResourceCtyValue https://github.com/turbot/tailpipe/issues/33
 	ctyVal, diags := c.GetResourceCtyValue(resource)
 	if diags.HasErrors() {
 		return diags
 	}
-	//ctyVal, err = cty_helpers.GetCtyValue(resource)
-	//if err != nil {
-	//	return hcl.Diagnostics{&hcl.Diagnostic{
-	//		Severity: hcl.DiagError,
-	//		Summary:  fmt.Sprintf("failed to convert resource '%s' to its cty value", name),
-	//		Detail:   err.Error(),
-	//		Subject:  resource.GetDeclRange(),
-	//	}}
-	//}
 
 	resourceType := resource.GetBlockType()
 	mapForType := c.resourceValues[resourceType]
