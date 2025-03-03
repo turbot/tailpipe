@@ -225,7 +225,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			c.execution.done(err)
 		}
 	case *proto.Event_CompleteEvent:
-
 		completedEvent := e.GetCompleteEvent()
 		slog.Info("handlePluginEvent received Event_CompleteEvent", "execution", completedEvent.ExecutionId)
 
@@ -386,7 +385,6 @@ func (c *Collector) doCancel() {
 	if c.cancel != nil {
 		c.cancel()
 	}
-
 }
 
 func (c *Collector) updateApp(msg tea.Msg) {

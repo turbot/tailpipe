@@ -93,7 +93,6 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		wk, err := newParquetConversionWorker(w)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker: %w", err)
-
 		}
 		// start the worker
 		go wk.start(ctx)

@@ -92,7 +92,6 @@ func (w *conversionWorker) close() {
 func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int) error {
 	// ensure we signal the converter when we are done
 	defer w.converter.wg.Done()
-	defer slog.Info("****worker done", "chunk", chunkNumber)
 	startTime := time.Now()
 
 	// build the source filename
@@ -162,5 +161,4 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	}
 
 	return count, err
-
 }
