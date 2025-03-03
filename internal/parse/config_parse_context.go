@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
@@ -56,16 +55,19 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Diagnostics {
 	name := resource.Name()
 	// TODO look at using GetResourceCtyValue https://github.com/turbot/tailpipe/issues/33
-	//ctyVal, err := c.GetResourceCtyValue(resource)
-	ctyVal, err := cty_helpers.GetCtyValue(resource)
-	if err != nil {
-		return hcl.Diagnostics{&hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("failed to convert resource '%s' to its cty value", name),
-			Detail:   err.Error(),
-			Subject:  resource.GetDeclRange(),
-		}}
+	ctyVal, diags := c.GetResourceCtyValue(resource)
+	if diags.HasErrors() {
+		return diags
 	}
+	//ctyVal, err = cty_helpers.GetCtyValue(resource)
+	//if err != nil {
+	//	return hcl.Diagnostics{&hcl.Diagnostic{
+	//		Severity: hcl.DiagError,
+	//		Summary:  fmt.Sprintf("failed to convert resource '%s' to its cty value", name),
+	//		Detail:   err.Error(),
+	//		Subject:  resource.GetDeclRange(),
+	//	}}
+	//}
 
 	resourceType := resource.GetBlockType()
 	mapForType := c.resourceValues[resourceType]

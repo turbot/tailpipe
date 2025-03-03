@@ -229,14 +229,14 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 
 		case schema.AttributeConnection:
 			target := &config.TailpipeConnection{}
-			connRes := resourceFromExpression(parseCtx, block.AsHCLBlock(), attr.Expr, target)
+			connRes := resourceFromAttr(parseCtx, attr, target)
 			res.Merge(connRes)
 			if res.Success() {
 				source.Connection = target
 			}
 		case schema.AttributeFormat:
 			target := &config.Format{}
-			formatRes := resourceFromExpression(parseCtx, block.AsHCLBlock(), attr.Expr, target)
+			formatRes := resourceFromAttr(parseCtx, attr, target)
 			res.Merge(formatRes)
 			if res.Success() {
 				source.Format = target
@@ -267,10 +267,11 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 
 }
 
-func resourceFromExpression(parseCtx *ConfigParseContext, block *hcl.Block, expr hcl.Expression, target any) *parse.DecodeResult {
+func resourceFromAttr(parseCtx *ConfigParseContext, attr *hcl.Attribute, target any) *parse.DecodeResult {
+
 	var res = parse.NewDecodeResult()
 	//try to evaluate expression
-	val, diags := expr.Value(parseCtx.EvalCtx)
+	val, diags := attr.Expr.Value(parseCtx.EvalCtx)
 
 	res.HandleDecodeDiags(diags)
 	// we failed, possibly as result of dependency error - give up for now
@@ -285,7 +286,7 @@ func resourceFromExpression(parseCtx *ConfigParseContext, block *hcl.Block, expr
 			Severity: hcl.DiagError,
 			Summary:  "failed to decode expression",
 			Detail:   fmt.Sprintf("failed to decode expression: %s", err.Error()),
-			Subject:  hclhelpers.BlockRangePointer(block),
+			Subject:  attr.Range.Ptr(),
 		}})
 	}
 	return res
@@ -294,6 +295,12 @@ func resourceFromExpression(parseCtx *ConfigParseContext, block *hcl.Block, expr
 func decodeFormat(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
 	res := parse.NewDecodeResult()
 	format := resource.(*config.Format)
+
+	// decode the body using DecodeHclBody, to ensure the HclResource base structs get parsed
+	// NOTE: ignore any diagnostics - there will be unknown attributes
+	// just ensure the type is set
+	diags := parse.DecodeHclBodyIntoStruct(block.Body, parseCtx.EvalCtx, parseCtx, resource.GetHclResourceImpl())
+	res.HandleDecodeDiags(diags)
 
 	attrMap, diags := block.Body.JustAttributes()
 	res.HandleDecodeDiags(diags)
@@ -305,8 +312,7 @@ func decodeFormat(block *hcl.Block, parseCtx *ConfigParseContext, resource modco
 		switch attrName {
 		case schema.AttributeType:
 			var ty string
-			connRes := resourceFromExpression(parseCtx, block, attr.Expr, &ty)
-			res.Merge(connRes)
+			res.Merge(resourceFromAttr(parseCtx, attr, &ty))
 			if res.Success() {
 				format.Type = ty
 			}
@@ -315,28 +321,10 @@ func decodeFormat(block *hcl.Block, parseCtx *ConfigParseContext, resource modco
 		}
 	}
 
-	syntaxBody, ok := block.Body.(*hclsyntax.Body)
-	if !ok {
-		// unexpected
-		res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  "failed to decode format block",
-			Detail:   fmt.Sprintf("unexpected block body type %T - expected *hclsyntax.Body", block.Body),
-			Subject:  hclhelpers.BlockRangePointer(block),
-		}})
-		return res
-	}
-
-	var unknownBlocks []*hcl.Block
-	for _, b := range syntaxBody.Blocks {
-		unknownBlocks = append(unknownBlocks, b.AsHCLBlock())
-	}
-	if len(unknownAttrs)+len(unknownBlocks) == 0 {
-		return res
-	}
+	// blocks are not allowed so no need to check for unknown blocks
 
 	// get the unknown hcl
-	unknown, diags := handleUnknownHcl(block, parseCtx, unknownAttrs, unknownBlocks)
+	unknown, diags := handleUnknownHcl(block, parseCtx, unknownAttrs, nil)
 	res.HandleDecodeDiags(diags)
 	if !res.Success() {
 		return res
