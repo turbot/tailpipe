@@ -58,6 +58,15 @@ func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Dia
 	if diags.HasErrors() {
 		return diags
 	}
+	//ctyVal, err = cty_helpers.GetCtyValue(resource)
+	//if err != nil {
+	//	return hcl.Diagnostics{&hcl.Diagnostic{
+	//		Severity: hcl.DiagError,
+	//		Summary:  fmt.Sprintf("failed to convert resource '%s' to its cty value", name),
+	//		Detail:   err.Error(),
+	//		Subject:  resource.GetDeclRange(),
+	//	}}
+	//}
 
 	resourceType := resource.GetBlockType()
 	mapForType := c.resourceValues[resourceType]
