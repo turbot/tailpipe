@@ -11,7 +11,7 @@ type PluginDescribeResponse struct {
 	Name         string                       `json:"name"`
 	TableSchemas schema.SchemaMap             `json:"tables"`
 	Sources      row_source.SourceMetadataMap `json:"sources"`
-	Formats	  formats.FormatMap            `json:"formats"`
+	Formats	  formats.FormatDescriptionMap `json:"formats"`
 }
 
 func DescribeResponseFromProto(resp *proto.DescribeResponse) *PluginDescribeResponse {
