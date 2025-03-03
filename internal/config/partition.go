@@ -6,11 +6,13 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func init() {
@@ -97,6 +99,13 @@ func (c *Partition) Validate() hcl.Diagnostics {
 	}
 
 	return diags
+}
+
+// CtyValue implements CtyValueProvider
+// (note this must be implemented by each resource, we cannot rely on the HclResourceImpl implementation as it will
+// only serialise its own properties) )
+func (c *Partition) CtyValue() (cty.Value, error) {
+	return cty_helpers.GetCtyValue(c)
 }
 
 func (c *Partition) validateFilter() hcl.Diagnostics {

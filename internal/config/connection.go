@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"github.com/hashicorp/hcl/v2"
+	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/zclconf/go-cty/cty"
 )
 
 func init() {
@@ -38,6 +40,13 @@ func (c *TailpipeConnection) ToProto() *proto.ConfigData {
 		Hcl:   c.Hcl,
 		Range: proto.RangeToProto(c.DeclRange),
 	}
+}
+
+// CtyValue implements CtyValueProvider
+// (note this must be implemented by each resource, we cannot rely on the HclResourceImpl implementation as it will
+// only serialise its own properties) )
+func (c *TailpipeConnection) CtyValue() (cty.Value, error) {
+	return cty_helpers.GetCtyValue(c)
 }
 
 func NewTailpipeConnection(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
