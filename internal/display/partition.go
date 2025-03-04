@@ -9,6 +9,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 // PartitionResource represents a partition resource and is used for list/show commands

@@ -3,7 +3,6 @@ package filepaths
 import (
 	"fmt"
 
-	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"path/filepath"
 )
 
