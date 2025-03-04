@@ -143,6 +143,7 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 		return err
 	}
 
+	slog.Info("collectPartition - waiting for completion", "partition", partition.Name)
 	// now wait for all collection to complete and close the collector
 	err = c.WaitForCompletion(ctx)
 	if err != nil {

@@ -3,171 +3,12 @@ package parquet
 import (
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/filepaths"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe-plugin-sdk/table"
-	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
-
-// parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
-type parquetConversionWorker struct {
-	// channel to receive jobs from the writer
-	jobChan chan parquetJob
-	// channel to send errors to the writer
-	errorChan chan parquetJobError
-
-	// source file location
-	sourceDir string
-	// dest file location
-	destDir string
-
-	// cache partition schemas - key by partition name
-	viewQueries map[string]string
-	// helper struct which provides unique filename roots
-	fileRootProvider *FileRootProvider
-	db               *duckDb
-}
-
-func newParquetConversionWorker(jobChan chan parquetJob, errorChan chan parquetJobError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (*parquetConversionWorker, error) {
-	w := &parquetConversionWorker{
-		jobChan:          jobChan,
-		errorChan:        errorChan,
-		sourceDir:        sourceDir,
-		destDir:          destDir,
-		viewQueries:      make(map[string]string),
-		fileRootProvider: fileRootProvider,
-	}
-
-	// create a new DuckDB instance
-	db, err := newDuckDb()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
-	}
-	w.db = db
-	return w, nil
-}
-
-// this is the worker function run by all workers, which all read from the ParquetJobPool channel
-func (w *parquetConversionWorker) start() {
-	slog.Debug("worker start")
-
-	// loop until we are closed
-	for job := range w.jobChan {
-		// ok we have a job
-
-		if err := w.doJSONToParquetConversion(job); err != nil {
-			// send the error to the writer
-			w.errorChan <- parquetJobError{job.groupId, err}
-			continue
-		}
-		// increment the completion count
-		atomic.AddInt32(job.completionCount, 1)
-
-		// log the completion count
-		if *job.completionCount%100 == 0 {
-			slog.Debug("ParquetJobPool completion count", "ParquetJobPool", job.groupId, "count", *job.completionCount)
-		}
-
-	}
-
-	// we are done
-	w.close()
-}
-
-func (w *parquetConversionWorker) close() {
-	w.db.Close()
-}
-
-func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) error {
-	startTime := time.Now()
-
-	// build the source filename
-	jsonFileName := table.ExecutionIdToFileName(job.groupId, job.chunkNumber)
-	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
-	s := job.SchemaFunc()
-	// process the ParquetJobPool
-	rowCount, err := w.convertFile(jsonFilePath, job.Partition, s)
-	if err != nil {
-		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
-	}
-	// update the row count
-	// increment the completion count
-	// HACK - this breaks the abstraction of file job but will do for now
-	atomic.AddInt64(job.rowCount, rowCount)
-
-	// delete JSON file (configurable?)
-	if err := os.Remove(jsonFilePath); err != nil {
-		return fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
-	}
-	activeDuration := time.Since(startTime)
-	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
-	return nil
-}
-
-// convert the given jsonl file to parquet
-func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.TableSchema) (int64, error) {
-	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "partitionName", partitionName)
-	//defer slog.Debug("worker.convertFile - done", "error", err)
-
-	// verify the jsonl file has a .jsonl extension
-	if filepath.Ext(jsonlFilePath) != ".jsonl" {
-		return 0, fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
-	}
-	// verify file exists
-	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
-		return 0, fmt.Errorf("file does not exist: %s", jsonlFilePath)
-	}
-
-	// determine the root based on the partition
-
-	if err := os.MkdirAll(filepath.Dir(w.destDir), 0755); err != nil {
-		return 0, fmt.Errorf("failed to create parquet folder: %w", err)
-	}
-
-	// get the query format - from cache if possible
-	selectQueryFormat := w.getViewQuery(partition.UnqualifiedName, schema)
-	// render query
-	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
-
-	// if the partition includes a filter, add a WHERE clause
-	// TODO add validation https://github.com/turbot/tailpipe/issues/209
-	if partition.Filter != "" {
-		selectQuery += fmt.Sprintf(" WHERE %s", partition.Filter)
-	}
-	// Create a query to write to partitioned parquet files
-
-	// TODO review to ensure we are safe from SQL injection
-	// https://github.com/turbot/tailpipe/issues/67
-
-	// get a unique file root
-	fileRoot := w.fileRootProvider.GetFileRoot()
-
-	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "%s_{i}");`,
-		selectQuery, w.destDir, strings.Join(partitionColumns, ","), fileRoot)
-
-	_, err := w.db.Exec(exportQuery)
-	if err != nil {
-		return 0, fmt.Errorf("conversion query failed: %w", err)
-	}
-
-	// now read row count
-	count, err := getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
-	if err != nil {
-		slog.Warn("failed to get row count - conversion failed", "error", err, "query", exportQuery)
-	}
-	return count, err
-
-}
 
 func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 	// Build the query
@@ -184,17 +25,7 @@ func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
 		}
 		return 0, fmt.Errorf("failed to query row count: %w", err)
 	}
-
 	return rowCount, nil
-}
-
-func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.TableSchema) interface{} {
-	query, ok := w.viewQueries[partitionName]
-	if !ok {
-		query = buildViewQuery(rowSchema)
-		w.viewQueries[partitionName] = query
-	}
-	return query
 }
 
 func buildViewQuery(rowSchema *schema.TableSchema) string {
