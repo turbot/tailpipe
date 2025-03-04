@@ -9,6 +9,20 @@ import (
 	"strings"
 )
 
+type invalidParquetError struct {
+	// The error message
+	msg string
+}
+
+// ctor
+func newInvalidParquetError(msg string) error {
+	return invalidParquetError{msg: msg}
+}
+
+func (e invalidParquetError) Error() string {
+	return e.msg
+}
+
 func handleDuckDbError(err error) error {
 	if fileName, isInvalidParquetError := isInvalidParquetError(err); isInvalidParquetError {
 		// update the invalid parquet file
@@ -46,7 +60,7 @@ func handleDuckDbError(err error) error {
 			return err
 		}
 
-		return errors.New(msg)
+		return newInvalidParquetError(msg)
 	}
 	return err
 }

@@ -89,7 +89,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	go w.scheduler(ctx)
 
 	// start the workers
-	for i := 0; i < parquetWorkerCount; i++ {
+	for range parquetWorkerCount {
 		wk, err := newParquetConversionWorker(w)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker: %w", err)
@@ -252,8 +252,6 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
 
 	rows, err := db.Query(query, filePath)
-
-	//rows, err := testDb.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
 	}
