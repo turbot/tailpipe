@@ -24,7 +24,7 @@ type execution struct {
 	// if the execution state is in error, this is the error
 	error error
 	table string
-	// use to signal to the collector that we are complete
+	// use to signal that we are complete
 	completionChan chan error
 }
 
