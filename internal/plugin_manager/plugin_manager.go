@@ -97,7 +97,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// the collection temp dir is a subfolder of the collection dir, which has
 	// with the form: ~/.tailpipe/collection/<profile_name>/<pid>/
-	// it is used to write JSONL files and sourctemporary source artifact files
+	// it is used to write JSONL files and temporary source artifact files
 	// it is expected all this data will be cleaned up after the collection is complete
 	// these folders are subject to cleanup in the future
 
@@ -337,7 +337,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 				return
 			}
 		case protoEvent := <-pluginEventChan:
-			// convert the protobuff event to an observer event
+			// convert the protobuf event to an observer event
 			// and send it to the observer
 			if protoEvent == nil {
 				// TODO #error unexpected - raise an error - send error to observers

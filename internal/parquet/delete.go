@@ -33,8 +33,9 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
 		return 0, fmt.Errorf("failed to delete partition: %w", err)
 	}
 
-	// delete all empty folders underneath the data
-	pruneErr := filepaths.PruneTree(dataDir)
+	// delete all empty folders underneath the partition folder
+	partitionDir := filepaths.GetParquetPartitionPath(dataDir, partition.TableName, partition.ShortName)
+	pruneErr := filepaths.PruneTree(partitionDir)
 	if pruneErr != nil {
 		// do not return error - just log
 		slog.Warn("DeleteParquetFiles failed to prune empty folders", "error", pruneErr)
@@ -107,7 +108,7 @@ func deletePartition(db *sql.DB, dataDir string, partition *config.Partition) (i
 		return 0, fmt.Errorf("failed to query parquet file count: %w", err)
 	}
 
-	partitionFolder := filepaths.GetParquetPartitionPath(dataDir, partition.TableName, partition.ShortName, "")
+	partitionFolder := filepaths.GetParquetPartitionPath(dataDir, partition.TableName, partition.ShortName)
 	err = os.RemoveAll(partitionFolder)
 	if err != nil {
 		return 0, fmt.Errorf("failed to delete partition folder: %w", err)
