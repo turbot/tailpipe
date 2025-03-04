@@ -60,7 +60,9 @@ type Collector struct {
 func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
-	collectionTempDir := filepaths.GetCollectionTempDir()
+	// first clear out any old collection temp dirs
+	filepaths.CleanupCollectionTempDirs()
+	collectionTempDir := filepaths.EnsureCollectionTempDir()
 
 	c := &Collector{
 		Events:            make(chan *proto.Event, eventBufferSize),
@@ -168,6 +170,7 @@ func (c *Collector) Notify(event *proto.Event) {
 	// only send the event if the execution is not complete - this is to handle the case where it has
 	// terminated with an error, causing the collector to close, closing the channel
 	if !c.execution.complete() {
+		// TODO #control flow tell execution to send?
 		c.Events <- event
 	}
 }
