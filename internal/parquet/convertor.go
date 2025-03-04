@@ -1,11 +1,8 @@
 package parquet
 
 import (
-	"errors"
 	"context"
-	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"log"
 	"log/slog"
 	"path/filepath"
@@ -14,11 +11,8 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 	"sync/atomic"
-
-	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe-plugin-sdk/table"
-	"github.com/turbot/tailpipe/internal/config"
 )
 
 const parquetWorkerCount = 5
