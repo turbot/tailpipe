@@ -193,11 +193,11 @@ func getPluginMetadata(ctx context.Context, pluginName string) (map[string][]str
 		out["sources"] = append(out["sources"], sourceValue.Name)
 	}
 
-	for _, formatValues := range details.Formats {
-		for _, formatValue := range formatValues {
-			out["formats"] = append(out["formats"], fmt.Sprintf("%s.%s", formatValue.Type, formatValue.Name))
-		}
+	for _, preset := range details.FormatPresets {
+		out["format_presets"] = append(out["format_presets"], preset.FullName())
 	}
+
+	out["format_types"] = details.FormatTypes
 
 	return out, nil
 }
