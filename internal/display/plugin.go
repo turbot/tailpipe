@@ -75,7 +75,7 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
 
-	installedInfo, err := plugin.Get(ctx, config.GlobalConfig.PluginVersions, name)
+	installedInfo, err := plugin.Get(ctx, config.GlobalConfig.PluginVersions, desc.Plugin)
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
@@ -87,13 +87,13 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 	slices.Sort(sources)
 
 	var tables []string
-	for table := range desc.TableSchemas {
+	for table := range desc.Schemas {
 		tables = append(tables, table)
 	}
 	slices.Sort(tables)
 
 	pr := &PluginResource{
-		Name:    desc.Name,
+		Name:    desc.Plugin,
 		Version: installedInfo.Version.String(),
 		Sources: sources,
 		Tables:  tables,
