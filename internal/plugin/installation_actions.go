@@ -185,7 +185,7 @@ func getPluginMetadata(ctx context.Context, pluginName string) (map[string][]str
 		return nil, err
 	}
 
-	for _, tableValue := range details.TableSchemas {
+	for _, tableValue := range details.Schemas {
 		out["tables"] = append(out["tables"], tableValue.Name)
 	}
 
