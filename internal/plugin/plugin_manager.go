@@ -16,10 +16,10 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb"
-	"github.com/spf13/viper"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
-	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
@@ -33,7 +33,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
 	_ "github.com/turbot/tailpipe-plugin-sdk/artifact_source"
@@ -428,7 +427,7 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	progress := make(chan struct{}, 5)
 
 	// install plugin
-	_, err = Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	_, err = Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{})
 	if err != nil {
 		return err
 	}
