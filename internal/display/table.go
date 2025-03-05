@@ -76,7 +76,7 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 			return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 		}
 
-		for t, s := range desc.TableSchemas {
+		for t, s := range desc.Schemas {
 			table := &TableResource{
 				Name:        t,
 				Description: s.Description,
@@ -120,7 +120,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
 
-	if tableSchema, ok := desc.TableSchemas[tableName]; ok {
+	if tableSchema, ok := desc.Schemas[tableName]; ok {
 		table := &TableResource{
 			Name:        tableName,
 			Description: tableSchema.Description,
