@@ -182,8 +182,8 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	return err
 }
 
-// Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*plugin.DescribeResponse, error) {
+// Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*plugin.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -192,14 +192,20 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*plugi
 		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
 	}
 
-	describeResponse, err := pluginClient.Describe()
+	// convert the custom formats to proto
+	var customFormatsProto []*proto.ConfigData
+	for _, f := range customFormats {
+		customFormatsProto = append(customFormatsProto, f.ToProto())
+	}
+	req := &proto.DescribeRequest{
+		CustomFormats: customFormatsProto,
+	}
+	describeResponse, err := pluginClient.Describe(req)
 	if err != nil {
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
 	res := plugin.DescribeResponseFromProto(describeResponse)
-
-	// just return - the observer is responsible for waiting for completion
 	return res, nil
 }
 
