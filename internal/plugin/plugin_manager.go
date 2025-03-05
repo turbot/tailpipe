@@ -16,8 +16,6 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
@@ -30,9 +28,11 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
 	_ "github.com/turbot/tailpipe-plugin-sdk/artifact_source"
@@ -183,7 +183,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 }
 
 // Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
+func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*plugin.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -197,8 +197,7 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
-	res := DescribeResponseFromProto(describeResponse)
-	res.Name = pluginDef.Plugin
+	res := plugin.DescribeResponseFromProto(describeResponse)
 
 	// just return - the observer is responsible for waiting for completion
 	return res, nil
