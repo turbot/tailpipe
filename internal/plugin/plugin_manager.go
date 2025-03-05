@@ -28,6 +28,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
@@ -181,8 +182,8 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	return err
 }
 
-// Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
+// Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
+func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*plugin.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -197,7 +198,9 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
-	res := DescribeResponseFromProto(describeResponse)
+	res := plugin.DescribeResponseFromProto(describeResponse)
+
+	// just return - the observer is responsible for waiting for completion
 	return res, nil
 }
 
