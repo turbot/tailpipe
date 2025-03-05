@@ -174,7 +174,7 @@ func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary 
 
 // getPluginMetadata returns the metadata for a given plugin, primarily the tables, sources and formats for usage in writing them to the InstalledVersionFile.
 // This is passed into Install using the ociinstaller.WithGetMetadataFunc option.
-func getPluginMetadata(ctx context.Context, pluginName string) (*map[string][]string, error) {
+func getPluginMetadata(ctx context.Context, pluginName string) (map[string][]string, error) {
 	manager := NewPluginManager()
 	defer manager.Close()
 
@@ -199,5 +199,5 @@ func getPluginMetadata(ctx context.Context, pluginName string) (*map[string][]st
 		}
 	}
 
-	return &out, nil
+	return out, nil
 }
