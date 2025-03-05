@@ -60,6 +60,9 @@ func (e *execution) complete() bool {
 func (e *execution) waitForCompletion(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
+		if !e.complete() {
+			e.done(ctx.Err())
+		}
 		return ctx.Err()
 	case err := <-e.completionChan:
 		return err
