@@ -115,6 +115,20 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		return errors.New("collection already in progress")
 	}
 
+	// check repository state for existing collection by different process
+	info, err := repository.GetPartitionState(c.partition.GetUnqualifiedName())
+	if err != nil {
+		return fmt.Errorf("failed to check partition state: %w", err)
+	}
+
+	if info.State == repository.PartitionStateInProgress {
+		return fmt.Errorf("partition %s is already being collected", c.partition.GetUnqualifiedName())
+	}
+
+	if info.State == repository.PartitionStateInvalid {
+		return fmt.Errorf("partition %s is invalid: %s", c.partition.GetUnqualifiedName(), info.Message)
+	}
+
 	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
 	c.execution = newExecution(c.partition)
 
