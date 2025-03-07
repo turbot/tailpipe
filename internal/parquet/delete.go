@@ -3,6 +3,7 @@ package parquet
 import (
 	"fmt"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/repository"
 	"log/slog"
 	"os"
 	"strings"
@@ -13,7 +14,7 @@ import (
 )
 
 func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error) {
-	db, err :=  database.NewDuckDb()
+	db, err := database.NewDuckDb()
 	if err != nil {
 		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -21,6 +22,23 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	var rowCount int
+
+	// load the partition state
+	partitionState, err := repository.GetPartitionState(partition.ShortName)
+	if err != nil {
+		return 0, err
+	}
+	// if the partition has an InvalidFromDate, claan up invalid and temp files from latest of:
+	// -  InvalidFromDate
+	// - delete from time
+	invalidDeleteFromTime := partitionState.InvalidFromDate
+	if !invalidDeleteFromTime.IsZero() {
+		if from.IsZero() {
+			from = invalidDeleteFromTime
+		} else if invalidDeleteFromTime.After(from) {
+			from = invalidDeleteFromTime
+		}
+	}
 
 	if from.IsZero() {
 		// if there is no from time, delete the entire partition folder

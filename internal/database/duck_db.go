@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
@@ -117,41 +116,4 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	return nil
-}
-
-// executeWithParquetErrorRetry executes a function with retry logic for invalid parquet files.
-// When it encounters a DuckDB error indicating an invalid Parquet file (either too short or missing magic bytes),
-// it will:
-// 1. Check if the error is a known invalid Parquet error pattern
-// 2. Rename the invalid file by appending '.invalid' to its name
-// 3. Convert the error to an invalidParquetError type
-// The function will retry up to 1000 times before giving up, collecting any invalid Parquet errors encountered.
-// This high retry count is necessary as large operations may encounter many invalid files during concurrent writes.
-func executeWithParquetErrorRetry[T any](fn func() (T, error)) (T, error) {
-	var result T
-	var partitionErr *partitionError
-	var err error // Declare err outside the loop
-	maxRetries := 1000
-
-	for attempt := 1; attempt <= maxRetries; attempt++ {
-		result, err = fn()
-		if err == nil {
-			return result, nil
-		}
-
-		err = handleDuckDbError(err)
-		var i invalidParquetError
-		if errors.As(err, &i) {
-			if partitionErr == nil {
-				partitionErr = newPartitionError(i.table, i.partition, i.date)
-			} else {
-				partitionErr.addError(i.table, i.partition, i.date)
-			}
-			continue
-		}
-		// If we get here, it's not a parquet error, so return it
-		return result, err
-	}
-	// If we've exhausted all retries, return the last error we encountered
-	return result, err
 }

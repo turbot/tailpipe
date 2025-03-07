@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
@@ -116,18 +117,14 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		return errors.New("collection already in progress")
 	}
 
-	// check repository state for existing collection by different process
-	partitionState, err := repository.GetPartitionState(c.partition.GetUnqualifiedName())
-	if err != nil {
-		return fmt.Errorf("failed to check partition state: %w", err)
+	result := repository.CheckPartitionState(c.partition)
+	if result.Error != nil {
+		return result.Error
 	}
-
-	if partitionState.State == repository.PartitionStateInProgress {
-		return fmt.Errorf("partition %s is already being collected", c.partition.GetUnqualifiedName())
-	}
-
-	if partitionState.State == repository.PartitionStateInvalid {
-		return fmt.Errorf("partition %s is invalid: %s", c.partition.GetUnqualifiedName(), partitionState.Message)
+	if len(result.Warnings) > 0 {
+		for _, warning := range result.Warnings {
+			error_helpers.ShowWarning(warning)
+		}
 	}
 
 	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
