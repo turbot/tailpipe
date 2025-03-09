@@ -22,6 +22,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
+	"github.com/turbot/tailpipe/internal/repository"
 	"golang.org/x/exp/maps"
 )
 
@@ -132,7 +133,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	return nil
 }
 
-func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin.PluginManager) error {
+func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin.PluginManager) (err error) {
 	c, err := collector.New(pluginManager, partition, cancel)
 	if err != nil {
 		return fmt.Errorf("failed to create collector: %w", err)
@@ -142,6 +143,19 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	if err = c.Collect(ctx, fromTime); err != nil {
 		return err
 	}
+	defer func() {
+		// update the repository state with the partition state
+		stateErr := repository.SetPartitionStateComplete(partition, err, fromTime)
+		// if we do not have a collection error, return the state error
+		if stateErr != nil {
+			if err == nil {
+				err = stateErr
+			} else {
+				// just log the error
+				slog.Error("failed to update partition state", "error", stateErr)
+			}
+		}
+	}()
 
 	slog.Info("collectPartition - waiting for completion", "partition", partition.Name)
 	// now wait for all collection to complete and close the collector

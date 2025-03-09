@@ -27,7 +27,7 @@ func TestRepositoryState_GetPartitionState(t *testing.T) {
 			fields: fields{
 				Partitions: map[string]PartitionStateInfo{
 					"test": {
-						CollectionState: CollectionStateOk,
+						State:           CollectionStateIdle,
 						InvalidFromDate: now,
 						PID:             123,
 					},
@@ -37,7 +37,7 @@ func TestRepositoryState_GetPartitionState(t *testing.T) {
 				partition: "test",
 			},
 			want: PartitionStateInfo{
-				CollectionState: CollectionStateOk,
+				State:           CollectionStateIdle,
 				InvalidFromDate: now,
 				PID:             123,
 			},
@@ -47,7 +47,7 @@ func TestRepositoryState_GetPartitionState(t *testing.T) {
 			fields: fields{
 				Partitions: map[string]PartitionStateInfo{
 					"test": {
-						CollectionState: CollectionStateOk,
+						State:           CollectionStateIdle,
 						InvalidFromDate: now,
 					},
 				},
@@ -65,7 +65,7 @@ func TestRepositoryState_GetPartitionState(t *testing.T) {
 			}
 			got := rs.GetPartitionState(tt.args.partition)
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetPartitionState() got = %v, want %v", got, tt.want)
+				t.Errorf("LoadPartitionState() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -88,7 +88,7 @@ func TestRepositoryState_SetPartitionState(t *testing.T) {
 			},
 			args: args{
 				partition: "test",
-				state:     CollectionStateOk,
+				state:     CollectionStateIdle,
 				lastDay:   now,
 				pid:       123,
 			},
@@ -99,7 +99,7 @@ func TestRepositoryState_SetPartitionState(t *testing.T) {
 			fields: fields{
 				Partitions: map[string]PartitionStateInfo{
 					"test": {
-						CollectionState: CollectionStateInProgress,
+						State:           CollectionStateInCollecting,
 						InvalidFromDate: now.Add(-24 * time.Hour),
 					},
 				},
@@ -107,7 +107,7 @@ func TestRepositoryState_SetPartitionState(t *testing.T) {
 			},
 			args: args{
 				partition: "test",
-				state:     CollectionStateOk,
+				state:     CollectionStateIdle,
 				lastDay:   now,
 				pid:       123,
 			},
@@ -121,7 +121,7 @@ func TestRepositoryState_SetPartitionState(t *testing.T) {
 			},
 			args: args{
 				partition: "test",
-				state:     CollectionStateOk,
+				state:     CollectionStateIdle,
 				lastDay:   now,
 				pid:       123,
 			},
@@ -135,7 +135,7 @@ func TestRepositoryState_SetPartitionState(t *testing.T) {
 			},
 			args: args{
 				partition: "test",
-				state:     CollectionStateOk,
+				state:     CollectionStateIdle,
 				lastDay:   now,
 				pid:       0,
 			},
@@ -159,8 +159,8 @@ func TestRepositoryState_SetPartitionState(t *testing.T) {
 				if info == empty {
 					t.Error("SetPartitionState() partition not found after setting")
 				}
-				if info.CollectionState != tt.args.state {
-					t.Errorf("SetPartitionState() state = %v, want %v", info.CollectionState, tt.args.state)
+				if info.State != tt.args.state {
+					t.Errorf("SetPartitionState() state = %v, want %v", info.State, tt.args.state)
 				}
 				if !info.InvalidFromDate.Equal(tt.args.lastDay) {
 					t.Errorf("SetPartitionState() invalidFromDate = %v, want %v", info.InvalidFromDate, tt.args.lastDay)
@@ -190,19 +190,19 @@ func TestRepositoryState_Integration(t *testing.T) {
 	pid := os.Getpid()
 
 	// Set initial state
-	err := UpdatePartitionState(partitionFullName, CollectionStateInProgress, lastDay, pid)
+	err := UpdateAndSavePartitionState(partitionFullName, CollectionStateInCollecting, lastDay, pid)
 	if err != nil {
 		t.Fatalf("Failed to set partition state: %v", err)
 	}
 
 	// Verify state was persisted correctly
-	info, err := GetPartitionState(partitionFullName)
+	info, err := LoadPartitionState(partitionFullName)
 	if err != nil {
 		t.Fatalf("Failed to get partition state: %v", err)
 	}
 
-	if info.CollectionState != CollectionStateInProgress {
-		t.Errorf("Expected state %s, got %s", CollectionStateInProgress, info.CollectionState)
+	if info.State != CollectionStateInCollecting {
+		t.Errorf("Expected state %s, got %s", CollectionStateInCollecting, info.State)
 	}
 	if !info.InvalidFromDate.Equal(lastDay) {
 		t.Errorf("Expected invalidFromDate %v, got %v", lastDay, info.InvalidFromDate)
@@ -212,19 +212,19 @@ func TestRepositoryState_Integration(t *testing.T) {
 	}
 
 	// Test updating state
-	err = UpdatePartitionState(partitionFullName, CollectionStateOk, lastDay, pid)
+	err = UpdateAndSavePartitionState(partitionFullName, CollectionStateIdle, lastDay, pid)
 	if err != nil {
 		t.Fatalf("Failed to update partition state: %v", err)
 	}
 
 	// Verify the update was persisted
-	info, err = GetPartitionState(partitionFullName)
+	info, err = LoadPartitionState(partitionFullName)
 	if err != nil {
 		t.Fatalf("Failed to get updated partition state: %v", err)
 	}
 
-	if info.CollectionState != CollectionStateOk {
-		t.Errorf("Expected state %s, got %s", CollectionStateOk, info.CollectionState)
+	if info.State != CollectionStateIdle {
+		t.Errorf("Expected state %s, got %s", CollectionStateIdle, info.State)
 	}
 	if !info.InvalidFromDate.Equal(lastDay) {
 		t.Errorf("Expected invalidFromDate %v, got %v", lastDay, info.InvalidFromDate)
@@ -235,19 +235,19 @@ func TestRepositoryState_Integration(t *testing.T) {
 
 	// Test handling of aborted collection
 	// Set state to in-progress with a non-existent PID
-	err = UpdatePartitionState(partitionFullName, CollectionStateInProgress, lastDay, 999999)
+	err = UpdateAndSavePartitionState(partitionFullName, CollectionStateInCollecting, lastDay, 999999)
 	if err != nil {
 		t.Fatalf("Failed to set partition state: %v", err)
 	}
 
 	// Get state - should be marked as invalid
-	info, err = GetPartitionState(partitionFullName)
+	info, err = LoadPartitionState(partitionFullName)
 	if err != nil {
 		t.Fatalf("Failed to get partition state: %v", err)
 	}
 
-	if info.CollectionState != CollectionStateOk {
-		t.Errorf("Expected state %s, got %s", CollectionStateOk, info.CollectionState)
+	if info.State != CollectionStateIdle {
+		t.Errorf("Expected state %s, got %s", CollectionStateIdle, info.State)
 	}
 	if info.PID != 999999 {
 		t.Errorf("Expected PID %d, got %d", 999999, info.PID)
@@ -261,88 +261,9 @@ type fields struct {
 
 type args struct {
 	partition string
-	state     CollectionState
+	state     PartitionState
 	lastDay   time.Time
 	pid       int
-}
-
-func TestRepositoryState_load(t *testing.T) {
-	type fields struct {
-		Partitions map[string]PartitionStateInfo
-		statePath  string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rs := &RepositoryState{
-				Partitions: tt.fields.Partitions,
-				statePath:  tt.fields.statePath,
-			}
-			if err := rs.Load(); (err != nil) != tt.wantErr {
-				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestRepositoryState_save(t *testing.T) {
-	type fields struct {
-		Partitions map[string]PartitionStateInfo
-		statePath  string
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rs := &RepositoryState{
-				Partitions: tt.fields.Partitions,
-				statePath:  tt.fields.statePath,
-			}
-			if err := rs.Save(); (err != nil) != tt.wantErr {
-				t.Errorf("Save() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
-func TestRepositoryState_withFileLock(t *testing.T) {
-	type fields struct {
-		Partitions map[string]PartitionStateInfo
-		statePath  string
-	}
-	type args struct {
-		fn func() error
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			rs := &RepositoryState{
-				Partitions: tt.fields.Partitions,
-				statePath:  tt.fields.statePath,
-			}
-			if err := rs.withFileLock(tt.args.fn); (err != nil) != tt.wantErr {
-				t.Errorf("withFileLock() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
-	}
 }
 
 // TestRepositoryState_FileLocking tests that file locking prevents concurrent access

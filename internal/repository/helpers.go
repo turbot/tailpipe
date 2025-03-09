@@ -2,83 +2,158 @@ package repository
 
 import (
 	"fmt"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
-	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
-// CheckPartitionState verifies if a partition is in a valid state.
+// SetPartitionStateCollecting sets the partition state to collecting
+//
+// It first verifies if a partition is in a valid state.
 // It performs two main checks:
-// 1. Verifies the partition is not currently being collected (CollectionStateInProgress)
+// 1. Verifies the partition is not currently being collected (CollectionStateInCollecting)
 // 2. Checks if there are any invalid parquet files in the partition (InvalidFromDate)
 //
 // Returns:
 // - An error if the partition cannot be collected (e.g., already being collected)
-// - A warning if there are invalid parquet files that may affect data completeness
-// - Empty ErrorAndWarnings if the partition is in a valid state for collection
-func CheckPartitionState(partition *config.Partition) error_helpers.ErrorAndWarnings {
-	rs, err := loadRepositoryState()
+// - An error if there are invalid parquet files that may affect data completeness
+// - nil if the partition is in a valid state for collection
+func SetPartitionStateCollecting(partition *config.Partition, fromTime time.Time) error {
+	// load the repository state
+	rs, err := Load()
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		slog.Warn("Failed to load repository state", "error", err)
+		return err
 	}
 
-	partitionState, err := GetPartitionState(partition.ShortName)
-	if err != nil {
-		return error_helpers.NewErrorsAndWarning(fmt.Errorf("failed to check partition state: %w", err))
-	}
+	// verify we can collect this partition
+	partitionState := rs.GetPartitionState(partition.UnqualifiedName)
 
 	// If state is in progress but process doesn't exist, mark as invalid
-	if partitionState.CollectionState == CollectionStateInProgress && (partitionState.PID == 0 || !utils.PidExists(partitionState.PID)) {
-
-		dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-		// search for earliest dated temp files in the collection temp dir and set the invalidfrom date to that
-		invalidFromDate := findEarliestTempFile(partition, dataDir).Add(-1 * time.Hour * 24)
-		partitionState.InvalidFromDate = invalidFromDate
-		partitionState.CollectionState = CollectionStateInvalid
-		rs.SetPartitionState(partition.UnqualifiedName, partitionState)
-		// save the repo state
-		if err := rs.Save(); err != nil {
-			return error_helpers.NewErrorsAndWarning(err)
+	if partitionState.PreviousCollectionAborted() {
+		// as we pass partitionState by value, we need to get the state again
+		partitionState, err = handleInterruptedCollection(partition, partitionState, rs)
+		if err != nil {
+			return err
 		}
 	}
 
-	if partitionState.CollectionState == CollectionStateInProgress {
-		return error_helpers.NewErrorsAndWarning(fmt.Errorf("partition %s is already being collected", partition.UnqualifiedName))
+	if partitionState.State == CollectionStateInCollecting {
+		slog.Info("SetPartitionStateCollecting - partition is already being collected", "partition", partition.UnqualifiedName)
+		// we cannot collect this partition because it is already being collected
+		return fmt.Errorf("partition %s is already being collected by PID %d", partition.UnqualifiedName, partitionState.PID)
 	}
 
-	if !partitionState.InvalidFromDate.IsZero() {
-		return error_helpers.NewErrorsAndWarning(fmt.Errorf("partition %s has invalid data from %s",
-			partition.ShortName,
-			partitionState.InvalidFromDate.Format("2006-01-02")))
+	if partitionState.State == CollectionStateInvalid {
+		slog.Info("SetPartitionStateCollecting - partition is in invalid state", "partition", partition.UnqualifiedName)
+		// if we are NOT collecting from before the invalid from date, we cannot collect
+		if partitionState.InvalidFromDate.IsZero() || fromTime.IsZero() || partitionState.InvalidFromDate.Before(fromTime) {
+			return buildInvalidPartitionError(partition, partitionState.InvalidFromDate)
+		}
 	}
 
-	return error_helpers.ErrorAndWarnings{}
+	slog.Info("SetPartitionStateCollecting - setting partition state to collecting", "partition", partition.UnqualifiedName)
+
+	// Set state to collecting and save
+	partitionState.State = CollectionStateInCollecting
+	partitionState.PID = os.Getpid()
+
+	rs.SetPartitionState(partition.UnqualifiedName, partitionState)
+	return rs.Save()
 }
 
-// GetPartitionState gets the state for a partition from the state file.
-// If it discovers a stale collection (in-progress but process not running),
-// it will update the state to invalid and save the change.
-func GetPartitionState(partitionName string) (PartitionStateInfo, error) {
-	rs, err := loadRepositoryState()
+func handleInterruptedCollection(partition *config.Partition, partitionState PartitionStateInfo, rs *RepositoryState) (PartitionStateInfo, error) {
+	slog.Info("handleInterruptedCollection - setting partition state to invalid", "partition", partition.UnqualifiedName)
+	// search for earliest dated temp files in the collection temp dir and set the invalidfrom date to that
+	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
+	invalidFromDate := findEarliestTempFile(partition, dataDir)
+	partitionState.InvalidFromDate = invalidFromDate
+	partitionState.State = CollectionStateInvalid
+	rs.SetPartitionState(partition.UnqualifiedName, partitionState)
+	// save the repo state
+	if err := rs.Save(); err != nil {
+		slog.Warn("failed to save repository state", "error", err)
+		return PartitionStateInfo{}, fmt.Errorf("failed to save repository state: %w", err)
+	}
+	return partitionState, nil
+}
+
+func SetPartitionStateComplete(partition *config.Partition, collectionErr error, fromDate time.Time) error {
+	// load the repository state
+	rs, err := Load()
+	if err != nil {
+		return err
+	}
+
+	partitionState := rs.GetPartitionState(partition.UnqualifiedName)
+
+	// If state is already invalid we must have set it during collection upon an error - we have nothing to do
+	if partitionState.State == CollectionStateInvalid {
+		return nil
+	}
+
+	// we expect the state to be in progress
+	if partitionState.State != CollectionStateInCollecting {
+		return fmt.Errorf("partition %s is not currently being collected", partition.UnqualifiedName)
+	}
+
+	if collectionErr != nil {
+		// set the state to invalid with the coLlection from date as the invalid from date
+		partitionState.InvalidFromDate = fromDate
+		partitionState.State = CollectionStateInvalid
+		// clear PID
+		partitionState.PID = 0
+
+	} else {
+		partitionState.InvalidFromDate = time.Time{}
+		partitionState.State = CollectionStateIdle
+		// clear PID
+		partitionState.PID = 0
+	}
+	rs.SetPartitionState(partition.UnqualifiedName, partitionState)
+	return rs.Save()
+}
+
+func buildInvalidPartitionError(partition *config.Partition, date time.Time) error {
+	// if the invalid from date is not set - we assume the whole partition is invalid so tell the user to delete it
+	if date.IsZero() {
+		deleteCmd := fmt.Sprintf("tailpipe partition delete %s", partition.UnqualifiedName)
+		return fmt.Errorf("partition %s has invalid data\ndelete the local partition data with the command:\n\t* %s", partition.UnqualifiedName, deleteCmd)
+	}
+
+	// otherwise give the user the option to delete the invalid data or collect from that date
+	formattedDate := date.Format("2006-01-02")
+	deleteFromCmd := fmt.Sprintf("tailpipe partition delete %s --from %s", partition.UnqualifiedName, formattedDate)
+	collectFromCmd := fmt.Sprintf("tailpipe collect %s --from %s", partition.UnqualifiedName, formattedDate)
+	return fmt.Errorf("partition %s has invalid data from %s onwards.\nRun either of: \n\t* %s\n\t* %s",
+		partition.UnqualifiedName,
+		formattedDate,
+		deleteFromCmd,
+		collectFromCmd)
+}
+
+// LoadPartitionState loads the repo state and gets the state for a partition from the state file.
+func LoadPartitionState(partitionName string) (PartitionStateInfo, error) {
+	rs, err := Load()
 	if err != nil {
 		return PartitionStateInfo{}, err
 	}
 	return rs.GetPartitionState(partitionName), nil
 }
 
-// UpdatePartitionState updates the state for a partition in the state file.
-func UpdatePartitionState(partition string, collectionState CollectionState, invalidFromDate time.Time, pid int) error {
-	rs, err := loadRepositoryState()
+// UpdateAndSavePartitionState loads the repo state and updates the state for a partition in the state file, before saving the state
+func UpdateAndSavePartitionState(partition string, collectionState PartitionState, invalidFromDate time.Time, pid int) error {
+	rs, err := Load()
 	if err != nil {
 		return err
 	}
 
 	partitionState := rs.GetPartitionState(partition)
-	partitionState.CollectionState = collectionState
+	partitionState.State = collectionState
 	partitionState.PID = pid
 	partitionState.InvalidFromDate = invalidFromDate
 	rs.SetPartitionState(partition, partitionState)
@@ -87,21 +162,20 @@ func UpdatePartitionState(partition string, collectionState CollectionState, inv
 }
 
 func findEarliestTempFile(partition *config.Partition, dataDir string) time.Time {
-
-	pattern := filepaths.GetTempParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
+	pattern := filepaths.GetTempParquetFileGlobForPartition(dataDir, partition.TableName, partition.GetUnqualifiedName(), "")
 	matches, err := filepath.Glob(pattern)
 	if err != nil || len(matches) == 0 {
-		return time.Now()
+		return time.Time{}
 	}
 
-	earliest := time.Now()
+	earliest := time.Time{}
 	for _, match := range matches {
 		partitionFields, err := filepaths.ExtractPartitionFields(match)
 		if err != nil {
 			// just ignore files we can't parse
 			continue
 		}
-		if !partitionFields.Date.IsZero() && partitionFields.Date.Before(earliest) {
+		if !partitionFields.Date.IsZero() && (earliest.IsZero() || partitionFields.Date.Before(earliest)) {
 			// if date was parsed and is before the earliest date, update the earliest date
 			earliest = partitionFields.Date
 		}

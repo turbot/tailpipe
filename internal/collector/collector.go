@@ -13,7 +13,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
@@ -104,6 +103,15 @@ func (c *Collector) Close() {
 }
 
 func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
+	if c.execution != nil {
+		return errors.New("collection already in progress")
+	}
+
+	err = repository.SetPartitionStateCollecting(c.partition, fromTime)
+	if err != nil {
+		return err
+	}
+
 	// create a cancel context to pass to the parquet converter
 	ctx, cancel := context.WithCancel(ctx)
 	// cancel the execution context if there is an error
@@ -112,20 +120,6 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 			cancel()
 		}
 	}()
-
-	if c.execution != nil {
-		return errors.New("collection already in progress")
-	}
-
-	result := repository.CheckPartitionState(c.partition)
-	if result.Error != nil {
-		return result.Error
-	}
-	if len(result.Warnings) > 0 {
-		for _, warning := range result.Warnings {
-			error_helpers.ShowWarning(warning)
-		}
-	}
 
 	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
 	c.execution = newExecution(c.partition)

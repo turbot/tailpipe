@@ -14,16 +14,16 @@ func EnsureCollectionTempDir() string {
 	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
 
 	// add a PID directory to the collection directory
-	d := filepath.Join(collectionDir, fmt.Sprintf("%d", os.Getpid()))
+	collectionTempDir := filepath.Join(collectionDir, fmt.Sprintf("%d", os.Getpid()))
 
 	// create the directory if it doesn't exist
-	if _, err := os.Stat(d); os.IsNotExist(err) {
-		err := os.MkdirAll(d, 0755)
+	if _, err := os.Stat(collectionTempDir); os.IsNotExist(err) {
+		err := os.MkdirAll(collectionTempDir, 0755)
 		if err != nil {
 			slog.Error("failed to create collection temp dir", "error", err)
 		}
 	}
-	return collectionDir
+	return collectionTempDir
 }
 
 func CleanupCollectionTempDirs() {

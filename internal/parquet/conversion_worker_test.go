@@ -2,16 +2,21 @@ package parquet
 
 import (
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
+	"github.com/turbot/tailpipe/internal/database"
+
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/spf13/viper"
+	"github.com/turbot/pipe-fittings/v2/cmdconfig"
+	"github.com/turbot/pipe-fittings/v2/parse"
+	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/cmdconfig"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 )
 
@@ -24,6 +29,29 @@ var jsonlFilePath string
 
 func setup() error {
 	var err error
+
+	// Create a temporary config directory
+	tempConfigDir, err := os.MkdirTemp("", "tailpipe_test_config")
+	if err != nil {
+		return fmt.Errorf("error creating temp config directory: %w", err)
+	}
+
+	// Set the config path to our temporary directory
+	viper.Set("config_path", tempConfigDir)
+
+	// Initialize workspace profile with parse options
+	parseOpts := []parse.ParseHclOpt{
+		parse.WithEscapeBackticks(true),
+	}
+	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
+	if err != nil {
+		return fmt.Errorf("error creating workspace profile loader: %w", err)
+	}
+	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
+	if err := config.GlobalWorkspaceProfile.EnsureWorkspaceDirs(); err != nil {
+		return fmt.Errorf("error ensuring workspace dirs: %w", err)
+	}
+
 	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
 	if err != nil {
 		return fmt.Errorf("error creating duckdb: %w", err)

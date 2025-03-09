@@ -73,15 +73,19 @@ func handleDuckDbError(err error) error {
 	if fileName, isInvalidParquetError := isInvalidParquetError(err); isInvalidParquetError {
 		// rename the parquet file - add a .invalid extension
 		// Perform the rename operation
-
-		updatedFilename, renameErr := renameInvalidParquetFile(fileName)
-		if renameErr != nil {
-			slog.Warn("Failed to rename invalid parquet file", "file", fileName, "error", renameErr)
-			// Return the original error if renaming fails
-			return err
+		if fileName != "" {
+			updatedFilename, renameErr := renameInvalidParquetFile(fileName)
+			if renameErr != nil {
+				slog.Warn("Failed to rename invalid parquet file", "file", fileName, "error", renameErr)
+				// Return the original error if renaming fails
+				return err
+			}
+			return newInvalidParquetError(updatedFilename)
 		}
-		return newInvalidParquetError(updatedFilename)
+		// so we have no filename
+		TODO handle Invalid Error: TProtocolException: Invalid data
 	}
+
 	return err
 }
 
@@ -107,7 +111,8 @@ func isInvalidParquetError(err error) (string, bool) {
 	}
 	var target *duckdb.Error
 	if stderrors.As(err, &target) {
-		if target.Type == duckdb.ErrorTypeInvalidInput {
+		switch target.Type {
+		case duckdb.ErrorTypeInvalidInput:
 			// Remove the "Invalid Input Error:" prefix if it exists and normalize whitespace
 			msg := strings.TrimPrefix(target.Msg, "Invalid Input Error: ")
 			msg = strings.ReplaceAll(msg, "\n", " ")
@@ -129,6 +134,12 @@ func isInvalidParquetError(err error) (string, bool) {
 					// Return the extracted file path and true
 					return match[1], true
 				}
+			}
+		// we may also see this error
+		case duckdb.ErrorTypeInvalid:
+			// with this error we get no file information
+			if target.Msg == "Invalid Error: TProtocolException: Invalid data" {
+				return "", true
 			}
 		}
 	}
