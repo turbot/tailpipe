@@ -321,11 +321,12 @@ func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.Res
 }
 
 // updateRowCount is called directly by the parquet writer to update the row count
-func (c *Collector) updateRowCount(rowCount int64) {
+func (c *Collector) updateRowCount(rowCount, errorCount int64) {
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
 
-	c.status.SetRowsConverted(rowCount)
+	c.status.UpdateConversionStatus(rowCount, errorCount)
+
 	c.updateApp(c.status)
 }
 

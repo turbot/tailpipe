@@ -28,10 +28,11 @@ type collectionModel struct {
 	errors          int64
 
 	// rows
-	rowsReceived  int64
-	rowsEnriched  int64
-	rowsConverted int64
-	rowsErrors    int64
+	rowsReceived     int64
+	rowsEnriched     int64
+	rowsConverted    int64
+	pluginErrors     int64
+	conversionErrors int64
 
 	cancelled bool
 	complete  bool
@@ -92,7 +93,8 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.rowsReceived = t.RowsReceived
 		c.rowsEnriched = t.RowsEnriched
 		c.rowsConverted = t.RowsConverted
-		c.rowsErrors = t.Errors
+		c.pluginErrors = t.PluginErrors
+		c.conversionErrors = t.ConversionErrors
 		return c, nil
 	case AwaitingCompactionMsg:
 		cs := parquet.CompactionStatus{}
@@ -152,7 +154,7 @@ func (c collectionModel) View() string {
 		b.WriteString(writeCountLine("Downloaded:", artifactDescriptionLen, c.downloaded, artifactCountLen, &downloadedDisplay))
 		b.WriteString(writeCountLine("Extracted:", artifactDescriptionLen, c.extracted, artifactCountLen, nil))
 		if c.errors > 0 {
-			b.WriteString(writeCountLine("Errors:", artifactDescriptionLen, c.errors, artifactCountLen, nil))
+			b.WriteString(writeCountLine("PluginErrors:", artifactDescriptionLen, c.errors, artifactCountLen, nil))
 		}
 		b.WriteString("\n")
 	}
@@ -164,14 +166,17 @@ func (c collectionModel) View() string {
 	b.WriteString(writeCountLine("Received:", rowDescriptionLen, c.rowsReceived, rowCountLen, nil))
 	b.WriteString(writeCountLine("Enriched:", rowDescriptionLen, c.rowsEnriched, rowCountLen, nil))
 	b.WriteString(writeCountLine("Saved:", rowDescriptionLen, c.rowsConverted, rowCountLen, nil))
+	if errors := c.pluginErrors + c.conversionErrors; errors > 0 {
+		b.WriteString(writeCountLine("Errors:", rowDescriptionLen, errors, rowCountLen, nil))
+	}
 	if c.compactionStatus != nil {
-		filtered := c.rowsReceived - (c.rowsConverted + c.rowsErrors)
+		filtered := c.rowsReceived - (c.rowsConverted + c.pluginErrors)
 		if filtered > 0 {
 			b.WriteString(writeCountLine("Filtered:", rowDescriptionLen, filtered, rowCountLen, nil))
 		}
 	}
-	if c.rowsErrors > 0 {
-		b.WriteString(writeCountLine("Errors:", rowDescriptionLen, c.rowsErrors, rowCountLen, nil))
+	if c.pluginErrors > 0 {
+		b.WriteString(writeCountLine("PluginErrors:", rowDescriptionLen, c.pluginErrors, rowCountLen, nil))
 	}
 	b.WriteString("\n")
 
@@ -188,7 +193,7 @@ func (c collectionModel) View() string {
 
 	// errors
 	if len(c.errorList) > 0 {
-		b.WriteString("Errors:\n")
+		b.WriteString("PluginErrors:\n")
 		for i, e := range c.errorList {
 			if i <= (uiErrorsToDisplay - 1) {
 				b.WriteString(fmt.Sprintf("  %s\n", helpers.TruncateString(e, 120)))
