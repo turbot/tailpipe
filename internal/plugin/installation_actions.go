@@ -177,26 +177,10 @@ func getPluginMetadata(ctx context.Context, pluginName string) (map[string][]str
 	manager := NewPluginManager()
 	defer manager.Close()
 
-	out := make(map[string][]string)
-
-	details, err := manager.Describe(ctx, pluginName)
+	describeResponse, err := manager.Describe(ctx, pluginName)
 	if err != nil {
 		return nil, err
 	}
 
-	for _, tableValue := range details.Schemas {
-		out["tables"] = append(out["tables"], tableValue.Name)
-	}
-
-	for _, sourceValue := range details.Sources {
-		out["sources"] = append(out["sources"], sourceValue.Name)
-	}
-
-	for _, preset := range details.FormatPresets {
-		out["format_presets"] = append(out["format_presets"], preset.FullName())
-	}
-
-	out["format_types"] = details.FormatTypes
-
-	return out, nil
+	return describeResponse.AsMetadataMap(), nil
 }
