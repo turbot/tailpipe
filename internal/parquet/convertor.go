@@ -41,6 +41,11 @@ type Converter struct {
 	completionCount int32
 	// the number of rows written
 	rowCount int64
+	// the number of conversion errors encountered
+	errorCount int64
+	// error which occurred during execution
+	errors     []error
+	errorsLock sync.RWMutex
 
 	// the source file location
 	sourceDir string
@@ -52,10 +57,6 @@ type Converter struct {
 	// the format string for the conversion query will be the same for all chunks - build once and store
 	viewQueryFormat string
 
-	// error which occurred during execution
-	errors     []error
-	errorsLock sync.RWMutex
-
 	// the table schema - populated when the first chunk arrives if the schema is not already complete
 	schema    *schema.TableSchema
 	schemaMut sync.RWMutex
@@ -63,10 +64,10 @@ type Converter struct {
 	// the partition being collected
 	Partition *config.Partition
 	// func which we call with updated row count
-	statusFunc func(rowCount int64)
+	statusFunc func(rowCount, errorCount int64)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(rowCount int64)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(int64, int64)) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -288,12 +289,18 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 
 func (w *Converter) addJobErrors(errors ...error) {
 	w.errorsLock.Lock()
+	defer w.errorsLock.Unlock()
+
 	w.errors = append(w.errors, errors...)
-	w.errorsLock.Unlock()
+	w.errorCount += int64(len(errors))
+
+	// update the status function with the new error count (no need to use atomic for errors as we are already locked)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), w.errorCount)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc
 func (w *Converter) updateRowCount(count int64) {
 	atomic.AddInt64(&w.rowCount, count)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount))
+	// call the status function with the new row count
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.errorCount))
 }
