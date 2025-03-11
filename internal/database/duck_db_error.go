@@ -83,7 +83,7 @@ func handleDuckDbError(err error) error {
 			return newInvalidParquetError(updatedFilename)
 		}
 		// so we have no filename
-		TODO handle Invalid Error: TProtocolException: Invalid data
+		//TODO handle Invalid Error: TProtocolException: Invalid data
 	}
 
 	return err

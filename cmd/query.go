@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,6 +13,7 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/interactive"
 	"github.com/turbot/tailpipe/internal/query"
 )

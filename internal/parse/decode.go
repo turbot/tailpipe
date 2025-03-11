@@ -268,7 +268,6 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 }
 
 func resourceFromAttr(parseCtx *ConfigParseContext, attr *hcl.Attribute, target any) *parse.DecodeResult {
-
 	var res = parse.NewDecodeResult()
 	//try to evaluate expression
 	val, diags := attr.Expr.Value(parseCtx.EvalCtx)

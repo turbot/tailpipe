@@ -7,17 +7,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/turbot/tailpipe/internal/database"
-
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 var testDb *database.DuckDb

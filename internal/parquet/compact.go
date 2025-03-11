@@ -3,7 +3,6 @@ package parquet
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"golang.org/x/sync/semaphore"
 	"log/slog"
 	"os"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 type CompactionStatus struct {
@@ -70,7 +70,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	baseDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	// open a duckdb connection
-	db, err :=  database.NewDuckDb()
+	db, err := database.NewDuckDb()
 	if err != nil {
 		return fmt.Errorf("failed to open duckdb connection: %w", err)
 	}

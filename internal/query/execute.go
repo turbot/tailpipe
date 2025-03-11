@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 func RunBatchSession(ctx context.Context, args []string, db *database.DuckDb) (int, []error) {

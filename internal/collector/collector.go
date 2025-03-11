@@ -21,7 +21,6 @@ import (
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
-	"github.com/turbot/tailpipe/internal/repository"
 )
 
 const eventBufferSize = 100
@@ -105,11 +104,6 @@ func (c *Collector) Close() {
 func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
-	}
-
-	err = repository.SetPartitionStateCollecting(c.partition, fromTime)
-	if err != nil {
-		return err
 	}
 
 	// create a cancel context to pass to the parquet converter

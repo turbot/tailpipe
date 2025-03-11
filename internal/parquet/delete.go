@@ -2,18 +2,17 @@ package parquet
 
 import (
 	"fmt"
-	"github.com/turbot/pipe-fittings/v2/utils"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/repository"
-
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/tailpipe/internal/repository"
 )
 
 func DeleteParquetFiles(partition *config.Partition, from time.Time) (rowCount int, err error) {
@@ -157,28 +156,6 @@ func deletePartition(db *database.DuckDb, dataDir string, partition *config.Part
 
 func isNoFilesFoundError(err error) bool {
 	return strings.HasPrefix(err.Error(), "IO Error: No files found")
-}
-
-// shouldClearInvalidState handles the case where a partition is in an invalid state.
-// It determines if we should clean up invalid data and if we can reset the invalid state after the partition deletion
-// Returns an updated partition state and a flag indicating whether we should save state changes
-func shouldClearInvalidState(invalidFromData, from time.Time) bool {
-	// if there is no invalid from date, we can only clear invalid state if the from time is also zero
-	if invalidFromData.IsZero() {
-		res := from.IsZero()
-		if res {
-			slog.Info("shouldClearInvalidState - no invalidFromDate, and no from date (meaning we are clearing full partition) so clearing invalid state")
-		} else {
-			slog.Info("shouldClearInvalidState - no invalidFromDate, but 'from' date is set (meaning we are NOT clearing full partition) - so NOT clearing invalid state")
-		}
-
-		return res
-	}
-
-	// if the from time is zero or invalidFromDate is equal or later than the from time, we can clear the invalid state
-	res := from.IsZero() || invalidFromData.Compare(from) <= 0
-	slog.Info("shouldClearInvalidState", "invalidFromDate", invalidFromData, "deleting from", from, "shouldClearInvalidState", res)
-	return res
 }
 
 // getDeleteInvalidDate determines the date from which to delete invalid files

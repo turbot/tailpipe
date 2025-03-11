@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-
 	"github.com/turbot/go-kit/files"
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
