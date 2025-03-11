@@ -193,7 +193,7 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string, customF
 	}
 
 	// convert the custom formats to proto
-	var customFormatsProto []*proto.ConfigData
+	var customFormatsProto []*proto.FormatData
 	for _, f := range customFormats {
 		customFormatsProto = append(customFormatsProto, f.ToProto())
 	}
