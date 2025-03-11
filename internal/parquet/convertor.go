@@ -2,17 +2,17 @@ package parquet
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log"
 	"log/slog"
 	"path/filepath"
 	"sync"
-	"sync/atomic"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
+	"sync/atomic"
 )
 
 const parquetWorkerCount = 5
@@ -89,7 +89,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	go w.scheduler(ctx)
 
 	// start the workers
-	for i := 0; i < parquetWorkerCount; i++ {
+	for range parquetWorkerCount {
 		wk, err := newParquetConversionWorker(w)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create worker: %w", err)
@@ -242,7 +242,7 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// Open DuckDB connection
-	db, err := sql.Open("duckdb", "")
+	db, err := database.NewDuckDb()
 	if err != nil {
 		log.Fatalf("failed to open DuckDB connection: %v", err)
 	}
@@ -252,8 +252,6 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
 
 	rows, err := db.Query(query, filePath)
-
-	//rows, err := db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
 	}

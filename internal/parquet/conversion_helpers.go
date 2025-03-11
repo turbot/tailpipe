@@ -1,32 +1,12 @@
 package parquet
 
 import (
-	"database/sql"
 	"fmt"
 	"strings"
 
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe/internal/filepaths"
 )
-
-func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
-	// Build the query
-	//nolint:gosec // cannot use params in parquet_file_metadata - and this is a trusted source
-	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, filepaths.GetParquetFileGlobForTable(destDir, table, fileRoot))
-
-	// Execute the query and scan the result directly
-	var rowCount int64
-	err := db.QueryRow(rowCountQuery).Scan(&rowCount)
-	if err != nil {
-		// if this is an IO error caused by no files being found, return 0
-		if strings.Contains(err.Error(), "No files found") {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("failed to query row count: %w", err)
-	}
-	return rowCount, nil
-}
 
 func buildViewQuery(rowSchema *schema.TableSchema) string {
 	var structSliceColumns []*schema.ColumnSchema

@@ -10,17 +10,27 @@ import (
 	"strconv"
 )
 
-func GetCollectionTempDir() string {
-	// get the collection directory for this workspace
+func EnsureCollectionTempDir() string {
 	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
-	// cleanup the collection temp dir from previous runs
-	cleanupCollectionTempDirs(collectionDir)
+
 	// add a PID directory to the collection directory
-	return filepath.Join(collectionDir, fmt.Sprintf("%d", os.Getpid()))
+	collectionTempDir := filepath.Join(collectionDir, fmt.Sprintf("%d", os.Getpid()))
+
+	// create the directory if it doesn't exist
+	if _, err := os.Stat(collectionTempDir); os.IsNotExist(err) {
+		err := os.MkdirAll(collectionTempDir, 0755)
+		if err != nil {
+			slog.Error("failed to create collection temp dir", "error", err)
+		}
+	}
+	return collectionTempDir
 }
 
-func cleanupCollectionTempDirs(collectionTempDir string) {
-	files, err := os.ReadDir(collectionTempDir)
+func CleanupCollectionTempDirs() {
+	// get the collection directory for this workspace
+	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
+
+	files, err := os.ReadDir(collectionDir)
 	if err != nil {
 		slog.Warn("failed to list files in collection dir", "error", err)
 		return
@@ -40,7 +50,7 @@ func cleanupCollectionTempDirs(collectionTempDir string) {
 				}
 			}
 			slog.Debug("Removing directory", "dir", file.Name())
-			_ = os.RemoveAll(filepath.Join(collectionTempDir, file.Name()))
+			_ = os.RemoveAll(filepath.Join(collectionDir, file.Name()))
 		}
 	}
 }

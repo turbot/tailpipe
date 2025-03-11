@@ -2,7 +2,6 @@ package collector
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,7 +20,7 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
+	"github.com/turbot/tailpipe/internal/plugin"
 )
 
 const eventBufferSize = 100
@@ -29,7 +28,7 @@ const eventBufferSize = 100
 type Collector struct {
 	Events chan *proto.Event
 
-	pluginManager *plugin_manager.PluginManager
+	pluginManager *plugin.PluginManager
 	// the partition to collect
 	partition *config.Partition
 	// the execution
@@ -58,10 +57,12 @@ type Collector struct {
 	errorFileMut  sync.Mutex
 }
 
-func New(pluginManager *plugin_manager.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
+func New(pluginManager *plugin.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
-	collectionTempDir := filepaths.GetCollectionTempDir()
+	// first clear out any old collection temp dirs
+	filepaths.CleanupCollectionTempDirs()
+	collectionTempDir := filepaths.EnsureCollectionTempDir()
 
 	c := &Collector{
 		Events:            make(chan *proto.Event, eventBufferSize),
@@ -101,6 +102,10 @@ func (c *Collector) Close() {
 }
 
 func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
+	if c.execution != nil {
+		return errors.New("collection already in progress")
+	}
+
 	// create a cancel context to pass to the parquet converter
 	ctx, cancel := context.WithCancel(ctx)
 	// cancel the execution context if there is an error
@@ -109,10 +114,6 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 			cancel()
 		}
 	}()
-
-	if c.execution != nil {
-		return errors.New("collection already in progress")
-	}
 
 	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
 	c.execution = newExecution(c.partition)
@@ -240,10 +241,13 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		// start thread waiting for conversion to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
 		go func() {
+			slog.Info("handlePluginEvent - waiting for conversions to complete", "execution", completedEvent.ExecutionId)
 			err := c.waitForConversions(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
 				c.execution.done(err)
+			} else {
+				slog.Info("handlePluginEvent - conversions all complete", "execution", completedEvent.ExecutionId)
 			}
 		}()
 
@@ -262,6 +266,22 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
 		}
 	}
+}
+
+func (c *Collector) createTableView(ctx context.Context) error {
+	// so we are done writing chunks - now update the db to add a view to this data
+	// Open a DuckDB connection
+	db, err := database.NewDuckDb(database.WithDbFile(filepaths.TailpipeDbFilePath()))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	err = database.AddTableView(ctx, c.execution.table, db)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
@@ -337,12 +357,19 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 			slog.Warn("waitForConversions - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
 			err = errors.New(ce.Error)
 		}
+		// mark execution as done, passing any error
 		c.execution.done(err)
 		return nil
 	}
 
 	// so there was no plugin error - wait for the conversions to complete
 	c.parquetConvertor.WaitForConversions(ctx)
+
+	if err := c.createTableView(ctx); err != nil {
+		slog.Error("error creating table view", "error", err)
+		c.execution.done(err)
+		return err
+	}
 
 	// mark execution as complete and record the end time
 	c.execution.done(err)
@@ -352,18 +379,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 		return err
 	}
 
-	// so we are done writing chunks - now update the db to add a view to this data
-	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	err = database.AddTableView(ctx, c.execution.table, db)
-	if err != nil {
-		return err
-	}
 	// notify the writer that the collection is complete
 	return nil
 }

@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,11 +10,17 @@ import (
 
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/spf13/viper"
+	pcmdconfig "github.com/turbot/pipe-fittings/v2/cmdconfig"
+	"github.com/turbot/pipe-fittings/v2/parse"
+	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/cmdconfig"
+	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
-var db *duckDb
+var testDb *database.DuckDb
 
 const testDir = "buildViewQuery_test_data"
 
@@ -22,10 +29,34 @@ var jsonlFilePath string
 
 func setup() error {
 	var err error
-	db, err = newDuckDb()
+
+	// Create a temporary config directory
+	tempConfigDir, err := os.MkdirTemp("", "tailpipe_test_config")
+	if err != nil {
+		return fmt.Errorf("error creating temp config directory: %w", err)
+	}
+
+	// Set the config path to our temporary directory
+	viper.Set("config_path", tempConfigDir)
+
+	// Initialize workspace profile with parse options
+	parseOpts := []parse.ParseHclOpt{
+		parse.WithEscapeBackticks(true),
+	}
+	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
+	if err != nil {
+		return fmt.Errorf("error creating workspace profile loader: %w", err)
+	}
+	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
+	if err := config.GlobalWorkspaceProfile.EnsureWorkspaceDirs(); err != nil {
+		return fmt.Errorf("error ensuring workspace dirs: %w", err)
+	}
+
+	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
 	if err != nil {
 		return fmt.Errorf("error creating duckdb: %w", err)
 	}
+	testDb = db
 	// make tempdata directory in local folder
 	// Create the directory
 	err = os.MkdirAll(testDir, 0755)
@@ -41,8 +72,8 @@ func setup() error {
 
 func teardown() {
 	os.RemoveAll("test_data")
-	if db != nil {
-		db.Close()
+	if testDb != nil {
+		testDb.Close()
 	}
 }
 
@@ -1364,7 +1395,7 @@ func executeQuery(t *testing.T, queryFormat, json, sqlColumn string) (any, error
 	// execute in duckdb
 	// build select queryz
 	testQuery := fmt.Sprintf("SELECT %s from (%s)", sqlColumn, query)
-	rows, err := db.Query(testQuery) //nolint:sqlclosecheck // rows.Close() is called in the defer
+	rows, err := testDb.Query(testQuery)
 
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)

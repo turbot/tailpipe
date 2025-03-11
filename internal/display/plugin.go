@@ -9,7 +9,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
 )
 
 type PluginListDetails struct {
@@ -68,8 +67,7 @@ type PluginResource struct {
 }
 
 func GetPluginResource(ctx context.Context, name string) (*PluginResource, error) {
-
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
 	desc, err := pluginManager.Describe(ctx, name)
@@ -77,7 +75,7 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
 
-	installedInfo, err := plugin.Get(ctx, config.GlobalConfig.PluginVersions, desc.Name)
+	installedInfo, err := plugin.Get(ctx, config.GlobalConfig.PluginVersions, name)
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}

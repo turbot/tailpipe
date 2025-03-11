@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/files"
+	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/ociinstaller"
 	"github.com/turbot/pipe-fittings/v2/plugin"
@@ -28,6 +30,7 @@ func Remove(ctx context.Context, image string) (*PluginRemoveReport, error) {
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("plugin '%s' not found", image)
 	}
+
 	// remove from file system
 	err = os.RemoveAll(installedTo)
 	if err != nil {
@@ -46,7 +49,11 @@ func Remove(ctx context.Context, image string) (*PluginRemoveReport, error) {
 }
 
 // Install installs a plugin in the local file system
-func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan struct{}, baseImageRef string, mediaTypesProvider ociinstaller.MediaTypeProvider, opts ...ociinstaller.PluginInstallOption) (*ociinstaller.OciImage[*ociinstaller.PluginImage, *ociinstaller.PluginImageConfig], error) {
+func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan struct{}, baseImageRef string, mediaTypesProvider ociinstaller.MediaTypeProvider) (*ociinstaller.OciImage[*ociinstaller.PluginImage, *ociinstaller.PluginImageConfig], error) {
+	opts := []ociinstaller.PluginInstallOption{
+		ociinstaller.WithSkipConfig(viper.GetBool(constants.ArgSkipConfig)),
+	}
+
 	// Note: we pass the plugin info as strings here rather than passing the ResolvedPluginVersion struct as that causes circular dependency
 	image, err := ociinstaller.InstallPlugin(ctx, plugin.GetVersionTag(), plugin.Constraint, sub, baseImageRef, mediaTypesProvider, opts...)
 	return image, err

@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"golang.org/x/sync/semaphore"
 	"log/slog"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 type CompactionStatus struct {
@@ -70,16 +70,23 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	baseDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	// open a duckdb connection
-	db, err := sql.Open("duckdb", "")
+	db, err := database.NewDuckDb()
 	if err != nil {
 		return fmt.Errorf("failed to open duckdb connection: %w", err)
 	}
 	defer db.Close()
 
 	// traverse the directory and compact files
-	return traverseAndCompact(ctx, db, baseDir, updateFunc, patterns)
+	if err := traverseAndCompact(ctx, db, baseDir, updateFunc, patterns); err != nil {
+		return err
+	}
+	invalidDeleteErr := deleteInvalidParquetFiles(config.GlobalWorkspaceProfile.GetDataDir(), patterns)
+	if invalidDeleteErr != nil {
+		slog.Warn("Failed to delete invalid parquet files", "error", invalidDeleteErr)
+	}
+	return nil
 }
-func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
+func traverseAndCompact(ctx context.Context, db *database.DuckDb, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	// if this is the partition folder, check if it matches the patterns before descending further
 	if table, partition, ok := getPartitionFromPath(dirPath); ok {
 		if !PartitionMatchesPatterns(table, partition, patterns) {
@@ -129,7 +136,7 @@ func traverseAndCompact(ctx context.Context, db *sql.DB, dirPath string, updateF
 	return nil
 }
 
-// if this filepath ends with the partition segment, return the table and partition
+// if this parquetFile ends with the partition segment, return the table and partition
 func getPartitionFromPath(dirPath string) (string, string, bool) {
 	// if this is a partition folder, check if it matches the patterns
 	parts := strings.Split(dirPath, "/")
@@ -143,7 +150,7 @@ func getPartitionFromPath(dirPath string) (string, string, bool) {
 	return "", "", false
 }
 
-func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string, inputPath string) (err error) {
+func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles []string, inputPath string) (err error) {
 	now := time.Now()
 	compactedFileName := fmt.Sprintf("snap_%s_%06d.parquet", now.Format("20060102150405"), now.Nanosecond()/1000)
 
@@ -165,7 +172,6 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 	}()
 
 	// compact files using duckdb
-	//nolint:gosec // read_parquet and copy do not support params - and this is a trusted source
 	query := fmt.Sprintf(`
 		copy (
 			select * from read_parquet('%s/*.parquet')
@@ -194,8 +200,6 @@ func compactParquetFiles(ctx context.Context, db *sql.DB, parquetFiles []string,
 
 	// finally, delete renamed source parquet files
 	err = deleteCompactedFiles(ctx, parquetFiles)
-
-	// TODO dedupe rows ignoring ingestion timestamp and tp_index? https://github.com/turbot/tailpipe/issues/69
 
 	return nil
 }

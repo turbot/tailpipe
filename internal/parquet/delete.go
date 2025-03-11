@@ -1,26 +1,27 @@
 package parquet
 
 import (
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
-func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error) {
-	db, err := sql.Open("duckdb", "")
+func DeleteParquetFiles(partition *config.Partition, from time.Time) (rowCount int, err error) {
+	db, err := database.NewDuckDb()
 	if err != nil {
 		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 	defer db.Close()
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-	var rowCount int
 
 	if from.IsZero() {
 		// if there is no from time, delete the entire partition folder
@@ -44,10 +45,9 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (int, error
 	return rowCount, nil
 }
 
-func deletePartitionFrom(db *sql.DB, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
+func deletePartitionFrom(db *database.DuckDb, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
-	//nolint:gosec // we cannot use params inside read_parquet - and this is a trusted source
 	query := fmt.Sprintf(`
     SELECT 
     DISTINCT '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date AS hive_path,
@@ -88,11 +88,10 @@ func deletePartitionFrom(db *sql.DB, dataDir string, partition *config.Partition
 	return len(folders), nil
 }
 
-func deletePartition(db *sql.DB, dataDir string, partition *config.Partition) (int, error) {
+func deletePartition(db *database.DuckDb, dataDir string, partition *config.Partition) (int, error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
 	// get count of parquet files
-	//nolint:gosec// have to build string for read_parquet
 	query := fmt.Sprintf(`
 		SELECT COUNT(DISTINCT filename)
 		FROM read_parquet('%s', hive_partitioning=true, filename=true)
@@ -118,4 +117,47 @@ func deletePartition(db *sql.DB, dataDir string, partition *config.Partition) (i
 
 func isNoFilesFoundError(err error) bool {
 	return strings.HasPrefix(err.Error(), "IO Error: No files found")
+}
+
+//// getDeleteInvalidDate determines the date from which to delete invalid files
+//// It returns the later of the from date and the InvalidFromDate
+//func getDeleteInvalidDate(from, invalidFromDate time.Time) time.Time {
+//	deleteInvalidDate := from
+//	if invalidFromDate.After(from) {
+//		deleteInvalidDate = invalidFromDate
+//	}
+//	return deleteInvalidDate
+//}
+
+// deleteInvalidParquetFiles deletes invalid and temporary parquet files for a partition
+func deleteInvalidParquetFiles(dataDir string, patterns []PartitionPattern) error {
+	var failures int
+
+	for _, pattern := range patterns {
+
+		slog.Info("deleteInvalidParquetFiles - deleting invalid parquet files", "table", pattern.Table, "partition", pattern.Partition)
+
+		// get glob patterns for invalid and temp files
+		invalidGlob := filepaths.GetTempAndInvalidParquetFileGlobForPartition(dataDir, pattern.Table, pattern.Partition)
+
+		// find all matching files
+		filesToDelete, err := filepath.Glob(invalidGlob)
+		if err != nil {
+			return fmt.Errorf("failed to find invalid files: %w", err)
+		}
+
+		slog.Info("deleteInvalidParquetFiles", "invalid count", len(filesToDelete), "files", filesToDelete)
+
+		// delete each file
+		for _, file := range filesToDelete {
+			if err := os.Remove(file); err != nil {
+				slog.Debug("failed to delete invalid parquet file", "file", file, "error", err)
+				failures++
+			}
+		}
+	}
+	if failures > 0 {
+		return fmt.Errorf("failed to delete %d invalid parquet %s", failures, utils.Pluralize("file", failures))
+	}
+	return nil
 }

@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 type parquetJob struct {
@@ -33,7 +36,7 @@ type conversionWorker struct {
 
 	// helper struct which provides unique filename roots
 	fileRootProvider *FileRootProvider
-	db               *duckDb
+	db               *database.DuckDb
 }
 
 func newParquetConversionWorker(converter *Converter) (*conversionWorker, error) {
@@ -46,7 +49,7 @@ func newParquetConversionWorker(converter *Converter) (*conversionWorker, error)
 	}
 
 	// create a new DuckDB instance
-	db, err := newDuckDb()
+	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
 	}
@@ -145,20 +148,63 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	// get a unique file root
 	fileRoot := w.fileRootProvider.GetFileRoot()
 
+	// build a query to export the rows to partitioned parquet files
+	// NOTE: we initially write to a file with the extension '.parquet.tmp' - this is to avoid the creation of invalid parquet files
+	// in the case of a failure
+	// once the conversion is complete we will rename them
 	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "%s_{i}");`,
-		selectQuery, w.destDir, strings.Join(partitionColumns, ","), fileRoot)
+	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (
+		FORMAT PARQUET,
+		PARTITION_BY (%s),
+		RETURN_FILES TRUE,
+		OVERWRITE_OR_IGNORE,
+		FILENAME_PATTERN '%s_{i}',
+		FILE_EXTENSION '%s'
+	);`,
+		selectQuery,
+		w.destDir,
+		strings.Join(partitionColumns, ","),
+		fileRoot,
+		strings.TrimPrefix(filepaths.TempParquetExtension, "."), // no '.' required for duckdb
+	)
 
-	_, err := w.db.Exec(exportQuery)
+	row := w.db.QueryRow(exportQuery)
+	var rowCount int64
+	var files []interface{}
+	err := row.Scan(&rowCount, &files)
 	if err != nil {
-		return 0, fmt.Errorf("conversion query failed: %w", err)
+		return 0, fmt.Errorf("error reading files: %w", err)
+	}
+	slog.Debug("created parquet files", "count", len(files), "files", files)
+
+	// now rename the parquet files
+	err = w.renameTempParquetFiles(files)
+
+	return rowCount, err
+}
+
+// renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
+// note: we receive the list of files as an interface{} as that is what we read back from the db
+func (w *conversionWorker) renameTempParquetFiles(files []interface{}) error {
+	var errList []error
+	for _, f := range files {
+		fileName := f.(string)
+		if strings.HasSuffix(fileName, filepaths.TempParquetExtension) {
+			newName := strings.TrimSuffix(fileName, filepaths.TempParquetExtension) + ".parquet"
+			if err := os.Rename(fileName, newName); err != nil {
+				errList = append(errList, fmt.Errorf("%s: %w", fileName, err))
+			}
+		}
 	}
 
-	// now read row count
-	count, err := getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
-	if err != nil {
-		slog.Warn("failed to get row count - conversion failed", "error", err, "query", exportQuery)
+	if len(errList) > 0 {
+		var msg strings.Builder
+		msg.WriteString(fmt.Sprintf("Failed to rename %d parquet files:\n", len(errList)))
+		for _, err := range errList {
+			msg.WriteString(fmt.Sprintf("  - %v\n", err))
+		}
+		return errors.New(msg.String())
 	}
 
-	return count, err
+	return nil
 }

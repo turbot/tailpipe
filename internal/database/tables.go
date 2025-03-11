@@ -2,8 +2,8 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
@@ -15,7 +15,7 @@ import (
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
-func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
+func AddTableViews(ctx context.Context, db *DuckDb, filters ...string) error {
 	tables, err := getDirNames(config.GlobalWorkspaceProfile.GetDataDir())
 	if err != nil {
 		return fmt.Errorf("failed to get tables: %w", err)
@@ -40,14 +40,14 @@ func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
 
 // NOTE: tactical optimisation - it seems the first time DuckDB creates a view which inspects the file system it is slow
 // creating and empty view first and then dropping it seems to speed up the process
-func createAndDropEmptyView(ctx context.Context, db *sql.DB) {
+func createAndDropEmptyView(ctx context.Context, db *DuckDb) {
 	_ = AddTableView(ctx, "empty", db)
 	// drop again
 	_, _ = db.ExecContext(ctx, "DROP VIEW empty")
 }
 
-func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...string) error {
-	// TODO #SQL use params to avoid injection
+func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...string) error {
+	slog.Info("creating view", "table", tableName, "filters", filters)
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	// Path to the Parquet directory
@@ -92,7 +92,7 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	}
 
 	// Step 4: Construct the final query
-	query := fmt.Sprintf( //nolint: gosec // this is a controlled query
+	query := fmt.Sprintf(
 		"CREATE OR REPLACE VIEW %s AS SELECT %s FROM '%s'%s",
 		tableName, selectClause, parquetPath, filterString,
 	)
@@ -100,14 +100,16 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	// Execute the query
 	_, err = db.ExecContext(ctx, query)
 	if err != nil {
+		slog.Warn("failed to create view", "table", tableName, "error", err)
 		return fmt.Errorf("failed to create view: %w", err)
 	}
+	slog.Info("created view", "table", tableName)
 	return nil
 }
 
 // query the provided parquet path to get the columns
-func getColumnNames(ctx context.Context, parquetPath string, db *sql.DB) ([]string, error) {
-	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath) //nolint: gosec // this is a controlled query
+func getColumnNames(ctx context.Context, parquetPath string, db *DuckDb) ([]string, error) {
+	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath)
 	rows, err := db.QueryContext(ctx, columnQuery)
 	if err != nil {
 		return nil, err
@@ -158,7 +160,7 @@ func getDirNames(folderPath string) ([]string, error) {
 
 func GetRowCount(ctx context.Context, tableName string, partitionName *string) (int64, error) {
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -190,7 +192,7 @@ func GetRowCount(ctx context.Context, tableName string, partitionName *string) (
 
 func GetTableViews(ctx context.Context) ([]string, error) {
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -217,7 +219,7 @@ func GetTableViews(ctx context.Context) ([]string, error) {
 
 func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string, error) {
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}

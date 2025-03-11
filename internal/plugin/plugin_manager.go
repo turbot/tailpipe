@@ -1,4 +1,4 @@
-package plugin_manager
+package plugin
 
 import (
 	"context"
@@ -16,10 +16,8 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb"
-	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
-	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
@@ -33,7 +31,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
-	"github.com/turbot/tailpipe/internal/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
@@ -48,7 +45,7 @@ type PluginManager struct {
 	pluginPath  string
 }
 
-func New() *PluginManager {
+func NewPluginManager() *PluginManager {
 	return &PluginManager{
 		Plugins:    make(map[string]*grpc.PluginClient),
 		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
@@ -130,7 +127,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	}
 	if partition.CustomTable != nil {
 		req.CustomTableSchema = partition.CustomTable.ToProto()
-		// set the default source format if the source dow not provide one
+		// set the default source format if the source does not provide one
 		if req.SourceFormat == nil && partition.CustomTable.DefaultSourceFormat != nil {
 			req.SourceFormat = partition.CustomTable.DefaultSourceFormat.ToProto()
 		}
@@ -184,7 +181,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	return err
 }
 
-// Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
+// Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
 func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
@@ -194,15 +191,13 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
 	}
 
+	// convert the custom formats to proto
 	describeResponse, err := pluginClient.Describe()
 	if err != nil {
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
 	res := DescribeResponseFromProto(describeResponse)
-	res.Name = pluginDef.Plugin
-
-	// just return - the observer is responsible for waiting for completion
 	return res, nil
 }
 
@@ -429,7 +424,7 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	progress := make(chan struct{}, 5)
 
 	// install plugin
-	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	_, err = Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{})
 	if err != nil {
 		return err
 	}

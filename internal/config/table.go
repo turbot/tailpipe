@@ -6,11 +6,13 @@ import (
 
 	"github.com/hashicorp/hcl/v2"
 	typehelpers "github.com/turbot/go-kit/types"
+	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/zclconf/go-cty/cty"
 )
 
 type Table struct {
@@ -56,6 +58,7 @@ func (t *Table) ToProto() *proto.Schema {
 		ExcludeSourceFields: t.ExcludeSourceFields,
 		Description:         typehelpers.SafeString(t.Description),
 		NullValue:           typehelpers.SafeString(t.NullValue),
+		Name:                t.ShortName,
 	}
 	for _, col := range t.Columns {
 		s := &proto.ColumnSchema{
@@ -74,6 +77,13 @@ func (t *Table) ToProto() *proto.Schema {
 		res.Columns = append(res.Columns, s)
 	}
 	return res
+}
+
+// CtyValue implements CtyValueProvider
+// (note this must be implemented by each resource, we cannot rely on the HclResourceImpl implementation as it will
+// only serialise its own properties) )
+func (t *Table) CtyValue() (cty.Value, error) {
+	return cty_helpers.GetCtyValue(t)
 }
 
 func (t *Table) Validate() hcl.Diagnostics {
