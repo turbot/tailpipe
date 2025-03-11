@@ -3,11 +3,11 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"github.com/spf13/viper"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
-
 
 	"github.com/turbot/go-kit/files"
 	"github.com/turbot/pipe-fittings/v2/constants"
