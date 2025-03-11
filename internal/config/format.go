@@ -50,13 +50,16 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	return c, nil
 }
 
-func (f *Format) ToProto() *proto.ConfigData {
-	res := &proto.ConfigData{
-		Target: "format." + f.Type,
+func (f *Format) ToProto() *proto.FormatData {
+	res := &proto.FormatData{
+		Config: &proto.ConfigData{
+			Target: "format." + f.Type,
+		},
+		Name: f.ShortName,
 	}
 	if f.Config != nil {
-		res.Hcl = f.Config.Hcl
-		res.Range = proto.RangeToProto(f.Config.Range.HclRange())
+		res.Config.Hcl = f.Config.Hcl
+		res.Config.Range = proto.RangeToProto(f.Config.Range.HclRange())
 	}
 	return res
 }
