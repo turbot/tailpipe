@@ -77,7 +77,14 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	defer db.Close()
 
 	// traverse the directory and compact files
-	return traverseAndCompact(ctx, db, baseDir, updateFunc, patterns)
+	if err := traverseAndCompact(ctx, db, baseDir, updateFunc, patterns); err != nil {
+		return err
+	}
+	invalidDeleteErr := deleteInvalidParquetFiles(config.GlobalWorkspaceProfile.GetDataDir(), patterns)
+	if invalidDeleteErr != nil {
+		slog.Warn("Failed to delete invalid parquet files", "error", invalidDeleteErr)
+	}
+	return nil
 }
 func traverseAndCompact(ctx context.Context, db *database.DuckDb, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	// if this is the partition folder, check if it matches the patterns before descending further

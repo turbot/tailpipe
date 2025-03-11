@@ -130,29 +130,32 @@ func isNoFilesFoundError(err error) bool {
 //}
 
 // deleteInvalidParquetFiles deletes invalid and temporary parquet files for a partition
-func deleteInvalidParquetFiles(dataDir string, table, partition string) error {
-	slog.Info("deleteInvalidParquetFiles - deleting invalid parquet files", "table", table, "partition", partition)
-
-	// get glob patterns for invalid and temp files
-	invalidGlob := filepaths.GetTempAndInvalidParquetFileGlobForPartition(dataDir, table, partition)
-
-	// find all matching files
-	filesToDelete, err := filepath.Glob(invalidGlob)
-	if err != nil {
-		return fmt.Errorf("failed to find invalid files: %w", err)
-	}
-
-	slog.Info("deleteInvalidParquetFiles", "invalid count", len(filesToDelete), "files", filesToDelete)
+func deleteInvalidParquetFiles(dataDir string, patterns []PartitionPattern) error {
 	var failures int
 
-	// delete each file
-	for _, file := range filesToDelete {
-		if err := os.Remove(file); err != nil {
-			slog.Debug("failed to delete invalid parquet file", "file", file, "error", err)
-			failures++
+	for _, pattern := range patterns {
+
+		slog.Info("deleteInvalidParquetFiles - deleting invalid parquet files", "table", pattern.Table, "partition", pattern.Partition)
+
+		// get glob patterns for invalid and temp files
+		invalidGlob := filepaths.GetTempAndInvalidParquetFileGlobForPartition(dataDir, pattern.Table, pattern.Partition)
+
+		// find all matching files
+		filesToDelete, err := filepath.Glob(invalidGlob)
+		if err != nil {
+			return fmt.Errorf("failed to find invalid files: %w", err)
+		}
+
+		slog.Info("deleteInvalidParquetFiles", "invalid count", len(filesToDelete), "files", filesToDelete)
+
+		// delete each file
+		for _, file := range filesToDelete {
+			if err := os.Remove(file); err != nil {
+				slog.Debug("failed to delete invalid parquet file", "file", file, "error", err)
+				failures++
+			}
 		}
 	}
-
 	if failures > 0 {
 		return fmt.Errorf("failed to delete %d invalid parquet %s", failures, utils.Pluralize("file", failures))
 	}
