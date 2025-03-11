@@ -47,12 +47,13 @@ func (r *PartitionResource) GetListData() *printers.RowData {
 func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 	var res []*PartitionResource
 
+	// TODO Add in unconfigured partitions to list output
 	// load all partition names from the data
-	partitionNames, err := database.ListPartitions(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error listing partitions: %w", err)
-	}
-	fmt.Println(partitionNames)
+	//partitionNames, err := database.ListPartitions(ctx)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error listing partitions: %w", err)
+	//}
+	//fmt.Println(partitionNames)
 
 	partitions := config.GlobalConfig.Partitions
 	for _, p := range partitions {

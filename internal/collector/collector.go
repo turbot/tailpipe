@@ -170,7 +170,6 @@ func (c *Collector) Notify(event *proto.Event) {
 	// only send the event if the execution is not complete - this is to handle the case where it has
 	// terminated with an error, causing the collector to close, closing the channel
 	if !c.execution.complete() {
-		// TODO #control flow tell execution to send?
 		c.Events <- event
 	}
 }

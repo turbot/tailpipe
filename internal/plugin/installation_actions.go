@@ -52,7 +52,6 @@ func Remove(ctx context.Context, image string) (*PluginRemoveReport, error) {
 func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan struct{}, baseImageRef string, mediaTypesProvider ociinstaller.MediaTypeProvider) (*ociinstaller.OciImage[*ociinstaller.PluginImage, *ociinstaller.PluginImageConfig], error) {
 	opts := []ociinstaller.PluginInstallOption{
 		ociinstaller.WithSkipConfig(viper.GetBool(constants.ArgSkipConfig)),
-		ociinstaller.WithGetMetadataFunc(getPluginMetadata),
 	}
 
 	// Note: we pass the plugin info as strings here rather than passing the ResolvedPluginVersion struct as that causes circular dependency
@@ -169,34 +168,4 @@ func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary 
 		Truncate(time.Second)
 
 	return installDate.Before(modTime)
-}
-
-// getPluginMetadata returns the metadata for a given plugin, primarily the tables, sources and formats for usage in writing them to the InstalledVersionFile.
-// This is passed into Install using the ociinstaller.WithGetMetadataFunc option.
-func getPluginMetadata(ctx context.Context, pluginName string) (map[string][]string, error) {
-	manager := NewPluginManager()
-	defer manager.Close()
-
-	out := make(map[string][]string)
-
-	details, err := manager.Describe(ctx, pluginName)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, tableValue := range details.Schemas {
-		out["tables"] = append(out["tables"], tableValue.Name)
-	}
-
-	for _, sourceValue := range details.Sources {
-		out["sources"] = append(out["sources"], sourceValue.Name)
-	}
-
-	for _, preset := range details.FormatPresets {
-		out["format_presets"] = append(out["format_presets"], preset.FullName())
-	}
-
-	out["format_types"] = details.FormatTypes
-
-	return out, nil
 }

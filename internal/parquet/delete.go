@@ -12,7 +12,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/repository"
 )
 
 func DeleteParquetFiles(partition *config.Partition, from time.Time) (rowCount int, err error) {
@@ -23,42 +22,6 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (rowCount i
 	defer db.Close()
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-
-	// load the partition state
-	rs, err := repository.Load()
-	if err != nil {
-		return 0, err
-	}
-	partitionState := rs.GetPartitionState(partition.UnqualifiedName)
-
-	// handle invalid state and determine if we should save state changes
-	if partitionState.State == repository.CollectionStateInvalid {
-		slog.Info("DeleteParquetFiles - partition is in invalid state", "partition", partition.UnqualifiedName)
-		JUST ALWAYS CLEAR IN COMPACT
-		if shouldClearInvalidState(partitionState.InvalidFromDate, from) {
-			// clear the invalid state
-			partitionState.SetIdle()
-			// defer saving state - only save if there is no error
-			defer func() {
-				if err == nil {
-					slog.Info("DeleteParquetFiles - saving partition with idle state", "partition", partition.UnqualifiedName)
-					rs.SetPartitionState(partition.UnqualifiedName, partitionState)
-					if saveErr := rs.Save(); saveErr != nil {
-						slog.Error("failed to save partition state", "error", saveErr)
-					}
-				}
-			}()
-		}
-
-		// now figure out what date to delete temp/invalid files from - the later of the from date and the InvalidFromDate
-		deleteInvalidDate := getDeleteInvalidDate(from, partitionState.InvalidFromDate)
-
-		// delete invalid and temp files from the calculated date
-		if err := deleteInvalidParquetFiles(dataDir, partition, deleteInvalidDate); err != nil {
-			// do not fail if we cannot delete invalid files - just log the error
-			slog.Warn("DeleteParquetFiles failed to delete all invalid parquet files", "error", err)
-		}
-	}
 
 	if from.IsZero() {
 		// if there is no from time, delete the entire partition folder

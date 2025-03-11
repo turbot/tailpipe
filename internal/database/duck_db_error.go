@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/tailpipe/internal/repository"
-
 	"github.com/marcboeker/go-duckdb"
 )
 
@@ -31,7 +29,8 @@ func executeWithParquetErrorRetry[T any](fn func() (T, error)) (T, error) {
 
 	defer func() {
 		if partitionErr != nil {
-			repository.HandlePartitionErrors(partitionErr.partitionErrors)
+			// TODO KAI CHECK
+			err = partitionErr
 		}
 	}()
 

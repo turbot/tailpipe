@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"

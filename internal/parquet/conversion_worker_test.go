@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,10 +10,11 @@ import (
 
 	_ "github.com/marcboeker/go-duckdb"
 	"github.com/spf13/viper"
-	"github.com/turbot/pipe-fittings/v2/cmdconfig"
+	pcmdconfig "github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
@@ -41,7 +43,7 @@ func setup() error {
 	parseOpts := []parse.ParseHclOpt{
 		parse.WithEscapeBackticks(true),
 	}
-	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
+	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
 		return fmt.Errorf("error creating workspace profile loader: %w", err)
 	}
