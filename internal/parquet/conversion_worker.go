@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
@@ -191,8 +190,6 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 // renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
 // note: we receive the list of files as an interface{} as that is what we read back from the db
 func (w *conversionWorker) renameTempParquetFiles(files []interface{}) error {
-	slog.Info(fmt.Sprintf("Renaming %d parquet %s", len(files), utils.Pluralize("file", len(files))))
-
 	var errList []error
 	for _, f := range files {
 		fileName := f.(string)

@@ -30,7 +30,7 @@ func Test_isInvalidParquetError(t *testing.T) {
 			t.Fatalf("failed to read source file %s: %v", file, err)
 		}
 		dst := filepath.Join(tmpDir, filepath.Base(file))
-		if err := os.WriteFile(dst, src, 0644); err != nil {
+		if err := os.WriteFile(dst, src, 0644); err != nil { //nolint:gosec // test code
 			t.Fatalf("failed to write test file %s: %v", dst, err)
 		}
 	}
@@ -69,8 +69,9 @@ func Test_isInvalidParquetError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := fmt.Sprintf(`select * from read_parquet('%s')`, tt.parquetFile)
-			_, err = db.Query(query)
+			query := fmt.Sprintf(`select * from read_parquet('%s')`, tt.parquetFile) //nolint:gosec // test code
+			rows, err := db.Query(query)
+			_ = rows.Close()
 
 			// First check if it's an invalid parquet error
 			invalidFilepath, isInvalidParquetError := isInvalidParquetError(err)
@@ -106,7 +107,7 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 			t.Fatalf("failed to create test directory: %v", err)
 		}
 		tmpFile := filepath.Join(path, fmt.Sprintf("test.parquet.%d", attempt))
-		if err := os.WriteFile(tmpFile, []byte("test data"), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte("test data"), 0644); err != nil { // nolint:gosec // test code
 			t.Fatalf("failed to create test file: %v", err)
 		}
 		return tmpFile
@@ -176,7 +177,7 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 				}
 				if tt.wantErrType != nil {
 					var wantErr partitionError
-					if errors.As(err, &wantErr) {
+					if errors.As(err, &tt.wantErrType) {
 						if len(wantErr.partitionErrors) == 0 {
 							t.Error("partitionError should contain at least one error")
 						}
@@ -221,7 +222,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 			t.Errorf("Query failed: %v", err)
 		}
 		if rows != nil {
-			rows.Close()
+			defer rows.Close()
 		}
 	})
 
@@ -233,7 +234,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 			t.Errorf("QueryContext failed: %v", err)
 		}
 		if rows != nil {
-			rows.Close()
+			defer rows.Close()
 		}
 	})
 
@@ -299,7 +300,7 @@ func Test_handleDuckDbError(t *testing.T) {
 			t.Fatalf("failed to read source file %s: %v", file, err)
 		}
 		dst := filepath.Join(tmpDir, filepath.Base(file))
-		if err := os.WriteFile(dst, src, 0644); err != nil {
+		if err := os.WriteFile(dst, src, 0644); err != nil { //nolint:gosec // test code
 			t.Fatalf("failed to write test file %s: %v", dst, err)
 		}
 	}

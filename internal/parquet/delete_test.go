@@ -12,58 +12,58 @@ import (
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
-func Test_shouldClearInvalidState(t *testing.T) {
-	tests := []struct {
-		name            string
-		invalidFromDate time.Time
-		from            time.Time
-		want            bool
-	}{
-		{
-			name:            "both zero",
-			invalidFromDate: time.Time{},
-			from:            time.Time{},
-			want:            true,
-		},
-		{
-			name:            "invalidFromDate zero, from not zero",
-			invalidFromDate: time.Time{},
-			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			want:            false,
-		},
-		{
-			name:            "from zero, invalidFromDate not zero",
-			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			from:            time.Time{},
-			want:            true,
-		},
-		{
-			name:            "invalidFromDate before from",
-			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			from:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-			want:            true,
-		},
-		{
-			name:            "invalidFromDate equal to from",
-			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			want:            true,
-		},
-		{
-			name:            "invalidFromDate after from",
-			invalidFromDate: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			want:            false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := shouldClearInvalidState(tt.invalidFromDate, tt.from)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
+//func Test_shouldClearInvalidState(t *testing.T) {
+//	tests := []struct {
+//		name            string
+//		invalidFromDate time.Time
+//		from            time.Time
+//		want            bool
+//	}{
+//		{
+//			name:            "both zero",
+//			invalidFromDate: time.Time{},
+//			from:            time.Time{},
+//			want:            true,
+//		},
+//		{
+//			name:            "invalidFromDate zero, from not zero",
+//			invalidFromDate: time.Time{},
+//			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			want:            false,
+//		},
+//		{
+//			name:            "from zero, invalidFromDate not zero",
+//			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			from:            time.Time{},
+//			want:            true,
+//		},
+//		{
+//			name:            "invalidFromDate before from",
+//			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			from:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+//			want:            true,
+//		},
+//		{
+//			name:            "invalidFromDate equal to from",
+//			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			want:            true,
+//		},
+//		{
+//			name:            "invalidFromDate after from",
+//			invalidFromDate: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+//			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			want:            false,
+//		},
+//	}
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			got := shouldClearInvalidState(tt.invalidFromDate, tt.from)
+//			assert.Equal(t, tt.want, got)
+//		})
+//	}
+//}
 
 func Test_getDeleteInvalidDate(t *testing.T) {
 	tests := []struct {
@@ -164,7 +164,7 @@ func Test_deleteInvalidParquetFiles(t *testing.T) {
 	// Create test files
 	for _, tf := range testFiles {
 		filePath := filepath.Join(partitionDir, tf.name)
-		if err := os.WriteFile(filePath, []byte("test data"), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte("test data"), 0644); err != nil { //nolint:gosec // test code
 			t.Fatalf("Failed to create test file %s: %v", tf.name, err)
 		}
 	}

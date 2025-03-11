@@ -1394,7 +1394,7 @@ func executeQuery(t *testing.T, queryFormat, json, sqlColumn string) (any, error
 	// execute in duckdb
 	// build select queryz
 	testQuery := fmt.Sprintf("SELECT %s from (%s)", sqlColumn, query)
-	rows, err := testDb.Query(testQuery) //nolint:sqlclosecheck // rows.Close() is called in the defer
+	rows, err := testDb.Query(testQuery)
 
 	if err != nil {
 		return nil, fmt.Errorf("error executing query: %w", err)

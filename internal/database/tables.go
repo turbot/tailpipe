@@ -91,7 +91,7 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 	}
 
 	// Step 4: Construct the final query
-	query := fmt.Sprintf( //nolint: gosec // this is a controlled query
+	query := fmt.Sprintf(
 		"CREATE OR REPLACE VIEW %s AS SELECT %s FROM '%s'%s",
 		tableName, selectClause, parquetPath, filterString,
 	)
@@ -106,7 +106,7 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 
 // query the provided parquet path to get the columns
 func getColumnNames(ctx context.Context, parquetPath string, db *DuckDb) ([]string, error) {
-	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath) //nolint: gosec // this is a controlled query
+	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath)
 	rows, err := db.QueryContext(ctx, columnQuery)
 	if err != nil {
 		return nil, err
