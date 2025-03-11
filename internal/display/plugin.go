@@ -87,14 +87,13 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 	slices.Sort(sources)
 
 	var tables []string
-	for table := range desc.Schemas {
+	for table := range desc.TableSchemas {
 		tables = append(tables, table)
 	}
 	slices.Sort(tables)
 
-	// TODO KAI CHECK
 	pr := &PluginResource{
-		Name:    name,
+		Name:    desc.Name,
 		Version: installedInfo.Version.String(),
 		Sources: sources,
 		Tables:  tables,

@@ -28,7 +28,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
@@ -183,7 +182,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*plugin.DescribeResponse, error) {
+func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -198,7 +197,7 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*plugi
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
-	res := plugin.DescribeResponseFromProto(describeResponse)
+	res := DescribeResponseFromProto(describeResponse)
 	return res, nil
 }
 
