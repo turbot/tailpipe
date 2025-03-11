@@ -176,7 +176,7 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 				// Create the test file if it's a parquet error
 				if _, ok := tt.errors[attempt-1].(*duckdb.Error); ok {
 					testFile := mkTestFile(attempt)
-					if err := os.WriteFile(testFile, []byte("test data"), 0644); err != nil {
+					if err := os.WriteFile(testFile, []byte("test data"), 0644); err != nil { //nolint:gosec // test file
 						t.Fatalf("failed to create test file: %v", err)
 					}
 				}
