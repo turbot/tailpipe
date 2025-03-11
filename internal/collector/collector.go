@@ -241,10 +241,13 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		// start thread waiting for conversion to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
 		go func() {
+			slog.Info("handlePluginEvent - waiting for conversions to complete", "execution", completedEvent.ExecutionId)
 			err := c.waitForConversions(ctx, completedEvent)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
 				c.execution.done(err)
+			} else {
+				slog.Info("handlePluginEvent - conversions all complete", "execution", completedEvent.ExecutionId)
 			}
 		}()
 
@@ -263,6 +266,22 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
 		}
 	}
+}
+
+func (c *Collector) createTableView(ctx context.Context) error {
+	// so we are done writing chunks - now update the db to add a view to this data
+	// Open a DuckDB connection
+	db, err := database.NewDuckDb(database.WithDbFile(filepaths.TailpipeDbFilePath()))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	err = database.AddTableView(ctx, c.execution.table, db)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
@@ -338,12 +357,19 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 			slog.Warn("waitForConversions - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
 			err = errors.New(ce.Error)
 		}
+		// mark execution as done, passing any error
 		c.execution.done(err)
 		return nil
 	}
 
 	// so there was no plugin error - wait for the conversions to complete
 	c.parquetConvertor.WaitForConversions(ctx)
+
+	if err := c.createTableView(ctx); err != nil {
+		slog.Error("error creating table view", "error", err)
+		c.execution.done(err)
+		return err
+	}
 
 	// mark execution as complete and record the end time
 	c.execution.done(err)
@@ -353,18 +379,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 		return err
 	}
 
-	// so we are done writing chunks - now update the db to add a view to this data
-	// Open a DuckDB connection
-	db, err := database.NewDuckDb(database.WithDbFile(filepaths.TailpipeDbFilePath()))
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	err = database.AddTableView(ctx, c.execution.table, db)
-	if err != nil {
-		return err
-	}
 	// notify the writer that the collection is complete
 	return nil
 }

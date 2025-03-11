@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
@@ -46,7 +47,7 @@ func createAndDropEmptyView(ctx context.Context, db *DuckDb) {
 }
 
 func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...string) error {
-	// TODO #SQL use params to avoid injection
+	slog.Info("creating view", "table", tableName, "filters", filters)
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	// Path to the Parquet directory
@@ -99,8 +100,10 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 	// Execute the query
 	_, err = db.ExecContext(ctx, query)
 	if err != nil {
+		slog.Warn("failed to create view", "table", tableName, "error", err)
 		return fmt.Errorf("failed to create view: %w", err)
 	}
+	slog.Info("created view", "table", tableName)
 	return nil
 }
 
