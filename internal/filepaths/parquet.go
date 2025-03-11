@@ -23,7 +23,8 @@ func GetTempParquetFileGlobForPartition(dataDir, tableName, partitionName, fileR
 
 // GetTempAndInvalidParquetFileGlobForPartition returns a glob pattern for invalid and temporary parquet files for a partition
 func GetTempAndInvalidParquetFileGlobForPartition(dataDir, tableName, partitionName string) string {
-	return filepath.Join(dataDir, fmt.Sprintf("tp_table=%s/tp_partition=%s/*.parquet.{invalid,tmp}", tableName, partitionName))
+	base := filepath.Join(dataDir, fmt.Sprintf("tp_table=%s/tp_partition=%s", tableName, partitionName))
+	return filepath.Join(base, "*.parquet.*")
 }
 
 func GetParquetPartitionPath(dataDir, tableName, partitionName string) string {

@@ -56,6 +56,7 @@ func setup() error {
 	if err != nil {
 		return fmt.Errorf("error creating duckdb: %w", err)
 	}
+	testDb = db
 	// make tempdata directory in local folder
 	// Create the directory
 	err = os.MkdirAll(testDir, 0755)

@@ -194,8 +194,6 @@ func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles 
 	// finally, delete renamed source parquet files
 	err = deleteCompactedFiles(ctx, parquetFiles)
 
-	// TODO dedupe rows ignoring ingestion timestamp and tp_index? https://github.com/turbot/tailpipe/issues/69
-
 	return nil
 }
 

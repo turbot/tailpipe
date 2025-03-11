@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/stretchr/testify/assert"
@@ -64,53 +63,53 @@ import (
 //		})
 //	}
 //}
-
-func Test_getDeleteInvalidDate(t *testing.T) {
-	tests := []struct {
-		name            string
-		from            time.Time
-		invalidFromDate time.Time
-		want            time.Time
-	}{
-		{
-			name:            "both zero",
-			from:            time.Time{},
-			invalidFromDate: time.Time{},
-			want:            time.Time{},
-		},
-		{
-			name:            "from zero, invalidFromDate not zero",
-			from:            time.Time{},
-			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			want:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		},
-		{
-			name:            "from not zero, invalidFromDate zero",
-			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			invalidFromDate: time.Time{},
-			want:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-		},
-		{
-			name:            "from before invalidFromDate",
-			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			invalidFromDate: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-			want:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-		},
-		{
-			name:            "from after invalidFromDate",
-			from:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			want:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := getDeleteInvalidDate(tt.from, tt.invalidFromDate)
-			assert.Equal(t, tt.want, got)
-		})
-	}
-}
+//
+//func Test_getDeleteInvalidDate(t *testing.T) {
+//	tests := []struct {
+//		name            string
+//		from            time.Time
+//		invalidFromDate time.Time
+//		want            time.Time
+//	}{
+//		{
+//			name:            "both zero",
+//			from:            time.Time{},
+//			invalidFromDate: time.Time{},
+//			want:            time.Time{},
+//		},
+//		{
+//			name:            "from zero, invalidFromDate not zero",
+//			from:            time.Time{},
+//			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			want:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//		},
+//		{
+//			name:            "from not zero, invalidFromDate zero",
+//			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			invalidFromDate: time.Time{},
+//			want:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//		},
+//		{
+//			name:            "from before invalidFromDate",
+//			from:            time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			invalidFromDate: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+//			want:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+//		},
+//		{
+//			name:            "from after invalidFromDate",
+//			from:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+//			invalidFromDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+//			want:            time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+//		},
+//	}
+//
+//	for _, tt := range tests {
+//		t.Run(tt.name, func(t *testing.T) {
+//			got := getDeleteInvalidDate(tt.from, tt.invalidFromDate)
+//			assert.Equal(t, tt.want, got)
+//		})
+//	}
+//}
 
 func Test_deleteInvalidParquetFiles(t *testing.T) {
 	// Create a temporary directory for test files
@@ -127,36 +126,35 @@ func Test_deleteInvalidParquetFiles(t *testing.T) {
 	partitionResource, _ := config.NewPartition(block, "partition.test_table.test_partition")
 	partition := partitionResource.(*config.Partition)
 
-	// Create test files with different dates
+	// Create test files
 	testFiles := []struct {
 		name     string
-		date     time.Time
 		expected bool // whether the file should be deleted
 	}{
 		{
 			name:     "old_invalid.parquet.invalid",
-			date:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			expected: false,
+			expected: true,
 		},
 		{
 			name:     "new_invalid.parquet.invalid",
-			date:     time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC),
 			expected: true,
 		},
 		{
 			name:     "old_temp.parquet.tmp",
-			date:     time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
-			expected: false,
+			expected: true,
 		},
 		{
 			name:     "new_temp.parquet.tmp",
-			date:     time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC),
 			expected: true,
+		},
+		{
+			name:     "valid.parquet",
+			expected: false,
 		},
 	}
 
 	// Create the partition directory
-	partitionDir := filepaths.GetParquetPartitionPath(tempDir, partition.TableName, partition.GetUnqualifiedName())
+	partitionDir := filepaths.GetParquetPartitionPath(tempDir, partition.TableName, partition.ShortName)
 	if err := os.MkdirAll(partitionDir, 0755); err != nil {
 		t.Fatalf("Failed to create partition dir: %v", err)
 	}
@@ -169,11 +167,8 @@ func Test_deleteInvalidParquetFiles(t *testing.T) {
 		}
 	}
 
-	// Set the from date to 2024-01-02
-	from := time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC)
-
 	// Run the delete function
-	err = deleteInvalidParquetFiles(tempDir, partition, from)
+	err = deleteInvalidParquetFiles(tempDir, partition.TableName, partition.ShortName)
 	if err != nil {
 		t.Fatalf("deleteInvalidParquetFiles failed: %v", err)
 	}

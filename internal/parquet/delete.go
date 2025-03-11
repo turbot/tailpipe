@@ -48,7 +48,6 @@ func DeleteParquetFiles(partition *config.Partition, from time.Time) (rowCount i
 func deletePartitionFrom(db *database.DuckDb, dataDir string, partition *config.Partition, from time.Time) (_ int, err error) {
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
-	//nolint:gosec // we cannot use params inside read_parquet - and this is a trusted source
 	query := fmt.Sprintf(`
     SELECT 
     DISTINCT '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date AS hive_path,
@@ -93,7 +92,6 @@ func deletePartition(db *database.DuckDb, dataDir string, partition *config.Part
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
 	// get count of parquet files
-	//nolint:gosec// have to build string for read_parquet
 	query := fmt.Sprintf(`
 		SELECT COUNT(DISTINCT filename)
 		FROM read_parquet('%s', hive_partitioning=true, filename=true)
@@ -121,22 +119,22 @@ func isNoFilesFoundError(err error) bool {
 	return strings.HasPrefix(err.Error(), "IO Error: No files found")
 }
 
-// getDeleteInvalidDate determines the date from which to delete invalid files
-// It returns the later of the from date and the InvalidFromDate
-func getDeleteInvalidDate(from, invalidFromDate time.Time) time.Time {
-	deleteInvalidDate := from
-	if invalidFromDate.After(from) {
-		deleteInvalidDate = invalidFromDate
-	}
-	return deleteInvalidDate
-}
+//// getDeleteInvalidDate determines the date from which to delete invalid files
+//// It returns the later of the from date and the InvalidFromDate
+//func getDeleteInvalidDate(from, invalidFromDate time.Time) time.Time {
+//	deleteInvalidDate := from
+//	if invalidFromDate.After(from) {
+//		deleteInvalidDate = invalidFromDate
+//	}
+//	return deleteInvalidDate
+//}
 
-// deleteInvalidParquetFiles deletes invalid and temporary parquet files for a partition from a given date
-func deleteInvalidParquetFiles(dataDir string, partition *config.Partition, from time.Time) error {
-	slog.Info("deleteInvalidParquetFiles - deleting invalid parquet files", "partition", partition.UnqualifiedName, "delete from", from)
+// deleteInvalidParquetFiles deletes invalid and temporary parquet files for a partition
+func deleteInvalidParquetFiles(dataDir string, table, partition string) error {
+	slog.Info("deleteInvalidParquetFiles - deleting invalid parquet files", "table", table, "partition", partition)
 
 	// get glob patterns for invalid and temp files
-	invalidGlob := filepaths.GetTempAndInvalidParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName)
+	invalidGlob := filepaths.GetTempAndInvalidParquetFileGlobForPartition(dataDir, table, partition)
 
 	// find all matching files
 	filesToDelete, err := filepath.Glob(invalidGlob)
@@ -149,20 +147,6 @@ func deleteInvalidParquetFiles(dataDir string, partition *config.Partition, from
 
 	// delete each file
 	for _, file := range filesToDelete {
-		if !from.IsZero() {
-			// extract date from file path
-			fields, err := filepaths.ExtractPartitionFields(file)
-			if err != nil {
-				// if we can't parse the date, skip this file
-				continue
-			}
-
-			// only delete files from or after the specified date
-			if fields.Date.IsZero() || fields.Date.Before(from) {
-				continue
-			}
-		}
-
 		if err := os.Remove(file); err != nil {
 			slog.Debug("failed to delete invalid parquet file", "file", file, "error", err)
 			failures++

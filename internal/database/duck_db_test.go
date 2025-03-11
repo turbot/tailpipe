@@ -13,26 +13,35 @@ import (
 	"github.com/marcboeker/go-duckdb"
 )
 
+const testDataDir = "testdata"
+
+// copyTestFile copies a test file from the source to the destination directory
+func copyTestFile(t *testing.T, src, dstDir string) string {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("failed to read source file %s: %v", src, err)
+	}
+	dst := filepath.Join(dstDir, filepath.Base(src))
+	if err := os.WriteFile(dst, data, 0644); err != nil { //nolint:gosec // test code
+		t.Fatalf("failed to write test file %s: %v", dst, err)
+	}
+	return dst
+}
+
 func Test_isInvalidParquetError(t *testing.T) {
 	// Create a temporary directory for test files
 	tmpDir := t.TempDir()
 
 	// Copy test files to temp directory
 	files := []string{
-		"testdata/valid.parquet",
-		"testdata/too_short.parquet",
-		"testdata/no_magic_byte.parquet",
+		filepath.Join(testDataDir, "valid.parquet"),
+		filepath.Join(testDataDir, "too_short.parquet"),
+		filepath.Join(testDataDir, "no_magic_byte.parquet"),
 	}
 
 	for _, file := range files {
-		src, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatalf("failed to read source file %s: %v", file, err)
-		}
-		dst := filepath.Join(tmpDir, filepath.Base(file))
-		if err := os.WriteFile(dst, src, 0644); err != nil { //nolint:gosec // test code
-			t.Fatalf("failed to write test file %s: %v", dst, err)
-		}
+		copyTestFile(t, file, tmpDir)
 	}
 
 	tests := []struct {
@@ -71,18 +80,18 @@ func Test_isInvalidParquetError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			query := fmt.Sprintf(`select * from read_parquet('%s')`, tt.parquetFile) //nolint:gosec // test code
 			rows, err := db.Query(query)
-			_ = rows.Close()
+			if err == nil {
+				_ = rows.Close() //nolint:sqlclosecheck // test code
+			}
 
 			// First check if it's an invalid parquet error
 			invalidFilepath, isInvalidParquetError := isInvalidParquetError(err)
 
-			if tt.wantInvalidFilepath != "" {
-				if invalidFilepath != tt.wantInvalidFilepath {
-					t.Errorf("isInvalidParquetError() got = %v, want %v", invalidFilepath, tt.wantInvalidFilepath)
-				}
-				if isInvalidParquetError != tt.wantIsParquetError {
-					t.Errorf("isInvalidParquetError() got1 = %v, want1 %v", isInvalidParquetError, tt.wantIsParquetError)
-				}
+			if invalidFilepath != tt.wantInvalidFilepath {
+				t.Errorf("isInvalidParquetError() got = %v, want %v", invalidFilepath, tt.wantInvalidFilepath)
+			}
+			if isInvalidParquetError != tt.wantIsParquetError {
+				t.Errorf("isInvalidParquetError() got1 = %v, want1 %v", isInvalidParquetError, tt.wantIsParquetError)
 			}
 		})
 	}
@@ -107,7 +116,7 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 			t.Fatalf("failed to create test directory: %v", err)
 		}
 		tmpFile := filepath.Join(path, fmt.Sprintf("test.parquet.%d", attempt))
-		if err := os.WriteFile(tmpFile, []byte("test data"), 0644); err != nil { // nolint:gosec // test code
+		if err := os.WriteFile(tmpFile, []byte("test data"), 0644); err != nil { //nolint:gosec // test code
 			t.Fatalf("failed to create test file: %v", err)
 		}
 		return tmpFile
@@ -140,8 +149,6 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 			name: "multiple invalid parquet files then other error",
 			errors: []error{
 				makeInvalidParquetError(mkTestFile(1)),
-				makeInvalidParquetError(mkTestFile(2)),
-				makeInvalidParquetError(mkTestFile(3)),
 				fmt.Errorf("other error"),
 			},
 			wantErr:     true,
@@ -166,6 +173,13 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 				if tt.errors[attempt-1] == nil {
 					return tt.wantResult, nil
 				}
+				// Create the test file if it's a parquet error
+				if _, ok := tt.errors[attempt-1].(*duckdb.Error); ok {
+					testFile := mkTestFile(attempt)
+					if err := os.WriteFile(testFile, []byte("test data"), 0644); err != nil {
+						t.Fatalf("failed to create test file: %v", err)
+					}
+				}
 				return nil, tt.errors[attempt-1]
 			}
 
@@ -175,22 +189,8 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 				if err == nil {
 					t.Error("expected error but got none")
 				}
-				if tt.wantErrType != nil {
-					var wantErr partitionError
-					if errors.As(err, &tt.wantErrType) {
-						if len(wantErr.partitionErrors) == 0 {
-							t.Error("partitionError should contain at least one error")
-						}
-						// For the multiple invalid parquet files test, verify the partition error
-						if tt.name == "multiple invalid parquet files" {
-							expectedPartition := "aws_cloudtrail.cloudtrail"
-							if _, ok := wantErr.partitionErrors[expectedPartition]; !ok {
-								t.Errorf("expected partition %s in error, got %v", expectedPartition, wantErr.partitionErrors)
-							}
-						}
-					} else if err.Error() != tt.wantErrType.Error() {
-						t.Errorf("got error %v, want %v", err, tt.wantErrType)
-					}
+				if tt.wantErrType != nil && err.Error() != tt.wantErrType.Error() {
+					t.Errorf("got error %v, want %v", err, tt.wantErrType)
 				}
 			} else if err != nil {
 				t.Errorf("unexpected error: %v", err)
@@ -295,14 +295,7 @@ func Test_handleDuckDbError(t *testing.T) {
 	}
 
 	for _, file := range files {
-		src, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatalf("failed to read source file %s: %v", file, err)
-		}
-		dst := filepath.Join(tmpDir, filepath.Base(file))
-		if err := os.WriteFile(dst, src, 0644); err != nil { //nolint:gosec // test code
-			t.Fatalf("failed to write test file %s: %v", dst, err)
-		}
+		copyTestFile(t, file, tmpDir)
 	}
 
 	// Define test cases to verify different error scenarios

@@ -175,14 +175,10 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("error reading files: %w", err)
 	}
-
 	slog.Debug("created parquet files", "count", len(files), "files", files)
 
 	// now rename the parquet files
 	err = w.renameTempParquetFiles(files)
-	if err != nil {
-		slog.Warn("failed to get row count - conversion failed", "error", err, "query", exportQuery)
-	}
 
 	return rowCount, err
 }
