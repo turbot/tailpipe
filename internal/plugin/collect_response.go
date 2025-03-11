@@ -15,7 +15,7 @@ type CollectResponse struct {
 func CollectResponseFromProto(resp *proto.CollectResponse) *CollectResponse {
 	return &CollectResponse{
 		ExecutionId: resp.ExecutionId,
-		Schema:      schema.RowSchemaFromProto(resp.Schema),
+		Schema:      schema.TableSchemaFromProto(resp.Schema),
 		FromTime:    row_source.ResolvedFromTimeFromProto(resp.FromTime),
 	}
 }

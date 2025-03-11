@@ -58,8 +58,9 @@ type Converter struct {
 	viewQueryFormat string
 
 	// the table schema - populated when the first chunk arrives if the schema is not already complete
-	schema    *schema.TableSchema
-	schemaMut sync.RWMutex
+	schema        *schema.TableSchema
+	schemaMut     sync.RWMutex
+	viewQueryOnce sync.Once
 
 	// the partition being collected
 	Partition *config.Partition
@@ -284,7 +285,6 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	}
 
 	return res, nil
-
 }
 
 func (w *Converter) addJobErrors(errors ...error) {
