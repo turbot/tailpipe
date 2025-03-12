@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
@@ -152,7 +153,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	// NOTE: we initially write to a file with the extension '.parquet.tmp' - this is to avoid the creation of invalid parquet files
 	// in the case of a failure
 	// once the conversion is complete we will rename them
-	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
+	partitionColumns := []string{sdkconstants.TpTable, sdkconstants.TpPartition, sdkconstants.TpIndex, sdkconstants.TpDate}
 	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (
 		FORMAT PARQUET,
 		PARTITION_BY (%s),

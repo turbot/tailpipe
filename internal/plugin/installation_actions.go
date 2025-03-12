@@ -50,8 +50,10 @@ func Remove(ctx context.Context, image string) (*PluginRemoveReport, error) {
 
 // Install installs a plugin in the local file system
 func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan struct{}, baseImageRef string, mediaTypesProvider ociinstaller.MediaTypeProvider) (*ociinstaller.OciImage[*ociinstaller.PluginImage, *ociinstaller.PluginImageConfig], error) {
+	// set options for the plugin install
 	opts := []ociinstaller.PluginInstallOption{
 		ociinstaller.WithSkipConfig(viper.GetBool(constants.ArgSkipConfig)),
+		// pass metadata function to populate the plugin metadata in the versions file
 		ociinstaller.WithGetMetadataFunc(getPluginMetadata),
 	}
 

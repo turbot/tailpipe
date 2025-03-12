@@ -10,9 +10,9 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/sanitize"
+	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -151,7 +151,7 @@ func (r *TableResource) setPartitions() {
 }
 
 func (r *TableResource) setFileInformation() error {
-	metadata, err := getFileMetadata(path.Join(config.GlobalWorkspaceProfile.GetDataDir(), fmt.Sprintf("%s=%s", constants.TpTable, r.Name)))
+	metadata, err := getFileMetadata(path.Join(config.GlobalWorkspaceProfile.GetDataDir(), fmt.Sprintf("%s=%s", sdkconstants.TpTable, r.Name)))
 	if err != nil {
 		return fmt.Errorf("unable to obtain file metadata: %w", err)
 	}
