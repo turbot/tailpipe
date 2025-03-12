@@ -2,11 +2,13 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 type TailpipeConfig struct {
@@ -73,4 +75,91 @@ func (c *TailpipeConfig) InitPartitions() {
 			partition.Plugin = plugin.NewPlugin(partition.InferPluginName())
 		}
 	}
+}
+
+// GetPluginForTable returns the plugin name that provides the given table.
+// Falls back to first segment of name split on '_' if not found in metadata.
+func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
+	// Check if the table is a custom table as these come from the `core` plugin
+	if _, ok := c.CustomTables[tableName]; ok {
+		return constants.CorePluginFullName
+	}
+
+	// Check metadata tables for each plugin to determine a match
+	for pluginName, version := range c.PluginVersions {
+		if tables, ok := version.Metadata["tables"]; ok {
+			for _, table := range tables {
+				if table == tableName {
+					return pluginName
+				}
+			}
+		}
+	}
+
+	// Fallback to first segment of name if no plugin found and not a custom table
+	parts := strings.Split(tableName, "_")
+	return parts[0]
+}
+
+// GetPluginForFormat returns the plugin name that provides the given format.
+// Format name should be in the format "type.name"
+//func (c *TailpipeConfig) GetPluginForFormat(formatName string) string {
+//	// Check format_presets in metadata
+//	for pluginName, version := range c.PluginVersions {
+//		if presets, ok := version.Metadata["format_presets"]; ok {
+//			for _, preset := range presets {
+//				if preset == formatName {
+//					return pluginName
+//				}
+//			}
+//		}
+//	}
+//
+//	// If not found in presets, check if any plugin supports the format type
+//	parts := strings.Split(formatName, ".")
+//	if len(parts) == 2 {
+//		formatType := parts[0]
+//		for pluginName, version := range c.PluginVersions {
+//			if types, ok := version.Metadata["format_types"]; ok {
+//				for _, t := range types {
+//					if t == formatType {
+//						return pluginName
+//					}
+//				}
+//			}
+//		}
+//	}
+//
+//	return ""
+//}
+
+func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) {
+	// Check format_types in metadata
+	for pluginName, version := range c.PluginVersions {
+		if types, ok := version.Metadata["format_types"]; ok {
+			for _, t := range types {
+				if t == typeName {
+					return pluginName, true
+				}
+			}
+		}
+	}
+
+	return "", false
+}
+
+// GetPluginForSource returns the plugin name that provides the given source.
+func (c *TailpipeConfig) GetPluginForSource(sourceName string) (string, bool) {
+	// Check sources in metadata
+	for pluginName, version := range c.PluginVersions {
+		if sources, ok := version.Metadata["sources"]; ok {
+			for _, source := range sources {
+				if source == sourceName {
+					return pluginName, true
+				}
+			}
+		}
+	}
+
+	return "", false
 }
