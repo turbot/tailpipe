@@ -183,7 +183,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*PluginDescribeResponse, error) {
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*plugin.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -205,7 +205,7 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string, customF
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
-	res := DescribeResponseFromProto(describeResponse)
+	res := plugin.DescribeResponseFromProto(describeResponse)
 	return res, nil
 }
 
