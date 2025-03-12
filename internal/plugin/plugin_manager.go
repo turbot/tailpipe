@@ -360,6 +360,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 }
 
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
+	// TODO KAI use version file
 	sourceType := partition.Source.Type
 	// because we reference the core plugin, all sources it provides are registered with our source factory instance
 	coreSources, err := core.DescribeSources()
