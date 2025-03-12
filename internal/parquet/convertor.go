@@ -58,8 +58,9 @@ type Converter struct {
 	viewQueryFormat string
 
 	// the table schema - populated when the first chunk arrives if the schema is not already complete
-	schema    *schema.TableSchema
-	schemaMut sync.RWMutex
+	schema        *schema.TableSchema
+	schemaMut     sync.RWMutex
+	viewQueryOnce sync.Once
 
 	// the partition being collected
 	Partition *config.Partition
@@ -114,14 +115,16 @@ func (w *Converter) Close() {
 // signal the scheduler that `chunks are available
 func (w *Converter) AddChunk(executionId string, chunk int) error {
 	w.chunkLock.Lock()
-	// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
-	if len(w.chunks) == 0 {
-		if err := w.inferSchemaIfNeeded(executionId, chunk); err != nil {
+	var viewQueryError error
+	// when we receive the first chunk, infer the schema
+	w.viewQueryOnce.Do(func() {
+		if viewQueryError = w.inferSchemaIfNeeded(executionId, chunk); viewQueryError != nil {
 			w.chunkLock.Unlock()
-			return err
+			return
 		}
 		w.viewQueryFormat = buildViewQuery(w.schema)
-	}
+	})
+
 	w.chunks = append(w.chunks, chunk)
 	w.chunkLock.Unlock()
 
@@ -284,7 +287,6 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	}
 
 	return res, nil
-
 }
 
 func (w *Converter) addJobErrors(errors ...error) {
