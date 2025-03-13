@@ -2,17 +2,18 @@ package parquet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"sync/atomic"
 )
 
 const parquetWorkerCount = 5
@@ -244,7 +245,9 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
-
+	return w.inferSchemaForJSONLFile(filePath)
+}
+func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
 	// Open DuckDB connection
 	db, err := database.NewDuckDb()
 	if err != nil {
@@ -252,38 +255,38 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	}
 	defer db.Close()
 
-	// Use DuckDB to describe the schema of the JSONL file
-	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
+	// Query to infer schema using json_structure
+	query := `
+		SELECT json_structure(json)::VARCHAR as schema 
+		FROM read_json_auto(?) 
+		LIMIT 1;
+	`
 
-	rows, err := db.Query(query, filePath)
+	var schemaStr string
+	err = db.QueryRow(query, filePath).Scan(&schemaStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
-	defer rows.Close()
 
-	var res = &schema.TableSchema{
-		// NOTE: set autoMap to false as we have inferred the schema
+	// Parse the schema JSON
+	var fields map[string]string
+	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
+		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+	}
+
+	// Convert to TableSchema
+	res := &schema.TableSchema{
 		AutoMapSourceFields: false,
+		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
 	}
 
-	// Read the results
-	for rows.Next() {
-		var name, dataType string
-		err := rows.Scan(&name, &dataType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		// Append inferred columns to the schema
+	// Convert each field to a column schema
+	for name, typ := range fields {
 		res.Columns = append(res.Columns, &schema.ColumnSchema{
 			SourceName: name,
 			ColumnName: name,
-			Type:       dataType,
+			Type:       typ,
 		})
-	}
-
-	// Check for any errors from iterating over rows
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed during rows iteration: %w", err)
 	}
 
 	return res, nil
