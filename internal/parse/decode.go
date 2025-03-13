@@ -2,6 +2,7 @@ package parse
 
 import (
 	"fmt"
+	"github.com/zclconf/go-cty/cty/gocty"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -11,7 +12,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/zclconf/go-cty/cty/gocty"
 )
 
 func decodeTailpipeConfig(parseCtx *ConfigParseContext) hcl.Diagnostics {
@@ -228,15 +228,16 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 		switch attrName {
 
 		case schema.AttributeConnection:
-			target := &config.TailpipeConnection{}
-			connRes := resourceFromAttr(parseCtx, attr, target)
+			// TODO for now we only support references
+			target, connRes := resolveReference[*config.TailpipeConnection](parseCtx, attr)
 			res.Merge(connRes)
 			if res.Success() {
 				source.Connection = target
 			}
 		case schema.AttributeFormat:
-			target := &config.Format{}
-			formatRes := resourceFromAttr(parseCtx, attr, target)
+			// TODO for now we only support references
+			// TODO compare to how we do this for tables
+			target, formatRes := resolveReference[*config.Format](parseCtx, attr)
 			res.Merge(formatRes)
 			if res.Success() {
 				source.Format = target
@@ -289,6 +290,54 @@ func resourceFromAttr(parseCtx *ConfigParseContext, attr *hcl.Attribute, target 
 		}})
 	}
 	return res
+}
+
+func resolveReference[T any](parseCtx *ConfigParseContext, attr *hcl.Attribute) (T, *parse.DecodeResult) {
+	var res = parse.NewDecodeResult()
+	var empty T
+	// if the expression is a reference, use the resource provider to resolve it
+	scopeTraversal, ok := attr.Expr.(*hclsyntax.ScopeTraversalExpr)
+	if !ok {
+		res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("failed to decode attribute %s", attr.Name),
+			Detail:   fmt.Sprintf("unsupported expression type %T", attr.Expr),
+			Subject:  attr.Range.Ptr(),
+		}})
+		// otherwise fail
+		// TODO BETTER ERROR
+		return empty, res
+	}
+
+	path := hclhelpers.TraversalAsString(scopeTraversal.Traversal)
+	if parsedName, err := ParseResourceName(path); err == nil {
+		if r, ok := parseCtx.GetResourceByName(parsedName.ToResourceName()); ok {
+			typedRes, ok := r.(T)
+			if !ok {
+				res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
+					Severity: hcl.DiagError,
+					Summary:  fmt.Sprintf("failed to decode attribute %s", attr.Name),
+					Detail:   fmt.Sprintf("resource %s is not of type %T", parsedName.ToResourceName(), typedRes),
+					Subject:  attr.Range.Ptr(),
+				}})
+				return empty, res
+			}
+			return typedRes, res
+		}
+		res.Depends[parsedName.ToResourceName()] = &modconfig.ResourceDependency{Range: attr.Expr.Range(), Traversals: attr.Expr.Variables()}
+		return empty, res
+	}
+	// TODO BETTER ERROR
+
+	res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
+		Severity: hcl.DiagError,
+		Summary:  fmt.Sprintf("failed to decode attribute %s", attr.Name),
+		Detail:   fmt.Sprintf("failed to parse resource name %s", path),
+		Subject:  attr.Range.Ptr(),
+	}})
+	// otherwise fail
+	// TODO BETTER ERROR
+	return empty, res
 }
 
 func decodeFormat(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
