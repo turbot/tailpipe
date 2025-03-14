@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -11,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
@@ -240,12 +240,67 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 	return w.schema.EnsureComplete()
 }
 
+//
+//func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
+//	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
+//	filePath := filepath.Join(w.sourceDir, jsonFileName)
+//	return w.inferSchemaForJSONLFile(filePath)
+//}
+//
+//func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
+//	// Open DuckDB connection
+//	db, err := database.NewDuckDb()
+//	if err != nil {
+//		log.Fatalf("failed to open DuckDB connection: %v", err)
+//	}
+//	defer db.Close()
+//
+//	// Query to infer schema using json_structure
+//	query := `
+//		SELECT json_structure(json)::VARCHAR as schema
+//		FROM read_json_auto(?)
+//		LIMIT 1;
+//	`
+//
+//	var schemaStr string
+//	err = db.QueryRow(query, filePath).Scan(&schemaStr)
+//	if err != nil {
+//		return nil, fmt.Errorf("failed to execute query: %w", err)
+//	}
+//
+//	// Parse the schema JSON
+//	var fields map[string]string
+//	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
+//		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+//	}
+//
+//	// Convert to TableSchema
+//	res := &schema.TableSchema{
+//		AutoMapSourceFields: false,
+//		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
+//	}
+//
+//	// Convert each field to a column schema
+//	for name, typ := range fields {
+//		// exclude the source columns column
+//		if name == constants.TpSourceColumns {
+//			continue
+//		}
+//
+//		res.Columns = append(res.Columns, &schema.ColumnSchema{
+//			SourceName: name,
+//			ColumnName: name,
+//			Type:       typ,
+//		})
+//	}
+//
+//	return res, nil
+//}
+
 func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
-	return w.inferSchemaForJSONLFile(filePath)
-}
-func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
+
 	// Open DuckDB connection
 	db, err := database.NewDuckDb()
 	if err != nil {
@@ -260,34 +315,43 @@ func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 		limit 1;
 	`
 
-	var schemaStr string
-	err = db.QueryRow(query, filePath).Scan(&schemaStr)
+	rows, err := db.Query(query, filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
+		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
 	}
+	defer rows.Close()
 
-	// Parse the schema JSON
-	var fields map[string]string
-	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
-		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
-	}
-
-	// Convert to TableSchema
-	res := &schema.TableSchema{
+	var res = &schema.TableSchema{
+		// NOTE: set autoMap to false as we have inferred the schema
 		AutoMapSourceFields: false,
-		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
 	}
 
-	// Convert each field to a column schema
-	for name, typ := range fields {
+	// Read the results
+	for rows.Next() {
+		var name, dataType string
+		err := rows.Scan(&name, &dataType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		// exclude the source columns column
+		if name == constants.TpSourceColumns {
+			continue
+		}
+		// Append inferred columns to the schema
 		res.Columns = append(res.Columns, &schema.ColumnSchema{
 			SourceName: name,
 			ColumnName: name,
-			Type:       typ,
+			Type:       dataType,
 		})
 	}
 
+	// Check for any errors from iterating over rows
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed during rows iteration: %w", err)
+	}
+
 	return res, nil
+
 }
 
 func (w *Converter) addJobErrors(errorList ...error) {
