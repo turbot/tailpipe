@@ -62,20 +62,7 @@ func (t *Table) ToProto() *proto.Schema {
 		Name:                t.ShortName,
 	}
 	for _, col := range t.Columns {
-		s := &proto.ColumnSchema{
-			// default source to column name
-			SourceName:  col.Name,
-			ColumnName:  col.Name,
-			Type:        typehelpers.SafeString(col.Type),
-			Description: typehelpers.SafeString(col.Description),
-			NullValue:   typehelpers.SafeString(col.NullValue),
-			Required:    typehelpers.BoolValue(col.Required),
-		}
-		// override the source name if it is set
-		if col.Source != nil {
-			s.SourceName = *col.Source
-		}
-		res.Columns = append(res.Columns, s)
+		res.Columns = append(res.Columns, col.ToProto())
 	}
 	return res
 }

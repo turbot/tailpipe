@@ -2,20 +2,20 @@ package parquet
 
 import (
 	"fmt"
+	"golang.org/x/exp/maps"
 	"strings"
 
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
-
 // TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
-func buildViewQuery(tableSchema *schema.TableSchema) string {
+func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// ensure the schema types are normalised
 	tableSchema.NormaliseColumnTypes()
 
 	var structSliceColumns []*schema.ColumnSchema
 
-	// first build the columns to select from the jsonl file
+	// first build the select clauses - use the table def columns
 	var columnStrings strings.Builder
 	for i, column := range tableSchema.Columns {
 		if i > 0 {
@@ -36,7 +36,7 @@ func buildViewQuery(tableSchema *schema.TableSchema) string {
 	}
 
 	// build column definitions
-	columnDefinitions := getReadJSONColumnDefinitions(tableSchema)
+	columnDefinitions := getReadJSONColumnDefinitions(maps.Values(tableSchema.SourceColumns))
 
 	columnStrings.WriteString(fmt.Sprintf(`
 from
@@ -66,12 +66,12 @@ from
 
 }
 
-// return the column definitions for the row schema, in the format required for the duck db read_json_auto function
-func getReadJSONColumnDefinitions(rowSchema *schema.TableSchema) string {
-	// columns = {BooleanField: 'boolean', BooleanField2: 'boolean', BooleanField3: 'boolean'})
+// return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
+func getReadJSONColumnDefinitions(sourceColumns []*schema.ColumnSchema) string {
+	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
 	var str strings.Builder
 	str.WriteString("columns = {")
-	for i, column := range rowSchema.Columns {
+	for i, column := range sourceColumns {
 		if i > 0 {
 			str.WriteString(", ")
 		}
@@ -82,7 +82,7 @@ func getReadJSONColumnDefinitions(rowSchema *schema.TableSchema) string {
 	return str.String()
 }
 
-func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, structSliceColumns []*schema.ColumnSchema) string {
+func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, structSliceColumns []*schema.ColumnSchema) string {
 	var str strings.Builder
 
 	/* this is the what we want
@@ -321,8 +321,13 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	// Calculate the tab spacing
 	tab := strings.Repeat("\t", tabs)
 
+	if column.Transform != "" {
+		return fmt.Sprintf("%s%s AS \"%s\"", tab, column.Transform, column.ColumnName)
+	}
+
 	// NOTE: we will have normalised column types to lower case
 	switch column.Type {
+	// TODO:  NOTE we DO NOT support functions on struct fields (perhaps we just omit the casting???
 	case "struct":
 		var str strings.Builder
 

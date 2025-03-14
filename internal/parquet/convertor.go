@@ -10,7 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
@@ -56,8 +55,11 @@ type Converter struct {
 	// the format string for the conversion query will be the same for all chunks - build once and store
 	viewQueryFormat string
 
-	// the table schema - populated when the first chunk arrives if the schema is not already complete
-	schema        *schema.TableSchema
+	// the table conversionSchema - populated when the first chunk arrives if the conversionSchema is not already complete
+	conversionSchema *schema.ConversionSchema
+	// the source schema - used to build the conversionSchema
+	tableSchema *schema.TableSchema
+
 	schemaMut     sync.RWMutex
 	viewQueryOnce sync.Once
 
@@ -67,7 +69,7 @@ type Converter struct {
 	statusFunc func(int64, int64, ...error)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -79,7 +81,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		cancel:           cancel,
 		sourceDir:        sourceDir,
 		destDir:          destDir,
-		schema:           schema,
+		tableSchema:      tableSchema,
 		statusFunc:       statusFunc,
 		fileRootProvider: &FileRootProvider{},
 	}
@@ -110,18 +112,18 @@ func (w *Converter) Close() {
 }
 
 // AddChunk adds a new chunk to the list of chunks to be processed
-// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
+// if this is the first chunk, determine if we have a full conversionSchema yet and if not infer from the chunk
 // signal the scheduler that `chunks are available
 func (w *Converter) AddChunk(executionId string, chunk int) error {
 	w.chunkLock.Lock()
 	var viewQueryError error
-	// when we receive the first chunk, infer the schema
+	// when we receive the first chunk, infer the conversionSchema
 	w.viewQueryOnce.Do(func() {
 		if viewQueryError = w.inferSchemaIfNeeded(executionId, chunk); viewQueryError != nil {
 			w.chunkLock.Unlock()
 			return
 		}
-		w.viewQueryFormat = buildViewQuery(w.schema)
+		w.viewQueryFormat = buildViewQuery(w.conversionSchema)
 	})
 
 	w.chunks = append(w.chunks, chunk)
@@ -208,46 +210,47 @@ func (w *Converter) getNextChunk() (int, bool) {
 }
 
 func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
-	//  determine if we have a full schema yet and if not infer from the chunk
-	// NOTE: schema mode will be MUTATED once we infer it
+	//  determine if we have a full conversionSchema yet and if not infer from the chunk
+	// NOTE: conversionSchema mode will be MUTATED once we infer it
 
 	// TODO #testing test this https://github.com/turbot/tailpipe/issues/108
 
 	// first get read lock
 	w.schemaMut.RLock()
-	// is the schema complete (i.e. we are NOT automapping source columns and we have all types defined)
-	complete := w.schema.Complete()
+	// is the conversionSchema complete (i.e. we are NOT automapping source columns and we have all types defined)
+	complete := w.conversionSchema != nil
 	w.schemaMut.RUnlock()
 
-	// do we have the full schema?
+	// do we have the full conversionSchema?
 	if !complete {
 		// get write lock
 		w.schemaMut.Lock()
-		// check again if schema is still not full (to avoid race condition as another worker may have filled it)
-		if !w.schema.Complete() {
+		// check again if conversionSchema is still not full (to avoid race condition as another worker may have filled it)
+		if w.conversionSchema == nil {
 			// do the inference
-			s, err := w.inferChunkSchema(executionID, chunk)
+			conversionSchema, err := w.inferConversionSchema(executionID, chunk)
 			if err != nil {
-				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
+				return fmt.Errorf("failed to infer conversionSchema from first JSON file: %w", err)
 			}
-			w.schema.InitialiseFromInferredSchema(s)
+
+			w.conversionSchema = conversionSchema
 		}
 		w.schemaMut.Unlock()
 	}
-	// now validate the schema is complete - we should have types for all columns
+	// now validate the conversionSchema is complete - we should have types for all columns
 	// (if we do not that indicates a custom table definition was used which does not specify types for all optional fields -
 	// this should have caused a config validation error earlier on
-	return w.schema.EnsureComplete()
+	return w.conversionSchema.EnsureComplete()
 }
 
 //
-//func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
+//func (w *Converter) inferConversionSchema(executionId string, chunkNumber int) (*conversionSchema.TableSchema, error) {
 //	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 //	filePath := filepath.Join(w.sourceDir, jsonFileName)
 //	return w.inferSchemaForJSONLFile(filePath)
 //}
 //
-//func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
+//func (w *Converter) inferSchemaForJSONLFile(filePath string) (*conversionSchema.TableSchema, error) {
 //	// Open DuckDB connection
 //	db, err := database.NewDuckDb()
 //	if err != nil {
@@ -255,9 +258,9 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 //	}
 //	defer db.Close()
 //
-//	// Query to infer schema using json_structure
+//	// Query to infer conversionSchema using json_structure
 //	query := `
-//		SELECT json_structure(json)::VARCHAR as schema
+//		SELECT json_structure(json)::VARCHAR as conversionSchema
 //		FROM read_json_auto(?)
 //		LIMIT 1;
 //	`
@@ -268,26 +271,26 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 //		return nil, fmt.Errorf("failed to execute query: %w", err)
 //	}
 //
-//	// Parse the schema JSON
+//	// Parse the conversionSchema JSON
 //	var fields map[string]string
 //	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
-//		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+//		return nil, fmt.Errorf("failed to parse conversionSchema JSON: %w", err)
 //	}
 //
 //	// Convert to TableSchema
-//	res := &schema.TableSchema{
+//	res := &conversionSchema.TableSchema{
 //		AutoMapSourceFields: false,
-//		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
+//		Columns:             make([]*conversionSchema.ColumnSchema, 0, len(fields)),
 //	}
 //
-//	// Convert each field to a column schema
+//	// Convert each field to a column conversionSchema
 //	for name, typ := range fields {
 //		// exclude the source columns column
-//		if name == constants.TpSourceColumns {
+//		if name == constants.TpTransformArgs {
 //			continue
 //		}
 //
-//		res.Columns = append(res.Columns, &schema.ColumnSchema{
+//		res.Columns = append(res.Columns, &conversionSchema.ColumnSchema{
 //			SourceName: name,
 //			ColumnName: name,
 //			Type:       typ,
@@ -297,7 +300,7 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 //	return res, nil
 //}
 
-func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
+func (w *Converter) inferConversionSchema(executionId string, chunkNumber int) (*schema.ConversionSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 
@@ -314,15 +317,17 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 		from read_json_auto(?) 
 		limit 1;
 	`
+	// Use DuckDB to describe the conversionSchema of the JSONL file
+	//query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
 
 	rows, err := db.Query(query, filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
+		return nil, fmt.Errorf("failed to query JSON conversionSchema: %w", err)
 	}
 	defer rows.Close()
 
-	var res = &schema.TableSchema{
-		// NOTE: set autoMap to false as we have inferred the schema
+	var inferredSchema = &schema.TableSchema{
+		// NOTE: set autoMap to false as we have inferred the conversionSchema
 		AutoMapSourceFields: false,
 	}
 
@@ -333,16 +338,14 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-		// exclude the source columns column
-		if name == constants.TpSourceColumns {
-			continue
-		}
-		// Append inferred columns to the schema
-		res.Columns = append(res.Columns, &schema.ColumnSchema{
+
+		// Build schema for column
+		c := &schema.ColumnSchema{
 			SourceName: name,
 			ColumnName: name,
 			Type:       dataType,
-		})
+		}
+		inferredSchema.Columns = append(inferredSchema.Columns, c)
 	}
 
 	// Check for any errors from iterating over rows
@@ -350,8 +353,7 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 		return nil, fmt.Errorf("failed during rows iteration: %w", err)
 	}
 
-	return res, nil
-
+	return schema.NewConversionSchema(w.tableSchema, inferredSchema), nil
 }
 
 func (w *Converter) addJobErrors(errorList ...error) {
