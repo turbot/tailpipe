@@ -11,6 +11,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/schema"
+	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -69,12 +70,13 @@ func (c *Partition) SetConfigHcl(u *HclBytes) {
 	c.ConfigRange = u.Range
 }
 
-func (c *Partition) InferPluginName() string {
+func (c *Partition) InferPluginName(v *versionfile.PluginVersionFile) string {
+	// NOTE: we cannot call the TailpipeConfig.GetPluginForTable function as tailpipe config is not populated yet
 	if c.CustomTable != nil {
 		return constants.CorePluginName
 	}
-	// otherwise just use the first segment of the table name
-	return strings.Split(c.TableName, "_")[0]
+
+	return GetPluginForTable(c.TableName, v.Plugins)
 }
 
 func (c *Partition) AddFilter(filter string) {

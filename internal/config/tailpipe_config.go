@@ -64,7 +64,7 @@ func (c *TailpipeConfig) Validate() hcl.Diagnostics {
 	return diags
 }
 
-func (c *TailpipeConfig) InitPartitions() {
+func (c *TailpipeConfig) InitPartitions(v *versionfile.PluginVersionFile) {
 	// populate the plugin property for each partition
 	for _, partition := range c.Partitions {
 		// set the table on the plugin (in case it is a custom table)
@@ -73,7 +73,7 @@ func (c *TailpipeConfig) InitPartitions() {
 		}
 		// if the plugin is not set, infer it from the table
 		if partition.Plugin == nil {
-			partition.Plugin = plugin.NewPlugin(partition.InferPluginName())
+			partition.Plugin = plugin.NewPlugin(partition.InferPluginName(v))
 		}
 	}
 }
@@ -86,8 +86,14 @@ func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
 		return constants.CorePluginFullName
 	}
 
+	return GetPluginForTable(tableName, c.PluginVersions)
+}
+
+// GetPluginForTable : we need a separate function for this as we need to call it from the partition creation code,
+// which is called before the TailpipeConfig is fully populated
+func GetPluginForTable(tableName string, v map[string]*versionfile.InstalledVersion) string {
 	// Check metadata tables for each plugin to determine a match
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range v {
 		if tables, ok := version.Metadata["tables"]; ok {
 			for _, table := range tables {
 				if table == tableName {
@@ -96,7 +102,6 @@ func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
 			}
 		}
 	}
-
 	// Fallback to first segment of name if no plugin found and not a custom table
 	parts := strings.Split(tableName, "_")
 	return parts[0]
@@ -117,18 +122,17 @@ func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) 
 	return "", false
 }
 
-// GetPluginForSource returns the plugin name that provides the given source.
-func (c *TailpipeConfig) GetPluginForSource(sourceName string) (string, bool) {
+// GetPluginForSourceType returns the plugin name that provides the given source.
+func (c *TailpipeConfig) GetPluginForSourceType(sourceType string) string {
 	// Check sources in metadata
 	for pluginName, version := range c.PluginVersions {
 		if sources, ok := version.Metadata["sources"]; ok {
 			for _, source := range sources {
-				if source == sourceName {
-					return pluginName, true
+				if source == sourceType {
+					return pluginName
 				}
 			}
 		}
 	}
-
-	return "", false
+	return strings.Split(sourceType, "_")[0]
 }

@@ -49,7 +49,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	tailpipeConfig.PluginVersions = v.Plugins
 
 	// initialise all partitions - this populates the Plugin and CustomTable (where set) properties
-	tailpipeConfig.InitPartitions()
+	tailpipeConfig.InitPartitions(v)
 
 	// now validate the config
 	diags := tailpipeConfig.Validate()
