@@ -26,17 +26,8 @@ type ConfigParseContext struct {
 	tailpipeConfig *config.TailpipeConfig
 }
 
-// TODO we must implement this for th einterface but tailpipe has its own implementation o ParsedResourceName so this is not used - fix
-func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceName) (resource modconfig.HclResource, found bool) {
+func (c *ConfigParseContext) GetResource(parsedName modconfig.ResourceNameProvider) (resource modconfig.HclResource, found bool) {
 	resource, ok := c.resourceMap[parsedName.ToResourceName()]
-	return resource, ok
-}
-
-// TODO KAI we need to change the signature of GetResource to take a string or else we need to unify ParsedResourceName between tailpipe and pipefittings
-func (c *ConfigParseContext) GetResourceByName(resourceName string) (resource modconfig.HclResource, found bool) {
-	// calling code should use parsedName.ToResourceName() (powerpipe)
-
-	resource, ok := c.resourceMap[resourceName]
 	return resource, ok
 }
 
