@@ -29,7 +29,6 @@ func executeWithParquetErrorRetry[T any](fn func() (T, error)) (T, error) {
 
 	defer func() {
 		if partitionErr != nil {
-			// TODO KAI CHECK
 			err = partitionErr
 		}
 	}()
