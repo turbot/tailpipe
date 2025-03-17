@@ -1,7 +1,7 @@
 package parquet
 
 import (
-	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"log/slog"
@@ -150,42 +150,65 @@ func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *c
 
 	// get a unique file root
 	fileRoot := w.fileRootProvider.GetFileRoot()
-
+	// build a query to export the rows to partitioned parquet files
+	// NOTE: we initially write to a file with the extension '.parquet.tmp' - this is to avoid the creation of invalid parquet files
+	// in the case of a failure
+	// once the conversion is complete we will rename them
 	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (FORMAT PARQUET, PARTITION_BY (%s), OVERWRITE_OR_IGNORE, FILENAME_PATTERN "%s_{i}");`,
-		selectQuery, w.destDir, strings.Join(partitionColumns, ","), fileRoot)
+	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (
+		FORMAT PARQUET,
+		PARTITION_BY (%s),
+		RETURN_FILES TRUE,
+		OVERWRITE_OR_IGNORE,
+		FILENAME_PATTERN '%s_{i}',
+		FILE_EXTENSION '%s'
+	);`,
+		selectQuery,
+		w.destDir,
+		strings.Join(partitionColumns, ","),
+		fileRoot,
+		strings.TrimPrefix(filepaths.TempParquetExtension, "."), // no '.' required for duckdb
+	)
 
-	_, err := w.db.Exec(exportQuery)
+	row := w.db.QueryRow(exportQuery)
+	var rowCount int64
+	var files []interface{}
+	err := row.Scan(&rowCount, &files)
 	if err != nil {
-		return 0, fmt.Errorf("failed to export data to parquet: %w", err)
+		return 0, fmt.Errorf("error reading files: %w", err)
 	}
+	slog.Debug("created parquet files", "count", len(files), "files", files)
 
-	// now read row count
-	count, err := getRowCount(w.db.DB, w.destDir, fileRoot, partition.TableName)
-	if err != nil {
-		slog.Warn("failed to get row count - conversion failed", "error", err, "query", exportQuery)
-	}
-	return count, err
+	// now rename the parquet files
+	err = w.renameTempParquetFiles(files)
 
+	return rowCount, err
 }
 
-func getRowCount(db *sql.DB, destDir, fileRoot, table string) (int64, error) {
-	// Build the query
-	//nolint:gosec // cannot use params in parquet_file_metadata - and this is a trusted source
-	rowCountQuery := fmt.Sprintf(`SELECT SUM(num_rows) FROM parquet_file_metadata('%s')`, filepaths.GetParquetFileGlobForTable(destDir, table, fileRoot))
-
-	// Execute the query and scan the result directly
-	var rowCount int64
-	err := db.QueryRow(rowCountQuery).Scan(&rowCount)
-	if err != nil {
-		// if this is an IO error caused by no files being found, return 0
-		if strings.Contains(err.Error(), "No files found") {
-			return 0, nil
+// renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
+// note: we receive the list of files as an interface{} as that is what we read back from the db
+func (w *parquetConversionWorker) renameTempParquetFiles(files []interface{}) error {
+	var errList []error
+	for _, f := range files {
+		fileName := f.(string)
+		if strings.HasSuffix(fileName, filepaths.TempParquetExtension) {
+			newName := strings.TrimSuffix(fileName, filepaths.TempParquetExtension) + ".parquet"
+			if err := os.Rename(fileName, newName); err != nil {
+				errList = append(errList, fmt.Errorf("%s: %w", fileName, err))
+			}
 		}
-		return 0, fmt.Errorf("failed to query row count: %w", err)
 	}
 
-	return rowCount, nil
+	if len(errList) > 0 {
+		var msg strings.Builder
+		msg.WriteString(fmt.Sprintf("Failed to rename %d parquet files:\n", len(errList)))
+		for _, err := range errList {
+			msg.WriteString(fmt.Sprintf("  - %v\n", err))
+		}
+		return errors.New(msg.String())
+	}
+
+	return nil
 }
 
 func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.RowSchema) interface{} {

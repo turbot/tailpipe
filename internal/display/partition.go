@@ -3,17 +3,16 @@ package display
 import (
 	"context"
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/dustin/go-humanize"
-
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
+// PartitionResource represents a partition resource and is used for list/show commands
 type PartitionResource struct {
 	Name        string             `json:"name"`
 	Description *string            `json:"description,omitempty"`
@@ -91,10 +90,9 @@ func (r *PartitionResource) setFileInformation() error {
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 
 	nameParts := strings.Split(r.Name, ".")
-	tableDir := fmt.Sprintf("%s=%s", constants.TpTable, nameParts[0])
-	partitionDir := fmt.Sprintf("%s=%s", constants.TpPartition, nameParts[1])
 
-	metadata, err := getFileMetadata(path.Join(dataDir, tableDir, partitionDir))
+	partitionDir := filepaths.GetParquetPartitionPath(dataDir, nameParts[0], nameParts[1])
+	metadata, err := getFileMetadata(partitionDir)
 	if err != nil {
 		return err
 	}
