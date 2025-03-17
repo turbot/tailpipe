@@ -24,6 +24,7 @@ import (
 )
 
 const eventBufferSize = 100
+const executionMaxDuration = 8 * time.Hour
 
 type Collector struct {
 	Events chan *proto.Event

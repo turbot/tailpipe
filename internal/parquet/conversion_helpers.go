@@ -1,14 +1,226 @@
 package parquet
 
 import (
+	"errors"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
+	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
-func buildViewQuery(rowSchema *schema.TableSchema) string {
+// parquetConversionWorker is an implementation of worker that converts JSONL files to Parquet
+type parquetConversionWorker struct {
+	// channel to receive jobs from the writer
+	jobChan chan parquetJob
+	// channel to send errors to the writer
+	errorChan chan parquetJobError
+
+	// source file location
+	sourceDir string
+	// dest file location
+	destDir string
+
+	// cache partition schemas - key by partition name
+	viewQueries map[string]string
+	// helper struct which provides unique filename roots
+	fileRootProvider *FileRootProvider
+	db               *duckDb
+}
+
+func newParquetConversionWorker(jobChan chan parquetJob, errorChan chan parquetJobError, sourceDir, destDir string, fileRootProvider *FileRootProvider) (*parquetConversionWorker, error) {
+	w := &parquetConversionWorker{
+		jobChan:          jobChan,
+		errorChan:        errorChan,
+		sourceDir:        sourceDir,
+		destDir:          destDir,
+		viewQueries:      make(map[string]string),
+		fileRootProvider: fileRootProvider,
+	}
+
+	// create a new DuckDB instance
+	db, err := newDuckDb()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
+	}
+	w.db = db
+	return w, nil
+}
+
+// this is the worker function run by all workers, which all read from the ParquetJobPool channel
+func (w *parquetConversionWorker) start() {
+	slog.Debug("worker start")
+
+	// loop until we are closed
+	for job := range w.jobChan {
+		// ok we have a job
+
+		if err := w.doJSONToParquetConversion(job); err != nil {
+			// send the error to the writer
+			w.errorChan <- parquetJobError{job.groupId, err}
+			continue
+		}
+		// increment the completion count
+		atomic.AddInt32(job.completionCount, 1)
+
+		// log the completion count
+		if *job.completionCount%100 == 0 {
+			slog.Debug("ParquetJobPool completion count", "ParquetJobPool", job.groupId, "count", *job.completionCount)
+		}
+
+	}
+
+	// we are done
+	w.close()
+}
+
+func (w *parquetConversionWorker) close() {
+	w.db.Close()
+}
+
+func (w *parquetConversionWorker) doJSONToParquetConversion(job parquetJob) error {
+	startTime := time.Now()
+
+	// build the source filename
+	jsonFileName := table.ExecutionIdToFileName(job.groupId, job.chunkNumber)
+	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
+	s := job.SchemaFunc()
+	// process the ParquetJobPool
+	rowCount, err := w.convertFile(jsonFilePath, job.Partition, s)
+	if err != nil {
+		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
+	}
+	// update the row count
+	// increment the completion count
+	// HACK - this breaks the abstraction of file job but will do for now
+	atomic.AddInt64(job.rowCount, rowCount)
+
+	// delete JSON file (configurable?)
+	if err := os.Remove(jsonFilePath); err != nil {
+		return fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
+	}
+	activeDuration := time.Since(startTime)
+	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
+	return nil
+}
+
+// convert the given jsonl file to parquet
+func (w *parquetConversionWorker) convertFile(jsonlFilePath string, partition *config.Partition, schema *schema.RowSchema) (int64, error) {
+	//slog.Debug("worker.convertFile", "jsonlFilePath", jsonlFilePath, "partitionName", partitionName)
+	//defer slog.Debug("worker.convertFile - done", "error", err)
+
+	// verify the jsonl file has a .jsonl extension
+	if filepath.Ext(jsonlFilePath) != ".jsonl" {
+		return 0, fmt.Errorf("invalid file type - parquetConversionWorker only supports JSONL files: %s", jsonlFilePath)
+	}
+	// verify file exists
+	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
+		return 0, fmt.Errorf("file does not exist: %s", jsonlFilePath)
+	}
+
+	// determine the root based on the partition
+
+	if err := os.MkdirAll(filepath.Dir(w.destDir), 0755); err != nil {
+		return 0, fmt.Errorf("failed to create parquet folder: %w", err)
+	}
+
+	// get the query format - from cache if possible
+	selectQueryFormat := w.getViewQuery(partition.UnqualifiedName, schema)
+	// render query
+	selectQuery := fmt.Sprintf(selectQueryFormat.(string), jsonlFilePath)
+
+	// if the partition includes a filter, add a WHERE clause
+	// TODO add validation
+	if partition.Filter != "" {
+		selectQuery += fmt.Sprintf(" WHERE %s", partition.Filter)
+	}
+	// Create a query to write to partitioned parquet files
+
+	// TODO review to ensure we are safe from SQL injection
+	// https://github.com/turbot/tailpipe/issues/67
+
+	// get a unique file root
+	fileRoot := w.fileRootProvider.GetFileRoot()
+	// build a query to export the rows to partitioned parquet files
+	// NOTE: we initially write to a file with the extension '.parquet.tmp' - this is to avoid the creation of invalid parquet files
+	// in the case of a failure
+	// once the conversion is complete we will rename them
+	partitionColumns := []string{constants.TpTable, constants.TpPartition, constants.TpIndex, constants.TpDate}
+	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (
+		FORMAT PARQUET,
+		PARTITION_BY (%s),
+		RETURN_FILES TRUE,
+		OVERWRITE_OR_IGNORE,
+		FILENAME_PATTERN '%s_{i}',
+		FILE_EXTENSION '%s'
+	);`,
+		selectQuery,
+		w.destDir,
+		strings.Join(partitionColumns, ","),
+		fileRoot,
+		strings.TrimPrefix(filepaths.TempParquetExtension, "."), // no '.' required for duckdb
+	)
+
+	row := w.db.QueryRow(exportQuery)
+	var rowCount int64
+	var files []interface{}
+	err := row.Scan(&rowCount, &files)
+	if err != nil {
+		return 0, fmt.Errorf("error reading files: %w", err)
+	}
+	slog.Debug("created parquet files", "count", len(files), "files", files)
+
+	// now rename the parquet files
+	err = w.renameTempParquetFiles(files)
+
+	return rowCount, err
+}
+
+// renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
+// note: we receive the list of files as an interface{} as that is what we read back from the db
+func (w *parquetConversionWorker) renameTempParquetFiles(files []interface{}) error {
+	var errList []error
+	for _, f := range files {
+		fileName := f.(string)
+		if strings.HasSuffix(fileName, filepaths.TempParquetExtension) {
+			newName := strings.TrimSuffix(fileName, filepaths.TempParquetExtension) + ".parquet"
+			if err := os.Rename(fileName, newName); err != nil {
+				errList = append(errList, fmt.Errorf("%s: %w", fileName, err))
+			}
+		}
+	}
+
+	if len(errList) > 0 {
+		var msg strings.Builder
+		msg.WriteString(fmt.Sprintf("Failed to rename %d parquet files:\n", len(errList)))
+		for _, err := range errList {
+			msg.WriteString(fmt.Sprintf("  - %v\n", err))
+		}
+		return errors.New(msg.String())
+	}
+
+	return nil
+}
+
+func (w *parquetConversionWorker) getViewQuery(partitionName string, rowSchema *schema.RowSchema) interface{} {
+	query, ok := w.viewQueries[partitionName]
+	if !ok {
+		query = buildViewQuery(rowSchema)
+		w.viewQueries[partitionName] = query
+	}
+	return query
+}
+
+func buildViewQuery(rowSchema *schema.RowSchema) string {
 	var structSliceColumns []*schema.ColumnSchema
 
 	// first build the columns to select from the jsonl file

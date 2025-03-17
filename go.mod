@@ -18,7 +18,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/turbot/go-kit v1.1.0
-	github.com/turbot/pipe-fittings/v2 v2.2.0
+	github.com/turbot/pipe-fittings/v2 v2.3.0-rc.1
 	github.com/turbot/tailpipe-plugin-core v0.1.3
 	github.com/turbot/tailpipe-plugin-sdk v0.1.0
 	github.com/zclconf/go-cty v1.14.4
@@ -40,7 +40,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb v1.8.3
-	github.com/sethvargo/go-retry v0.2.4
+	github.com/stretchr/testify v1.10.0
 	github.com/thediveo/enumflag/v2 v2.0.5
 	golang.org/x/sync v0.10.0
 	golang.org/x/text v0.21.0
@@ -188,7 +188,6 @@ require (
 	github.com/spf13/cast v1.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stevenle/topsort v0.2.0 // indirect
-	github.com/stretchr/testify v1.10.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.9 // indirect
 	github.com/tklauser/numcpus v0.3.0 // indirect
