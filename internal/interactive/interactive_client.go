@@ -344,9 +344,6 @@ func (c *InteractiveClient) executor(ctx context.Context, line string) {
 }
 
 func (c *InteractiveClient) executeQuery(ctx context.Context, queryCtx context.Context, resolvedQuery *ResolvedQuery) {
-	// add a spinner to the context
-	queryCtx = statushooks.AddStatusHooksToContext(queryCtx, statushooks.NewStatusSpinnerHook())
-
 	_, err := query.ExecuteQuery(queryCtx, resolvedQuery.ExecuteSQL, c.db)
 	if err != nil {
 		error_helpers.ShowError(ctx, error_helpers.HandleCancelError(err))
