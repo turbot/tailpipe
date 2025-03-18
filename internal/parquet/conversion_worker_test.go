@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"fmt"
-
 	"os"
 	"path/filepath"
 	"reflect"

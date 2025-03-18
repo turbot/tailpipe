@@ -3,12 +3,12 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"github.com/spf13/viper"
 	"log"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/files"
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
@@ -50,8 +50,11 @@ func Remove(ctx context.Context, image string) (*PluginRemoveReport, error) {
 
 // Install installs a plugin in the local file system
 func Install(ctx context.Context, plugin plugin.ResolvedPluginVersion, sub chan struct{}, baseImageRef string, mediaTypesProvider ociinstaller.MediaTypeProvider) (*ociinstaller.OciImage[*ociinstaller.PluginImage, *ociinstaller.PluginImageConfig], error) {
+	// set options for the plugin install
 	opts := []ociinstaller.PluginInstallOption{
 		ociinstaller.WithSkipConfig(viper.GetBool(constants.ArgSkipConfig)),
+		// pass metadata function to populate the plugin metadata in the versions file
+		ociinstaller.WithGetMetadataFunc(getPluginMetadata),
 	}
 
 	// Note: we pass the plugin info as strings here rather than passing the ResolvedPluginVersion struct as that causes circular dependency
@@ -168,4 +171,18 @@ func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary 
 		Truncate(time.Second)
 
 	return installDate.Before(modTime)
+}
+
+// getPluginMetadata returns the metadata for a given plugin, primarily the tables, sources and formats for usage in writing them to the InstalledVersionFile.
+// This is passed into Install using the ociinstaller.WithGetMetadataFunc option.
+func getPluginMetadata(ctx context.Context, pluginName string) (map[string][]string, error) {
+	manager := NewPluginManager()
+	defer manager.Close()
+
+	describeResponse, err := manager.Describe(ctx, pluginName)
+	if err != nil {
+		return nil, err
+	}
+
+	return describeResponse.AsMetadataMap(), nil
 }

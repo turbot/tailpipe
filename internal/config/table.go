@@ -15,6 +15,7 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+// Table is a struct representing a custom table definition
 type Table struct {
 	modconfig.HclResourceImpl
 

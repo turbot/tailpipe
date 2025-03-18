@@ -28,6 +28,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/plugin"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
@@ -182,7 +183,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*plugin.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -192,12 +193,19 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*Plugi
 	}
 
 	// convert the custom formats to proto
-	describeResponse, err := pluginClient.Describe()
+	var customFormatsProto []*proto.FormatData
+	for _, f := range customFormats {
+		customFormatsProto = append(customFormatsProto, f.ToProto())
+	}
+	req := &proto.DescribeRequest{
+		CustomFormats: customFormatsProto,
+	}
+	describeResponse, err := pluginClient.Describe(req)
 	if err != nil {
 		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
 	}
 
-	res := DescribeResponseFromProto(describeResponse)
+	res := plugin.DescribeResponseFromProto(describeResponse)
 	return res, nil
 }
 
@@ -352,6 +360,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 }
 
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
+	// TODO KAI use version file
 	sourceType := partition.Source.Type
 	// because we reference the core plugin, all sources it provides are registered with our source factory instance
 	coreSources, err := core.DescribeSources()

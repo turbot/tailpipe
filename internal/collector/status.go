@@ -19,7 +19,8 @@ type status struct {
 	RowsReceived             int64
 	RowsEnriched             int64
 	RowsConverted            int64
-	Errors                   int64
+	PluginErrors             int64
+	ConversionErrors         int64
 }
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
@@ -32,11 +33,12 @@ func (s *status) UpdateWithPluginStatus(event *proto.EventStatus) {
 	s.ArtifactErrors = event.ArtifactErrors
 	s.RowsReceived = event.RowsReceived
 	s.RowsEnriched = event.RowsEnriched
-	s.Errors = event.Errors
+	s.PluginErrors = event.Errors
 }
 
-func (s *status) SetRowsConverted(rowsConverted int64) {
+func (s *status) UpdateConversionStatus(rowsConverted, errors int64) {
 	s.RowsConverted = rowsConverted
+	s.ConversionErrors = errors
 }
 
 func (s *status) String() string {
@@ -45,17 +47,20 @@ func (s *status) String() string {
 	out.WriteString(fmt.Sprintf("Artifacts downloaded: %s. ", humanize.Comma(s.ArtifactsDownloaded)))
 	out.WriteString(fmt.Sprintf("Artifacts extracted: %s. ", humanize.Comma(s.ArtifactsExtracted)))
 	if s.ArtifactErrors > 0 {
-		out.WriteString(fmt.Sprintf("Artifact Errors: %s. ", humanize.Comma(s.ArtifactErrors)))
+		out.WriteString(fmt.Sprintf("Artifact PluginErrors: %s. ", humanize.Comma(s.ArtifactErrors)))
 	}
 
 	out.WriteString(fmt.Sprintf("Rows enriched: %s. ", humanize.Comma(s.RowsEnriched)))
 	out.WriteString(fmt.Sprintf("Rows saved: %s. ", humanize.Comma(s.RowsConverted)))
-	filteredRows := s.RowsReceived - (s.RowsConverted + s.Errors)
+	filteredRows := s.RowsReceived - (s.RowsConverted + s.PluginErrors + s.ConversionErrors)
 	if filteredRows > 0 {
 		out.WriteString(fmt.Sprintf("Rows filtered: %s. ", humanize.Comma(filteredRows)))
 	}
-	if s.Errors > 0 {
-		out.WriteString(fmt.Sprintf("Row Errors: %s.", humanize.Comma(s.Errors)))
+	if s.PluginErrors > 0 {
+		out.WriteString(fmt.Sprintf("Plugin errors: %s.", humanize.Comma(s.PluginErrors)))
+	}
+	if s.ConversionErrors > 0 {
+		out.WriteString(fmt.Sprintf("Conversion errors: %s.", humanize.Comma(s.PluginErrors)))
 	}
 
 	out.WriteString("\n")

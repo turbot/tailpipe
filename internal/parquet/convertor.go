@@ -2,17 +2,18 @@ package parquet
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"sync/atomic"
 )
 
 const parquetWorkerCount = 5
@@ -41,6 +42,11 @@ type Converter struct {
 	completionCount int32
 	// the number of rows written
 	rowCount int64
+	// the number of conversion errors encountered
+	errorCount int64
+	// error which occurred during execution
+	errors     []error
+	errorsLock sync.RWMutex
 
 	// the source file location
 	sourceDir string
@@ -52,21 +58,18 @@ type Converter struct {
 	// the format string for the conversion query will be the same for all chunks - build once and store
 	viewQueryFormat string
 
-	// error which occurred during execution
-	errors     []error
-	errorsLock sync.RWMutex
-
 	// the table schema - populated when the first chunk arrives if the schema is not already complete
-	schema    *schema.TableSchema
-	schemaMut sync.RWMutex
+	schema        *schema.TableSchema
+	schemaMut     sync.RWMutex
+	viewQueryOnce sync.Once
 
 	// the partition being collected
 	Partition *config.Partition
 	// func which we call with updated row count
-	statusFunc func(rowCount int64)
+	statusFunc func(rowCount, errorCount int64)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(rowCount int64)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(int64, int64)) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -113,14 +116,16 @@ func (w *Converter) Close() {
 // signal the scheduler that `chunks are available
 func (w *Converter) AddChunk(executionId string, chunk int) error {
 	w.chunkLock.Lock()
-	// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
-	if len(w.chunks) == 0 {
-		if err := w.inferSchemaIfNeeded(executionId, chunk); err != nil {
+	var viewQueryError error
+	// when we receive the first chunk, infer the schema
+	w.viewQueryOnce.Do(func() {
+		if viewQueryError = w.inferSchemaIfNeeded(executionId, chunk); viewQueryError != nil {
 			w.chunkLock.Unlock()
-			return err
+			return
 		}
 		w.viewQueryFormat = buildViewQuery(w.schema)
-	}
+	})
+
 	w.chunks = append(w.chunks, chunk)
 	w.chunkLock.Unlock()
 
@@ -240,7 +245,9 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
 func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
 	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
-
+	return w.inferSchemaForJSONLFile(filePath)
+}
+func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
 	// Open DuckDB connection
 	db, err := database.NewDuckDb()
 	if err != nil {
@@ -248,52 +255,57 @@ func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*sche
 	}
 	defer db.Close()
 
-	// Use DuckDB to describe the schema of the JSONL file
-	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
+	// Query to infer schema using json_structure
+	query := `
+		SELECT json_structure(json)::VARCHAR as schema 
+		FROM read_json_auto(?) 
+		LIMIT 1;
+	`
 
-	rows, err := db.Query(query, filePath)
+	var schemaStr string
+	err = db.QueryRow(query, filePath).Scan(&schemaStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
-	defer rows.Close()
 
-	var res = &schema.TableSchema{
-		// NOTE: set autoMap to false as we have inferred the schema
+	// Parse the schema JSON
+	var fields map[string]string
+	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
+		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+	}
+
+	// Convert to TableSchema
+	res := &schema.TableSchema{
 		AutoMapSourceFields: false,
+		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
 	}
 
-	// Read the results
-	for rows.Next() {
-		var name, dataType string
-		err := rows.Scan(&name, &dataType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		// Append inferred columns to the schema
+	// Convert each field to a column schema
+	for name, typ := range fields {
 		res.Columns = append(res.Columns, &schema.ColumnSchema{
 			SourceName: name,
 			ColumnName: name,
-			Type:       dataType,
+			Type:       typ,
 		})
 	}
 
-	// Check for any errors from iterating over rows
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed during rows iteration: %w", err)
-	}
-
 	return res, nil
-
 }
 
 func (w *Converter) addJobErrors(errors ...error) {
 	w.errorsLock.Lock()
+	defer w.errorsLock.Unlock()
+
 	w.errors = append(w.errors, errors...)
-	w.errorsLock.Unlock()
+	w.errorCount += int64(len(errors))
+
+	// update the status function with the new error count (no need to use atomic for errors as we are already locked)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), w.errorCount)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc
 func (w *Converter) updateRowCount(count int64) {
 	atomic.AddInt64(&w.rowCount, count)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount))
+	// call the status function with the new row count
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.errorCount))
 }

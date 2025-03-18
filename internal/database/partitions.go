@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
@@ -15,6 +16,7 @@ func ListPartitions(ctx context.Context) ([]string, error) {
 	if dataDir == "" {
 		return nil, fmt.Errorf("data directory is not set")
 	}
+	// TODO KAI handle no partitions
 
 	// Build DuckDB query to get the names of all partitions underneath data dir
 	parquetPath := filepaths.GetParquetFileGlobForTable(dataDir, "*", "")
