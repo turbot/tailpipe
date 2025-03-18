@@ -120,6 +120,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	}
 
 	// now populate the format if necessary
+	// ask the partition to resolve the format for us - it will check the source and the custom table (if present)
 	if format := partition.GetFormat(); format != nil {
 		req.SourceFormat = format.ToProto()
 

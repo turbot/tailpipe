@@ -88,11 +88,28 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 	case schema.BlockTypeFormat:
 		res = decodeFormat(block, parseCtx, resource)
 	// TODO #parsing to support inline Format we need to manually parse the table block https://github.com/turbot/tailpipe/issues/109
-	//case schema.BlockTypeTable:
+	case schema.BlockTypeTable:
+		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
+		tableRes := parse.NewDecodeResult()
+		tableRes.HandleDecodeDiags(diags)
+		// if the res has a depdency because of a format preset, resolver it
+		var formatPreset string
+		formatPreset, tableRes = resolveFormatPreset(parseCtx, tableRes)
+		res.Merge(tableRes)
+		if formatPreset != "" {
+			format, diags := config.NewPresetFormat(block, formatPreset)
+			if diags != nil && diags.HasErrors() {
+				res.AddDiags(diags)
+			} else {
+				// add the format preset to the table
+				resource.(*config.Table).DefaultSourceFormat = format
+			}
+		}
 
 	default:
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
 		res.HandleDecodeDiags(diags)
+
 	}
 
 	return resource, res
@@ -151,6 +168,18 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	}
 
 	return res
+}
+
+func resolveFormatPreset(parseCtx *ConfigParseContext, res *parse.DecodeResult) (string, *parse.DecodeResult) {
+	for depName := range res.Depends {
+		if _, ok := config.GetPluginForFormatPreset(depName, parseCtx.pluginVersionFile.Plugins); ok {
+			delete(res.Depends, depName)
+			return depName, res
+		}
+	}
+
+	return "", res
+
 }
 
 func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
@@ -237,6 +266,17 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 		case schema.AttributeFormat:
 			// resolve the format reference
 			format, formatRes := resolveReference[*config.Format](parseCtx, attr)
+
+			// if the res has a dependency because of a format preset, resolve it
+			formatPreset, formatRes := resolveFormatPreset(parseCtx, formatRes)
+			if formatPreset != "" {
+				format, diags = config.NewPresetFormat(block.AsHCLBlock(), formatPreset)
+				if diags != nil && diags.HasErrors() {
+					formatRes.AddDiags(diags)
+				}
+				// fall through to add the format to the source
+			}
+
 			res.Merge(formatRes)
 			if res.Success() {
 				source.Format = format
@@ -344,19 +384,8 @@ func resolveReference[T any](parseCtx *ConfigParseContext, attr *hcl.Attribute) 
 		return typedRes, res
 	}
 
-	// if the target type is format, check whether a format preset has been registered
-	switch any(empty).(type) {
-	case *config.Format:
-		if _, ok := config.GetPluginForFormatPreset(path, parseCtx.pluginVersionFile.Plugins); ok {
-			// success!
-			formatPreset := config.NewPresetFormat(parsedName.Type, parsedName.Name)
-			return any(formatPreset).(T), res
-		}
-
-	default:
-		// otherwise add the dependency to the resource
-		res.Depends[parsedName.ToResourceName()] = &modconfig.ResourceDependency{Range: attr.Expr.Range(), Traversals: attr.Expr.Variables()}
-	}
+	// otherwise add the dependency to the resource
+	res.Depends[parsedName.ToResourceName()] = &modconfig.ResourceDependency{Range: attr.Expr.Range(), Traversals: attr.Expr.Variables()}
 
 	return empty, res
 

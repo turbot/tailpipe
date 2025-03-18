@@ -9,6 +9,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/zclconf/go-cty/cty"
+	"strings"
 )
 
 func init() {
@@ -52,13 +53,23 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	return c, nil
 }
 
-func NewPresetFormat(presetType, presetName string) *Format {
-	fullName := fmt.Sprintf("%s.%s", presetType, presetName)
-	return &Format{
-		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, fullName),
-		Preset:          fullName,
-		Type:            presetType,
+func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnostics) {
+	var diags hcl.Diagnostics
+	parts := strings.Split(presetName, ".")
+	if len(parts) != 2 {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "'format' block requires 1 labels: 'type' and 'name'",
+			Subject:  hclhelpers.BlockRangePointer(block),
+		})
+		return nil, diags
 	}
+
+	return &Format{
+		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, presetName),
+		Preset:          presetName,
+		Type:            parts[0],
+	}, diags
 }
 
 func (f *Format) ToProto() *proto.FormatData {
