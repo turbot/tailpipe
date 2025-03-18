@@ -107,6 +107,23 @@ func GetPluginForTable(tableName string, v map[string]*versionfile.InstalledVers
 	return parts[0]
 }
 
+// GetPluginForFormatPreset returns the plugin name that provides the given format [preset.
+// Format name should be in the format "type.name"
+func (c *TailpipeConfig) GetPluginForFormatPreset(fullName string) (string, bool) {
+	// Check format_presets in metadata
+	for pluginName, version := range c.PluginVersions {
+		if presets, ok := version.Metadata["format_presets"]; ok {
+			for _, preset := range presets {
+				if preset == fullName {
+					return pluginName, true
+				}
+			}
+		}
+	}
+
+	return "", false
+}
+
 func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) {
 	// Check format_types in metadata
 	for pluginName, version := range c.PluginVersions {

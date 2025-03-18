@@ -19,9 +19,12 @@ func init() {
 
 type Format struct {
 	modconfig.HclResourceImpl
-
-	Type   string    `cty:"type"`
+	// the format type
+	Type string `cty:"type"`
+	// the raw HCL of the format (this will be decoded by the plugin which implements the format)
 	Config *HclBytes `cty:"config"`
+	// alternatively, the preset name opf the format
+	Preset string `cty:"preset"`
 }
 
 // GetSubType returns the subtype for the format block (the type).

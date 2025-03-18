@@ -9,6 +9,7 @@ type Source struct {
 	Connection *TailpipeConnection `hcl:"connection" cty:"connection"`
 	// optional: the format (for custom tables)
 	Format *Format `hcl:"format" cty:"format"`
+
 	// the config hcl
 	Config *HclBytes `cty:"config"`
 }

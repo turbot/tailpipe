@@ -229,18 +229,21 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 
 		case schema.AttributeConnection:
 			// resolve the connection reference
-			target, connRes := resolveReference[*config.TailpipeConnection](parseCtx, attr)
+			conn, connRes := resolveReference[*config.TailpipeConnection](parseCtx, attr)
 			res.Merge(connRes)
 			if res.Success() {
-				source.Connection = target
+				source.Connection = conn
 			}
 		case schema.AttributeFormat:
 			// resolve the format reference
-			target, formatRes := resolveReference[*config.Format](parseCtx, attr)
+			format, formatRes := resolveReference[*config.Format](parseCtx, attr)
 			res.Merge(formatRes)
 			if res.Success() {
-				source.Format = target
+				source.Format = format
 			}
+			// if there is a dependency on a format preset which is provided by an installed plugin,
+			// create a Format object with the preset name populated
+			format, res = handleFormatPresets(res)
 
 		default:
 			unknownAttrs = append(unknownAttrs, attr)
@@ -264,6 +267,20 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 	source.SetConfigHcl(unknown)
 
 	return source, res
+
+}
+
+func handleFormatPresets(res *parse.DecodeResult) (string, *parse.DecodeResult) {
+	for depPath, dep := range res.Depends {
+		if dep.Traversals[0].RootName() == "format" {
+			if formatPlugin, ok := config.GlobalConfig.GetPluginForFormatPreset(depPath); ok {
+				delete(res.Depends, depPath)
+				// create a new format object with the plugin name populated
+				format := config.NewFormat(nil, depPath)
+			}
+		}
+
+	}
 
 }
 
