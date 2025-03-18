@@ -9,7 +9,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
-	"github.com/turbot/tailpipe/internal/constants"
 )
 
 type TailpipeConfig struct {
@@ -78,17 +77,6 @@ func (c *TailpipeConfig) InitPartitions(v *versionfile.PluginVersionFile) {
 	}
 }
 
-// GetPluginForTable returns the plugin name that provides the given table.
-// Falls back to first segment of name split on '_' if not found in metadata.
-func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
-	// Check if the table is a custom table as these come from the `core` plugin
-	if _, ok := c.CustomTables[tableName]; ok {
-		return constants.CorePluginFullName
-	}
-
-	return GetPluginForTable(tableName, c.PluginVersions)
-}
-
 // GetPluginForTable : we need a separate function for this as we need to call it from the partition creation code,
 // which is called before the TailpipeConfig is fully populated
 func GetPluginForTable(tableName string, v map[string]*versionfile.InstalledVersion) string {
@@ -109,9 +97,9 @@ func GetPluginForTable(tableName string, v map[string]*versionfile.InstalledVers
 
 // GetPluginForFormatPreset returns the plugin name that provides the given format [preset.
 // Format name should be in the format "type.name"
-func (c *TailpipeConfig) GetPluginForFormatPreset(fullName string) (string, bool) {
+func GetPluginForFormatPreset(fullName string, v map[string]*versionfile.InstalledVersion) (string, bool) {
 	// Check format_presets in metadata
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range v {
 		if presets, ok := version.Metadata["format_presets"]; ok {
 			for _, preset := range presets {
 				if preset == fullName {
@@ -124,9 +112,9 @@ func (c *TailpipeConfig) GetPluginForFormatPreset(fullName string) (string, bool
 	return "", false
 }
 
-func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) {
+func GetPluginForFormatType(typeName string, v map[string]*versionfile.InstalledVersion) (string, bool) {
 	// Check format_types in metadata
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range v {
 		if types, ok := version.Metadata["format_types"]; ok {
 			for _, t := range types {
 				if t == typeName {
@@ -140,9 +128,9 @@ func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) 
 }
 
 // GetPluginForSourceType returns the plugin name that provides the given source.
-func (c *TailpipeConfig) GetPluginForSourceType(sourceType string) string {
+func GetPluginForSourceType(sourceType string, v map[string]*versionfile.InstalledVersion) string {
 	// Check sources in metadata
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range v {
 		if sources, ok := version.Metadata["sources"]; ok {
 			for _, source := range sources {
 				if source == sourceType {

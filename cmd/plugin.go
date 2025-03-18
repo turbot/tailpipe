@@ -327,7 +327,7 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 func doPluginInstall(ctx context.Context, bar *uiprogress.Bar, pluginName string, resolvedPlugin pplugin.ResolvedPluginVersion, wg *sync.WaitGroup, returnChannel chan *pplugin.PluginInstallReport) {
 	var report *pplugin.PluginInstallReport
 
-	pluginAlreadyInstalled, _ := pplugin.ExistsInVersionFile(ctx, pluginName)
+	pluginAlreadyInstalled, _ := pplugin.Exists(ctx, pluginName)
 	if pluginAlreadyInstalled {
 		// set the bar to MAX
 		//nolint:golint,errcheck // the error happens if we set this over the max value
@@ -431,7 +431,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 		// get the args and retrieve the installed versions
 		for _, p := range plugins {
 			ref := pociinstaller.NewImageRef(p)
-			isExists, _ := pplugin.ExistsInVersionFile(ctx, p)
+			isExists, _ := pplugin.Exists(ctx, p)
 			if isExists {
 				if strings.HasPrefix(ref.DisplayImageRef(), constants.TailpipeHubOCIBase) {
 					runUpdatesFor = append(runUpdatesFor, pluginVersions[ref.DisplayImageRef()])

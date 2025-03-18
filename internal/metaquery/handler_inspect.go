@@ -36,7 +36,7 @@ func listViews(ctx context.Context, input *HandlerInput, views []string) error {
 	rows = append(rows, []string{"Table", "Plugin"}) // Header
 
 	for _, view := range views {
-		p := config.GlobalConfig.GetPluginForTable(view)
+		p := config.GetPluginForTable(view, config.GlobalConfig.PluginVersions)
 		rows = append(rows, []string{view, p})
 	}
 

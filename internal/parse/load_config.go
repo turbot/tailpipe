@@ -40,6 +40,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 		return nil, error_helpers.NewErrorsAndWarning(err)
 	}
 
+	// TODO KAI CHECK THIS
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
 	err = v.AddLocalPlugins(ctx)
 	if err != nil {
@@ -106,7 +107,7 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	}
 
 	// create parse context for the decode
-	parseCtx := NewConfigParseContext(configPath)
+	parseCtx, _ := NewConfigParseContext(configPath)
 	parseCtx.SetDecodeContent(content, fileData)
 
 	// now decode

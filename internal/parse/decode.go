@@ -241,9 +241,6 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 			if res.Success() {
 				source.Format = format
 			}
-			// if there is a dependency on a format preset which is provided by an installed plugin,
-			// create a Format object with the preset name populated
-			format, res = handleFormatPresets(res)
 
 		default:
 			unknownAttrs = append(unknownAttrs, attr)
@@ -267,20 +264,6 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 	source.SetConfigHcl(unknown)
 
 	return source, res
-
-}
-
-func handleFormatPresets(res *parse.DecodeResult) (string, *parse.DecodeResult) {
-	for depPath, dep := range res.Depends {
-		if dep.Traversals[0].RootName() == "format" {
-			if formatPlugin, ok := config.GlobalConfig.GetPluginForFormatPreset(depPath); ok {
-				delete(res.Depends, depPath)
-				// create a new format object with the plugin name populated
-				format := config.NewFormat(nil, depPath)
-			}
-		}
-
-	}
 
 }
 
@@ -342,6 +325,7 @@ func resolveReference[T any](parseCtx *ConfigParseContext, attr *hcl.Attribute) 
 
 		return empty, res
 	}
+
 	// does the parse context contain this resource?
 	if r, ok := parseCtx.GetResource(parsedName); ok {
 		// convert the resource to the target type
@@ -359,8 +343,21 @@ func resolveReference[T any](parseCtx *ConfigParseContext, attr *hcl.Attribute) 
 		// success!
 		return typedRes, res
 	}
-	// otherwise add the dependency to the resource
-	res.Depends[parsedName.ToResourceName()] = &modconfig.ResourceDependency{Range: attr.Expr.Range(), Traversals: attr.Expr.Variables()}
+
+	// if the target type is format, check whether a format preset has been registered
+	switch any(empty).(type) {
+	case *config.Format:
+		if _, ok := config.GetPluginForFormatPreset(path, parseCtx.pluginVersionFile.Plugins); ok {
+			// success!
+			formatPreset := config.NewPresetFormat(parsedName.Type, parsedName.Name)
+			return any(formatPreset).(T), res
+		}
+
+	default:
+		// otherwise add the dependency to the resource
+		res.Depends[parsedName.ToResourceName()] = &modconfig.ResourceDependency{Range: attr.Expr.Range(), Traversals: attr.Expr.Variables()}
+	}
+
 	return empty, res
 
 }

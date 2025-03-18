@@ -103,7 +103,7 @@ func GetFormatResource(ctx context.Context, name string) (*FormatResource, error
 
 	// get plugin for type
 	var pluginName string
-	if pn, ok := config.GlobalConfig.GetPluginForFormatType(formatType); !ok {
+	if pn, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions); !ok {
 		return nil, fmt.Errorf("no plugin found for type '%s'", formatType)
 	} else {
 		pluginName = pn

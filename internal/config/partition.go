@@ -166,3 +166,12 @@ func (c *Partition) validateFilter() hcl.Diagnostics {
 	}
 	return diags
 }
+
+func (c *Partition) GetFormat() *Format {
+	var format = c.Source.Format
+	if format == nil && c.CustomTable != nil {
+		// if the source does not provide a format, use the custom table format
+		format = c.CustomTable.DefaultSourceFormat
+	}
+	return format
+}

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
@@ -53,16 +52,28 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	return c, nil
 }
 
+func NewPresetFormat(presetType, presetName string) *Format {
+	fullName := fmt.Sprintf("%s.%s", presetType, presetName)
+	return &Format{
+		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, fullName),
+		Preset:          fullName,
+		Type:            presetType,
+	}
+}
+
 func (f *Format) ToProto() *proto.FormatData {
 	res := &proto.FormatData{
-		Config: &proto.ConfigData{
-			Target: "format." + f.Type,
-		},
 		Name: f.ShortName,
 	}
-	if f.Config != nil {
-		res.Config.Hcl = f.Config.Hcl
-		res.Config.Range = proto.RangeToProto(f.Config.Range.HclRange())
+	// set either preset name or config
+	if f.Preset != "" {
+		res.Preset = f.Preset
+	} else if f.Config != nil {
+		res.Config = &proto.ConfigData{
+			Target: "format." + f.Type,
+			Hcl:    f.Config.Hcl,
+			Range:  proto.RangeToProto(f.Config.Range.HclRange()),
+		}
 	}
 	return res
 }

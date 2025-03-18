@@ -114,18 +114,15 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// set on req (may be nil - this is fine)
 	req.SourcePlugin = sourcePluginReattach
 
+	// populate the custom table
 	if partition.CustomTable != nil {
 		req.CustomTableSchema = partition.CustomTable.ToProto()
+	}
 
-		var format = partition.Source.Format
-		if format == nil {
-			// if the source does not provide a format, use the custom table format
-			format = partition.CustomTable.DefaultSourceFormat
-		}
-		if format == nil {
-			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
-		}
+	// now populate the format if necessary
+	if format := partition.GetFormat(); format != nil {
 		req.SourceFormat = format.ToProto()
+
 		// now check if the format is provided by the table plugin or whether we need to start 	a format plugin
 		formatPluginReattach, err := p.getFormatPluginReattach(ctx, format.Type, tablePlugin, sourcePluginReattach)
 		if err != nil {
@@ -410,7 +407,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 // if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
 	sourceType := partition.Source.Type
-	pluginName := config.GlobalConfig.GetPluginForSourceType(sourceType)
+	pluginName := config.GetPluginForSourceType(sourceType, config.GlobalConfig.PluginVersions)
 
 	// now return the plugin
 	return pplugin.NewPlugin(pluginName), nil
@@ -420,7 +417,7 @@ func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*ppl
 // try to use the source information registered in the version file
 // if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
 func (p *PluginManager) determineFormatPlugin(formatType string) (*pplugin.Plugin, error) {
-	pluginName, ok := config.GlobalConfig.GetPluginForFormatType(formatType)
+	pluginName, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions)
 
 	// we failed to retrieve the plugun name by inspecting the version file - fall back to the legacy method
 	if !ok {
@@ -445,7 +442,7 @@ func ensureCorePlugin(ctx context.Context) error {
 	action := "Installing"
 
 	// check if core plugin is already installed
-	exists, _ := pplugin.ExistsInVersionFile(ctx, constants.CorePluginName)
+	exists, _ := pplugin.Exists(ctx, constants.CorePluginName)
 
 	if exists {
 		// check if the min version is satisfied; if not then update
