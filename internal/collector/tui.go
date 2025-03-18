@@ -196,13 +196,14 @@ func (c collectionModel) View() string {
 		b.WriteString("PluginErrors:\n")
 		for i, e := range c.errorList {
 			if i <= (uiErrorsToDisplay - 1) {
-				b.WriteString(fmt.Sprintf("  %s\n", helpers.TruncateString(e, 120)))
+				b.WriteString(fmt.Sprintf("  %s\n", e))
 			} else {
 				b.WriteString(fmt.Sprintf("  … and %d more.\n", len(c.errorList)-uiErrorsToDisplay))
+				b.WriteString(fmt.Sprintf("See %s for full details.\n", c.errorFilePath))
 				break
 			}
 		}
-		b.WriteString(fmt.Sprintf("See %s for full details.\n", c.errorFilePath))
+
 		b.WriteString("\n")
 	}
 
