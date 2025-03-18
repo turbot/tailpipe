@@ -148,6 +148,41 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
+// Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*plugin.DescribeResponse, error) {
+	// build plugin ref from the name
+	pluginDef := pplugin.NewPlugin(pluginName)
+
+	pluginClient, err := p.getPlugin(ctx, pluginDef)
+	if err != nil {
+		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
+	}
+
+	// convert the custom formats to proto
+	var customFormatsProto []*proto.FormatData
+	for _, f := range customFormats {
+		customFormatsProto = append(customFormatsProto, f.ToProto())
+	}
+	req := &proto.DescribeRequest{
+		CustomFormats: customFormatsProto,
+	}
+	describeResponse, err := pluginClient.Describe(req)
+	if err != nil {
+		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
+	}
+
+	res := plugin.DescribeResponseFromProto(describeResponse)
+	return res, nil
+}
+
+func (p *PluginManager) Close() {
+	p.pluginMutex.Lock()
+	defer p.pluginMutex.Unlock()
+	for _, plg := range p.Plugins {
+		plg.Client.Kill()
+	}
+}
+
 func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*proto.SourcePluginReattach, error) {
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
@@ -226,41 +261,6 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 
 	// just return - the observer is responsible for waiting for completion
 	return err
-}
-
-// Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*plugin.DescribeResponse, error) {
-	// build plugin ref from the name
-	pluginDef := pplugin.NewPlugin(pluginName)
-
-	pluginClient, err := p.getPlugin(ctx, pluginDef)
-	if err != nil {
-		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
-	}
-
-	// convert the custom formats to proto
-	var customFormatsProto []*proto.FormatData
-	for _, f := range customFormats {
-		customFormatsProto = append(customFormatsProto, f.ToProto())
-	}
-	req := &proto.DescribeRequest{
-		CustomFormats: customFormatsProto,
-	}
-	describeResponse, err := pluginClient.Describe(req)
-	if err != nil {
-		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
-	}
-
-	res := plugin.DescribeResponseFromProto(describeResponse)
-	return res, nil
-}
-
-func (p *PluginManager) Close() {
-	p.pluginMutex.Lock()
-	defer p.pluginMutex.Unlock()
-	for _, plg := range p.Plugins {
-		plg.Client.Kill()
-	}
 }
 
 // getExecutionId generates a unique id based on the current time
@@ -427,7 +427,7 @@ func (p *PluginManager) determineFormatPlugin(formatType string) (*pplugin.Plugi
 		// no installed plugin provides this format
 		// note we do NOT use the fallback approach as all plugin versions which provide formats WILL have registered
 		// the source type in the version file
-		return nil, fmt.Errorf("no plugin installed wgucg provides the format %s", formatType)
+		return nil, fmt.Errorf("no installed plugin provides the format %s", formatType)
 	}
 
 	// now return the plugin
