@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
@@ -33,6 +34,7 @@ type Collector struct {
 	partition *config.Partition
 	// the execution
 	execution *execution
+	initiated time.Time
 
 	parquetConvertor *parquet.Converter
 
@@ -117,6 +119,9 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 
 	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
 	c.execution = newExecution(c.partition)
+
+	// set the start time
+	c.initiated = time.Now()
 
 	// tell plugin to start collecting
 	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, c.collectionTempDir)
@@ -331,7 +336,9 @@ func (c *Collector) updateRowCount(rowCount, errorCount int64) {
 
 func (c *Collector) StatusString() string {
 	var str strings.Builder
-	str.WriteString("Collection complete.\n\n")
+	// establish time taken
+	timeTaken := time.Since(c.initiated)
+	str.WriteString(fmt.Sprintf("Collection completed in %s.\n\n", utils.HumanizeDuration(timeTaken)))
 	str.WriteString(c.status.String())
 	str.WriteString("\n")
 	// print out the execution status
