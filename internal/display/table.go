@@ -30,6 +30,7 @@ type TableResource struct {
 	Local       TableResourceFiles    `json:"local,omitempty"`
 }
 
+// tableResourceFromConfigTable creates a TableResource (display item) from a config.Table (custom table)
 func tableResourceFromConfigTable(tableName string, configTable *config.Table) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(configTable.Columns))
 	for i, c := range configTable.Columns {
@@ -55,6 +56,7 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 	return table, nil
 }
 
+// tableResourceFromSchemaTable creates a TableResource (display item) from a schema.TableSchema (defined table)
 func tableResourceFromSchemaTable(tableName string, schemaTable *schema.TableSchema) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(schemaTable.Columns))
 	for i, c := range schemaTable.Columns {
