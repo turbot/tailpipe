@@ -1,7 +1,9 @@
 package parse
 
 import (
+	"context"
 	"fmt"
+	"github.com/turbot/pipe-fittings/v2/versionfile"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
@@ -23,24 +25,16 @@ type ConfigParseContext struct {
 	resourceMap map[string]modconfig.HclResource
 
 	// the config which is being generated
-	tailpipeConfig *config.TailpipeConfig
+	tailpipeConfig    *config.TailpipeConfig
+	pluginVersionFile *versionfile.PluginVersionFile
 }
 
-// TODO we must implement this for th einterface but tailpipe has its own implementation o ParsedResourceName so this is not used - fix
-func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceName) (resource modconfig.HclResource, found bool) {
+func (c *ConfigParseContext) GetResource(parsedName modconfig.ResourceNameProvider) (resource modconfig.HclResource, found bool) {
 	resource, ok := c.resourceMap[parsedName.ToResourceName()]
 	return resource, ok
 }
 
-// TODO KAI we need to change the signature of GetResource to take a string or else we need to unify ParsedResourceName between tailpipe and pipefittings
-func (c *ConfigParseContext) GetResourceByName(resourceName string) (resource modconfig.HclResource, found bool) {
-	// calling code should use parsedName.ToResourceName() (powerpipe)
-
-	resource, ok := c.resourceMap[resourceName]
-	return resource, ok
-}
-
-func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
+func NewConfigParseContext(rootEvalPath string) (*ConfigParseContext, error) {
 	parseContext := parse.NewParseContext(rootEvalPath)
 	c := &ConfigParseContext{
 		ParseContext:   parseContext,
@@ -52,12 +46,19 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 	// we load workspaces separately
 	c.SetBlockTypeExclusions(schema.BlockTypeWorkspaceProfile)
 
+	// load version file - we may use this to resolve format presets
+	v, err := versionfile.LoadPluginVersionFile(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	c.pluginVersionFile = v
+
 	//override ResourceNameFromDependencyFunc to use a version
 	// which uses the local ParsedPropertyPath type
 	c.ResourceNameFromDependencyFunc = resourceNameFromDependency
 	c.buildEvalContext()
 
-	return c
+	return c, nil
 }
 
 // AddResource stores this resource as a variable to be added to the eval context.

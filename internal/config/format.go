@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
@@ -19,9 +20,12 @@ func init() {
 
 type Format struct {
 	modconfig.HclResourceImpl
-
-	Type   string    `cty:"type"`
+	// the format type
+	Type string `cty:"type"`
+	// the raw HCL of the format (this will be decoded by the plugin which implements the format)
 	Config *HclBytes `cty:"config"`
+	// alternatively, the preset name opf the format
+	Preset string `cty:"preset"`
 }
 
 // GetSubType returns the subtype for the format block (the type).
@@ -35,7 +39,7 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	if len(block.Labels) != 2 {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "'format' block requires 1 labels: 'type' and 'name'",
+			Summary:  "'format' block requires 2 labels: 'type' and 'name'",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}}
 	}
@@ -50,16 +54,38 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	return c, nil
 }
 
+func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnostics) {
+	var diags hcl.Diagnostics
+	parts := strings.Split(presetName, ".")
+	if len(parts) != 2 {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  "'format' block requires 2 labels: 'type' and 'name'",
+			Subject:  hclhelpers.BlockRangePointer(block),
+		})
+		return nil, diags
+	}
+
+	return &Format{
+		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, presetName),
+		Preset:          presetName,
+		Type:            parts[0],
+	}, diags
+}
+
 func (f *Format) ToProto() *proto.FormatData {
 	res := &proto.FormatData{
-		Config: &proto.ConfigData{
-			Target: "format." + f.Type,
-		},
 		Name: f.ShortName,
 	}
-	if f.Config != nil {
-		res.Config.Hcl = f.Config.Hcl
-		res.Config.Range = proto.RangeToProto(f.Config.Range.HclRange())
+	// set either preset name or config
+	if f.Preset != "" {
+		res.Preset = f.Preset
+	} else if f.Config != nil {
+		res.Config = &proto.ConfigData{
+			Target: "format." + f.Type,
+			Hcl:    f.Config.Hcl,
+			Range:  proto.RangeToProto(f.Config.Range.HclRange()),
+		}
 	}
 	return res
 }

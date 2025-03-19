@@ -40,6 +40,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 		return nil, error_helpers.NewErrorsAndWarning(err)
 	}
 
+	// TODO KAI CHECK THIS
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
 	err = v.AddLocalPlugins(ctx)
 	if err != nil {
@@ -49,7 +50,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	tailpipeConfig.PluginVersions = v.Plugins
 
 	// initialise all partitions - this populates the Plugin and CustomTable (where set) properties
-	tailpipeConfig.InitPartitions()
+	tailpipeConfig.InitPartitions(v)
 
 	// now validate the config
 	diags := tailpipeConfig.Validate()
@@ -106,7 +107,10 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	}
 
 	// create parse context for the decode
-	parseCtx := NewConfigParseContext(configPath)
+	parseCtx, err := NewConfigParseContext(configPath)
+	if err != nil {
+		return nil, err
+	}
 	parseCtx.SetDecodeContent(content, fileData)
 
 	// now decode

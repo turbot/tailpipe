@@ -68,7 +68,7 @@ type PluginNameVersion struct {
 	Version *plugin.PluginVersionString
 }
 
-// List returns all installed plugins
+// List returns all installed plugins by finding plugin binaries in the plugin directory
 func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion, fileNameFilter *string) ([]PluginNameVersion, error) {
 	var items []PluginNameVersion
 	filter := "**/*.plugin"
@@ -144,6 +144,7 @@ func Get(_ context.Context, pluginVersions map[string]*versionfile.InstalledVers
 // detectLocalPlugin returns true if the modTime of the `pluginBinary` is after the installation date as recorded in the installation data
 // this may happen when a plugin is installed from the registry, but is then compiled from source
 func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary string) bool {
+	// TODO this should no longer be necessary as we now have a "local" version number in the versions file?
 	if installation == nil {
 		return true
 	}

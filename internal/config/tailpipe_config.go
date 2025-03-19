@@ -5,11 +5,9 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
-	"github.com/turbot/tailpipe/internal/constants"
 )
 
 type TailpipeConfig struct {
@@ -64,7 +62,7 @@ func (c *TailpipeConfig) Validate() hcl.Diagnostics {
 	return diags
 }
 
-func (c *TailpipeConfig) InitPartitions() {
+func (c *TailpipeConfig) InitPartitions(versionMap *versionfile.PluginVersionFile) {
 	// populate the plugin property for each partition
 	for _, partition := range c.Partitions {
 		// set the table on the plugin (in case it is a custom table)
@@ -73,21 +71,17 @@ func (c *TailpipeConfig) InitPartitions() {
 		}
 		// if the plugin is not set, infer it from the table
 		if partition.Plugin == nil {
-			partition.Plugin = plugin.NewPlugin(partition.InferPluginName())
+			partition.Plugin = plugin.NewPlugin(partition.InferPluginName(versionMap))
 		}
 	}
 }
 
 // GetPluginForTable returns the plugin name that provides the given table.
-// Falls back to first segment of name split on '_' if not found in metadata.
-func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
-	// Check if the table is a custom table as these come from the `core` plugin
-	if _, ok := c.CustomTables[tableName]; ok {
-		return constants.CorePluginFullName
-	}
-
+// NOTE: this does not check custom tables - if the same table name is a custom table we should use the core plugin
+// we cannot check that here as this function may be called before the config is fully populated
+func GetPluginForTable(tableName string, versionMap map[string]*versionfile.InstalledVersion) string {
 	// Check metadata tables for each plugin to determine a match
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range versionMap {
 		if tables, ok := version.Metadata["tables"]; ok {
 			for _, table := range tables {
 				if table == tableName {
@@ -96,15 +90,31 @@ func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
 			}
 		}
 	}
-
 	// Fallback to first segment of name if no plugin found and not a custom table
 	parts := strings.Split(tableName, "_")
 	return parts[0]
 }
 
-func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) {
+// GetPluginForFormatPreset returns the plugin name that provides the given format [preset.
+// Format name should be in the format "type.name"
+func GetPluginForFormatPreset(fullName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
+	// Check format_presets in metadata
+	for pluginName, version := range versionMap {
+		if presets, ok := version.Metadata["format_presets"]; ok {
+			for _, preset := range presets {
+				if preset == fullName {
+					return pluginName, true
+				}
+			}
+		}
+	}
+
+	return "", false
+}
+
+func GetPluginForFormatType(typeName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
 	// Check format_types in metadata
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range versionMap {
 		if types, ok := version.Metadata["format_types"]; ok {
 			for _, t := range types {
 				if t == typeName {
@@ -117,18 +127,19 @@ func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) 
 	return "", false
 }
 
-// GetPluginForSource returns the plugin name that provides the given source.
-func (c *TailpipeConfig) GetPluginForSource(sourceName string) (string, bool) {
+// GetPluginForSourceType returns the plugin name that provides the given source.
+func GetPluginForSourceType(sourceType string, versionMap map[string]*versionfile.InstalledVersion) string {
 	// Check sources in metadata
-	for pluginName, version := range c.PluginVersions {
+	for pluginName, version := range versionMap {
 		if sources, ok := version.Metadata["sources"]; ok {
 			for _, source := range sources {
-				if source == sourceName {
-					return pluginName, true
+				if source == sourceType {
+					return pluginName
 				}
 			}
 		}
 	}
 
-	return "", false
+	// to support older plugin versions which have not registered their resources, fallback to the first segment of the name
+	return strings.Split(sourceType, "_")[0]
 }

@@ -12,7 +12,10 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
+	"github.com/turbot/pipe-fittings/v2/modconfig"
+	pparse "github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/parse"
 )
 
 // SetAppSpecificConstants sets app specific constants defined in pipe-fittings
@@ -67,4 +70,12 @@ func SetAppSpecificConstants() {
 		app_specific.InstallDir = defaultInstallDir
 	}
 	app_specific.DefaultConfigPath = strings.Join([]string{".", globalConfigPath}, ":")
+
+	// override the resource name parser used by DecodeHclBody
+	// (we use a common pipe-fitting function for this but we use a different ParsedResourceName to pipe-fittings
+	/// so we override the name parsing function)
+	pparse.AppSpecificParseResourceNameFunc = func(propertyPath string) (modconfig.ResourceNameProvider, error) {
+		return parse.ParseResourceName(propertyPath)
+	}
+
 }

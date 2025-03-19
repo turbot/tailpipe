@@ -180,7 +180,13 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
-	pluginName := config.GlobalConfig.GetPluginForTable(tableName)
+	pluginName := config.GetPluginForTable(tableName, config.GlobalConfig.PluginVersions)
+	// if this is a custom table, we need to use the core plugin
+	// NOTE: we cannot do this inside GetPluginForTable as that funciton may be called before the config is fully populated
+	if _, isCustom := config.GlobalConfig.CustomTables[tableName]; isCustom {
+		pluginName = constants.CorePluginName
+	}
+
 	desc, err := pluginManager.Describe(ctx, pluginName)
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
