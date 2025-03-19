@@ -41,7 +41,6 @@ require (
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb v1.8.3
-	github.com/stretchr/testify v1.10.0
 	github.com/thediveo/enumflag/v2 v2.0.5
 	golang.org/x/sync v0.10.0
 	golang.org/x/text v0.21.0
