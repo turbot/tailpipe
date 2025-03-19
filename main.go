@@ -17,7 +17,7 @@ import (
 var exitCode int
 
 var (
-	// These variables will be set by GoReleaser.
+	// These variables will be set by GoReleaser
 	version = localconstants.DefaultVersion
 	commit  = localconstants.DefaultCommit
 	date    = localconstants.DefaultDate
