@@ -688,6 +688,10 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	// Get Resource(s)
 	resources, err := display.ListPlugins(ctx)
 	error_helpers.FailOnError(err)
+	if len(resources) == 0 {
+		fmt.Println("No plugins found. Install a plugin with: tailpipe plugin install <plugin>.") //nolint:forbidigo // ui output
+		return
+	}
 	printableResource := display.NewPrintableResource(resources...)
 
 	// Get Printer
