@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
@@ -100,38 +101,6 @@ func (c *TailpipeConfig) GetPluginForTable(tableName string) string {
 	parts := strings.Split(tableName, "_")
 	return parts[0]
 }
-
-// GetPluginForFormat returns the plugin name that provides the given format.
-// Format name should be in the format "type.name"
-//func (c *TailpipeConfig) GetPluginForFormat(formatName string) string {
-//	// Check format_presets in metadata
-//	for pluginName, version := range c.PluginVersions {
-//		if presets, ok := version.Metadata["format_presets"]; ok {
-//			for _, preset := range presets {
-//				if preset == formatName {
-//					return pluginName
-//				}
-//			}
-//		}
-//	}
-//
-//	// If not found in presets, check if any plugin supports the format type
-//	parts := strings.Split(formatName, ".")
-//	if len(parts) == 2 {
-//		formatType := parts[0]
-//		for pluginName, version := range c.PluginVersions {
-//			if types, ok := version.Metadata["format_types"]; ok {
-//				for _, t := range types {
-//					if t == formatType {
-//						return pluginName
-//					}
-//				}
-//			}
-//		}
-//	}
-//
-//	return ""
-//}
 
 func (c *TailpipeConfig) GetPluginForFormatType(typeName string) (string, bool) {
 	// Check format_types in metadata
