@@ -180,7 +180,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
-	pluginName := config.GlobalConfig.GetPluginForTable(tableName)
+	pluginName := config.GetPluginForTable(tableName, config.GlobalConfig.PluginVersions)
 	desc, err := pluginManager.Describe(ctx, pluginName)
 	if err != nil {
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
