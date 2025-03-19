@@ -39,7 +39,7 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 	if len(block.Labels) != 2 {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "'format' block requires 1 labels: 'type' and 'name'",
+			Summary:  "'format' block requires 2 labels: 'type' and 'name'",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		}}
 	}
@@ -60,7 +60,7 @@ func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnost
 	if len(parts) != 2 {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "'format' block requires 1 labels: 'type' and 'name'",
+			Summary:  "'format' block requires 2 labels: 'type' and 'name'",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		})
 		return nil, diags

@@ -171,7 +171,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	return res
 }
 
-// extractPresetNameFromDependencyError checks if the given decode result has a depdency which is because of a format preset and
+// extractPresetNameFromDependencyError checks if the given decode result has a depedency which is because of a format preset and
 // if so, retrieve the preset name from the dependency error
 func extractPresetNameFromDependencyError(parseCtx *ConfigParseContext, res *parse.DecodeResult) (string, *parse.DecodeResult) {
 	for depName := range res.Depends {

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
-
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
@@ -77,8 +76,9 @@ func (c *TailpipeConfig) InitPartitions(versionMap *versionfile.PluginVersionFil
 	}
 }
 
-// GetPluginForTable : we need a separate function for this as we need to call it from the partition creation code,
-// which is called before the TailpipeConfig is fully populated
+// GetPluginForTable returns the plugin name that provides the given table.
+// NOTE: this does not check custom tables - if the same table name is a custom table we should use the core plugin
+// we cannot check that here as this function may be called before the config is fully populated
 func GetPluginForTable(tableName string, versionMap map[string]*versionfile.InstalledVersion) string {
 	// Check metadata tables for each plugin to determine a match
 	for pluginName, version := range versionMap {
