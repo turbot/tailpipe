@@ -57,7 +57,7 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 }
 
 // tableResourceFromSchemaTable creates a TableResource (display item) from a schema.TableSchema (defined table)
-func tableResourceFromSchemaTable(tableName string, schemaTable *schema.TableSchema) (*TableResource, error) {
+func tableResourceFromSchemaTable(tableName string, pluginName string, schemaTable *schema.TableSchema) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(schemaTable.Columns))
 	for i, c := range schemaTable.Columns {
 		cols[i] = TableColumnResource{
@@ -69,7 +69,7 @@ func tableResourceFromSchemaTable(tableName string, schemaTable *schema.TableSch
 	table := &TableResource{
 		Name:        tableName,
 		Description: schemaTable.Description,
-		Plugin:      constants.CorePluginName,
+		Plugin:      pluginName,
 		Columns:     cols,
 	}
 
@@ -142,7 +142,7 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 		}
 
 		for t, s := range desc.Schemas {
-			table, err := tableResourceFromSchemaTable(t, s)
+			table, err := tableResourceFromSchemaTable(t, p.Name, s)
 			if err != nil {
 				return nil, err
 			}
@@ -187,7 +187,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 	}
 
 	if tableSchema, ok := desc.Schemas[tableName]; ok {
-		return tableResourceFromSchemaTable(tableName, tableSchema)
+		return tableResourceFromSchemaTable(tableName, pluginName, tableSchema)
 	} else {
 		return nil, fmt.Errorf("table %s not found", tableName)
 	}
