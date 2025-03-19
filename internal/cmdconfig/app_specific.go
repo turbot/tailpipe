@@ -71,8 +71,10 @@ func SetAppSpecificConstants() {
 	}
 	app_specific.DefaultConfigPath = strings.Join([]string{".", globalConfigPath}, ":")
 
-	// set our resource name parsing function
-	pparse.ParseResourceName = func(propertyPath string) (modconfig.ResourceNameProvider, error) {
+	// override the resource name parser used by DecodeHclBody
+	// (we use a common pipe-fitting function for this but we use a different ParsedResourceName to pipe-fittings
+	/// so we override the name parsing function)
+	pparse.AppSpecificParseResourceNameFunc = func(propertyPath string) (modconfig.ResourceNameProvider, error) {
 		return parse.ParseResourceName(propertyPath)
 	}
 

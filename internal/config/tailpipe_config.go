@@ -63,7 +63,7 @@ func (c *TailpipeConfig) Validate() hcl.Diagnostics {
 	return diags
 }
 
-func (c *TailpipeConfig) InitPartitions(v *versionfile.PluginVersionFile) {
+func (c *TailpipeConfig) InitPartitions(versionMap *versionfile.PluginVersionFile) {
 	// populate the plugin property for each partition
 	for _, partition := range c.Partitions {
 		// set the table on the plugin (in case it is a custom table)
@@ -72,16 +72,16 @@ func (c *TailpipeConfig) InitPartitions(v *versionfile.PluginVersionFile) {
 		}
 		// if the plugin is not set, infer it from the table
 		if partition.Plugin == nil {
-			partition.Plugin = plugin.NewPlugin(partition.InferPluginName(v))
+			partition.Plugin = plugin.NewPlugin(partition.InferPluginName(versionMap))
 		}
 	}
 }
 
 // GetPluginForTable : we need a separate function for this as we need to call it from the partition creation code,
 // which is called before the TailpipeConfig is fully populated
-func GetPluginForTable(tableName string, v map[string]*versionfile.InstalledVersion) string {
+func GetPluginForTable(tableName string, versionMap map[string]*versionfile.InstalledVersion) string {
 	// Check metadata tables for each plugin to determine a match
-	for pluginName, version := range v {
+	for pluginName, version := range versionMap {
 		if tables, ok := version.Metadata["tables"]; ok {
 			for _, table := range tables {
 				if table == tableName {
@@ -97,9 +97,9 @@ func GetPluginForTable(tableName string, v map[string]*versionfile.InstalledVers
 
 // GetPluginForFormatPreset returns the plugin name that provides the given format [preset.
 // Format name should be in the format "type.name"
-func GetPluginForFormatPreset(fullName string, v map[string]*versionfile.InstalledVersion) (string, bool) {
+func GetPluginForFormatPreset(fullName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
 	// Check format_presets in metadata
-	for pluginName, version := range v {
+	for pluginName, version := range versionMap {
 		if presets, ok := version.Metadata["format_presets"]; ok {
 			for _, preset := range presets {
 				if preset == fullName {
@@ -112,9 +112,9 @@ func GetPluginForFormatPreset(fullName string, v map[string]*versionfile.Install
 	return "", false
 }
 
-func GetPluginForFormatType(typeName string, v map[string]*versionfile.InstalledVersion) (string, bool) {
+func GetPluginForFormatType(typeName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
 	// Check format_types in metadata
-	for pluginName, version := range v {
+	for pluginName, version := range versionMap {
 		if types, ok := version.Metadata["format_types"]; ok {
 			for _, t := range types {
 				if t == typeName {
@@ -128,9 +128,9 @@ func GetPluginForFormatType(typeName string, v map[string]*versionfile.Installed
 }
 
 // GetPluginForSourceType returns the plugin name that provides the given source.
-func GetPluginForSourceType(sourceType string, v map[string]*versionfile.InstalledVersion) string {
+func GetPluginForSourceType(sourceType string, versionMap map[string]*versionfile.InstalledVersion) string {
 	// Check sources in metadata
-	for pluginName, version := range v {
+	for pluginName, version := range versionMap {
 		if sources, ok := version.Metadata["sources"]; ok {
 			for _, source := range sources {
 				if source == sourceType {
@@ -139,5 +139,7 @@ func GetPluginForSourceType(sourceType string, v map[string]*versionfile.Install
 			}
 		}
 	}
+
+	// to support older plugin versions which have not registered their resources, fallback to the first segment of the name
 	return strings.Split(sourceType, "_")[0]
 }

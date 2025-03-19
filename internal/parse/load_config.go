@@ -107,7 +107,10 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	}
 
 	// create parse context for the decode
-	parseCtx, _ := NewConfigParseContext(configPath)
+	parseCtx, err := NewConfigParseContext(configPath)
+	if err != nil {
+		return nil, err
+	}
 	parseCtx.SetDecodeContent(content, fileData)
 
 	// now decode

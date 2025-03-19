@@ -92,24 +92,25 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
 		tableRes := parse.NewDecodeResult()
 		tableRes.HandleDecodeDiags(diags)
-		// if the res has a depdency because of a format preset, resolver it
-		var formatPreset string
-		formatPreset, tableRes = resolveFormatPreset(parseCtx, tableRes)
-		res.Merge(tableRes)
-		if formatPreset != "" {
-			format, diags := config.NewPresetFormat(block, formatPreset)
-			if diags != nil && diags.HasErrors() {
-				res.AddDiags(diags)
-			} else {
-				// add the format preset to the table
-				resource.(*config.Table).DefaultSourceFormat = format
+		// if the res has a dependency because of a format preset, resolve it
+		if len(tableRes.Depends) > 0 {
+			var formatPreset string
+			if formatPreset, tableRes = extractPresetNameFromDependencyError(parseCtx, tableRes); formatPreset != "" {
+				format, diags := config.NewPresetFormat(block, formatPreset)
+				if diags != nil && diags.HasErrors() {
+					res.AddDiags(diags)
+				} else {
+					// add the format preset to the table
+					resource.(*config.Table).DefaultSourceFormat = format
+				}
 			}
 		}
+		// merge the table decode result with the main decode result
+		res.Merge(tableRes)
 
 	default:
 		diags = parse.DecodeHclBody(block.Body, parseCtx.EvalCtx, parseCtx, resource)
 		res.HandleDecodeDiags(diags)
-
 	}
 
 	return resource, res
@@ -170,7 +171,9 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	return res
 }
 
-func resolveFormatPreset(parseCtx *ConfigParseContext, res *parse.DecodeResult) (string, *parse.DecodeResult) {
+// extractPresetNameFromDependencyError checks if the given decode result has a depdency which is because of a format preset and
+// if so, retrieve the preset name from the dependency error
+func extractPresetNameFromDependencyError(parseCtx *ConfigParseContext, res *parse.DecodeResult) (string, *parse.DecodeResult) {
 	for depName := range res.Depends {
 		if _, ok := config.GetPluginForFormatPreset(depName, parseCtx.pluginVersionFile.Plugins); ok {
 			delete(res.Depends, depName)
@@ -179,7 +182,6 @@ func resolveFormatPreset(parseCtx *ConfigParseContext, res *parse.DecodeResult) 
 	}
 
 	return "", res
-
 }
 
 func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource modconfig.HclResource) *parse.DecodeResult {
@@ -266,15 +268,16 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 		case schema.AttributeFormat:
 			// resolve the format reference
 			format, formatRes := resolveReference[*config.Format](parseCtx, attr)
-
-			// if the res has a dependency because of a format preset, resolve it
-			formatPreset, formatRes := resolveFormatPreset(parseCtx, formatRes)
-			if formatPreset != "" {
-				format, diags = config.NewPresetFormat(block.AsHCLBlock(), formatPreset)
-				if diags != nil && diags.HasErrors() {
-					formatRes.AddDiags(diags)
+			if len(formatRes.Depends) > 0 {
+				// if the res has a dependency because of a format preset, resolve it
+				formatPreset, formatRes := extractPresetNameFromDependencyError(parseCtx, formatRes)
+				if formatPreset != "" {
+					format, diags = config.NewPresetFormat(block.AsHCLBlock(), formatPreset)
+					if diags != nil && diags.HasErrors() {
+						formatRes.AddDiags(diags)
+					}
+					// fall through to add the format to the source
 				}
-				// fall through to add the format to the source
 			}
 
 			res.Merge(formatRes)

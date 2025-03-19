@@ -167,6 +167,7 @@ func (c *Partition) validateFilter() hcl.Diagnostics {
 	return diags
 }
 
+// GetFormat returns the format for this partition, if either the source or the custom table has one
 func (c *Partition) GetFormat() *Format {
 	var format = c.Source.Format
 	if format == nil && c.CustomTable != nil {

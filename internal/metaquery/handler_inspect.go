@@ -3,6 +3,7 @@ package metaquery
 import (
 	"context"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/plugin"
 	"slices"
 	"sort"
 	"strings"
@@ -13,7 +14,6 @@ import (
 
 // inspect
 func inspect(ctx context.Context, input *HandlerInput) error {
-
 	views, err := input.GetViews()
 	if err != nil {
 		return fmt.Errorf("failed to get tables: %w", err)
@@ -36,7 +36,10 @@ func listViews(ctx context.Context, input *HandlerInput, views []string) error {
 	rows = append(rows, []string{"Table", "Plugin"}) // Header
 
 	for _, view := range views {
-		p := config.GetPluginForTable(view, config.GlobalConfig.PluginVersions)
+		// TODO look at using config.GetPluginForTable(ctx, view) instead of this - or perhaps add function
+		// GetPluginAndVersionForTable?
+		// getPluginForTable looks at plugin binaries (slower but mre reliable)
+		p, _ := getPluginForTable(ctx, view)
 		rows = append(rows, []string{view, p})
 	}
 
@@ -65,4 +68,24 @@ func listViewSchema(ctx context.Context, input *HandlerInput, viewName string) e
 
 	fmt.Println(buildTable(rows, false)) //nolint:forbidigo //UI output
 	return nil
+}
+
+// getPluginForTable returns the plugin name and version for a given table name.
+// note - this looks at the installed plugins and their version file entry, not only the version file
+func getPluginForTable(ctx context.Context, tableName string) (string, error) {
+	prefix := strings.Split(tableName, "_")[0]
+
+	ps, err := plugin.GetInstalledPlugins(ctx, config.GlobalConfig.PluginVersions)
+	if err != nil {
+		return "", fmt.Errorf("failed to get installed plugins: %w", err)
+	}
+
+	for k, v := range ps {
+		pluginShortName := strings.Split(k, "/")[1]
+		if strings.HasPrefix(pluginShortName, prefix) {
+			return fmt.Sprintf("%s@%s", pluginShortName, v.String()), nil
+		}
+	}
+
+	return "", nil
 }

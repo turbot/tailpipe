@@ -13,10 +13,10 @@ import (
 func GetInstalledPlugins(ctx context.Context, pluginVersions map[string]*versionfile.InstalledVersion) (map[string]*plugin.PluginVersionString, error) {
 	installedPlugins := make(map[string]*plugin.PluginVersionString)
 	installedPluginsData, _ := List(ctx, pluginVersions, nil)
-	for _, plugin := range installedPluginsData {
-		org, name, _ := ociinstaller.NewImageRef(plugin.Name).GetOrgNameAndStream()
+	for _, p := range installedPluginsData {
+		org, name, _ := ociinstaller.NewImageRef(p.Name).GetOrgNameAndStream()
 		pluginShortName := fmt.Sprintf("%s/%s", org, name)
-		installedPlugins[pluginShortName] = plugin.Version
+		installedPlugins[pluginShortName] = p.Version
 	}
 	return installedPlugins, nil
 }

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
@@ -9,7 +11,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/zclconf/go-cty/cty"
-	"strings"
 )
 
 func init() {

@@ -181,6 +181,35 @@ func (p *PluginManager) Close() {
 	}
 }
 
+func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionStatePath string) error {
+	// identify which plugin provides the source
+	sourcePlugin, err := p.determineSourcePlugin(partition)
+	if err != nil {
+		return fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+	}
+
+	// start plugin if needed
+	pluginClient, err := p.getPlugin(ctx, sourcePlugin)
+	if err != nil {
+		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
+	}
+
+	// reuse CollectRequest for UpdateCollectionState
+	req := &proto.UpdateCollectionStateRequest{
+		CollectionStatePath: collectionStatePath,
+		SourceData:          partition.Source.ToProto(),
+		FromTime:            timestamppb.New(fromTime),
+	}
+
+	_, err = pluginClient.UpdateCollectionState(req)
+	if err != nil {
+		return fmt.Errorf("error updating collection state for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
+	}
+
+	// just return - the observer is responsible for waiting for completion
+	return err
+}
+
 func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*proto.SourcePluginReattach, error) {
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
@@ -232,41 +261,14 @@ func (p *PluginManager) getFormatPluginReattach(ctx context.Context, formatType 
 	return formatPluginReattach, nil
 }
 
-func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionStatePath string) error {
-	// identify which plugin provides the source
-	sourcePlugin, err := p.determineSourcePlugin(partition)
-	if err != nil {
-		return fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
-	}
-
-	// start plugin if needed
-	pluginClient, err := p.getPlugin(ctx, sourcePlugin)
-	if err != nil {
-		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
-	}
-
-	// reuse CollectRequest for UpdateCollectionState
-	req := &proto.UpdateCollectionStateRequest{
-		CollectionStatePath: collectionStatePath,
-		SourceData:          partition.Source.ToProto(),
-		FromTime:            timestamppb.New(fromTime),
-	}
-
-	_, err = pluginClient.UpdateCollectionState(req)
-	if err != nil {
-		return fmt.Errorf("error updating collection state for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
-	}
-
-	// just return - the observer is responsible for waiting for completion
-	return err
-}
-
 // getExecutionId generates a unique id based on the current time
 // this can be passed into plugin calls to assist with tracking parallel calls
 func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Int32N(1000)) //nolint:gosec// strong enough for the execution id
 }
 
+// getPlugin returns the plugin client for the given plugin definition, starting the plugin if needed or returning
+// the existing client if we have one
 func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
 	if pluginDef.Alias == constants.CorePluginName {
 		// ensure the core plugin is installed or the min version requirement is satisfied
@@ -296,6 +298,7 @@ func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin
 	return client, nil
 }
 
+// startPlugin starts the plugin and returns the client
 func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
 	pluginName := tp.Alias
 
