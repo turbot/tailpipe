@@ -357,7 +357,7 @@ func resolveReference[T any](parseCtx *ConfigParseContext, attr *hcl.Attribute) 
 	// convert the scope traversal to a property path string
 	path := hclhelpers.TraversalAsString(scopeTraversal.Traversal)
 	// parse this as a resource name
-	parsedName, err := ParseResourceName(path)
+	parsedName, err := modconfig.ParseResourceName(path)
 	if err != nil {
 		res.AddDiags(hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
@@ -459,7 +459,7 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 
 	name := fmt.Sprintf("%s.%s", block.Type, strings.Join(block.Labels, "."))
 
-	parsedName, err := ParseResourceName(name)
+	parsedName, err := modconfig.ParseResourceName(name)
 	if err != nil {
 		return nil, hcl.Diagnostics{&hcl.Diagnostic{
 			Severity: hcl.DiagError,
