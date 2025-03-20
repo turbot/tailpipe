@@ -7,6 +7,7 @@ import (
 
 	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/formats"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
@@ -36,14 +37,21 @@ func (r *FormatResource) GetListData() *printers.RowData {
 
 // GetShowData implements the printers.Showable interface
 func (r *FormatResource) GetShowData() *printers.RowData {
-	res := printers.NewRowData(
+	var fields []printers.FieldValue
+	// default fields
+	fields = append(fields,
 		printers.NewFieldValue("Type", r.Type),
 		printers.NewFieldValue("Name", r.Name),
 		printers.NewFieldValue("Description", r.Description),
 		printers.NewFieldValue("Regex", r.Regex),
-		printers.NewFieldValue("Properties", r.Properties),
 	)
-	return res
+
+	// fields from properties
+	for key, value := range r.Properties {
+		fields = append(fields, printers.NewFieldValue(utils.ToTitleCase(key), value))
+	}
+
+	return printers.NewRowData(fields...)
 }
 
 func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {

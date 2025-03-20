@@ -121,7 +121,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	// tell plugin to start collecting
 	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, c.collectionTempDir)
 	if err != nil {
-		return fmt.Errorf("failed to collect: %w", err)
+		return err
 	}
 
 	resolvedFromTime := collectResponse.FromTime

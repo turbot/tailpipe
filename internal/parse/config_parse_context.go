@@ -29,7 +29,7 @@ type ConfigParseContext struct {
 	pluginVersionFile *versionfile.PluginVersionFile
 }
 
-func (c *ConfigParseContext) GetResource(parsedName modconfig.ResourceNameProvider) (resource modconfig.HclResource, found bool) {
+func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceName) (resource modconfig.HclResource, found bool) {
 	resource, ok := c.resourceMap[parsedName.ToResourceName()]
 	return resource, ok
 }
