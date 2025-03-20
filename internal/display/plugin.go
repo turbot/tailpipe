@@ -77,7 +77,7 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
 
-	version := "local"
+	var version string
 	if pv, ok := config.GlobalConfig.PluginVersions[desc.PluginName]; ok {
 		version = pv.Version
 	}
