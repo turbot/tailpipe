@@ -24,6 +24,7 @@ import (
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
+	"github.com/turbot/tailpipe-plugin-core/core"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
@@ -411,6 +412,15 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 // if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
 	sourceType := partition.Source.Type
+	// because we reference the core plugin, all sources it provides are registered with our source factory instance
+	coreSources, err := core.DescribeSources()
+	if err != nil {
+		return nil, fmt.Errorf("error describing sources: %w", err)
+	}
+	if _, ok := coreSources[sourceType]; ok {
+		return pplugin.NewPlugin(constants.CorePluginName), nil
+	}
+
 	pluginName := config.GetPluginForSourceType(sourceType, config.GlobalConfig.PluginVersions)
 
 	// now return the plugin

@@ -6,9 +6,9 @@ toolchain go1.24.0
 
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
-	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
-	github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+//github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+//github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
@@ -19,8 +19,8 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.1.0
-	github.com/turbot/pipe-fittings/v2 v2.3.0-rc.1
-	github.com/turbot/tailpipe-plugin-sdk v0.1.0
+	github.com/turbot/pipe-fittings/v2 v2.3.0-rc.2
+	github.com/turbot/tailpipe-plugin-sdk v0.2.0-alpha.3
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
@@ -41,6 +41,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb v1.8.3
 	github.com/thediveo/enumflag/v2 v2.0.5
+	github.com/turbot/tailpipe-plugin-core v0.1.4-rc.0
 	golang.org/x/sync v0.11.0
 	golang.org/x/text v0.22.0
 	google.golang.org/protobuf v1.36.1
@@ -121,7 +122,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
-	github.com/gopherjs/gopherjs v1.17.2 // indirect
 	github.com/gosuri/uilive v0.0.4 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -146,7 +146,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.1 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/karrick/gows v0.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
@@ -184,7 +183,6 @@ require (
 	github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
-	github.com/smarty/assertions v1.16.0 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
