@@ -2,6 +2,7 @@ package cmdconfig
 
 import (
 	"context"
+	"github.com/turbot/tailpipe/internal/constants"
 	"os"
 	"runtime/debug"
 	"time"
@@ -117,7 +118,9 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []pparse.ParseHclOpt{
-		//pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+		// legacy auto-escaping of 'file_layout' property
+		pparse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+		// escape properties within backticks
 		pparse.WithEscapeBackticks(true),
 	}
 	// load workspace profile from the configured install dir
@@ -153,6 +156,11 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 		return loadConfigErrorsAndWarnings
 	}
 
+	if loadConfigErrorsAndWarnings.Warnings != nil {
+		for _, warning := range loadConfigErrorsAndWarnings.Warnings {
+			error_helpers.ShowWarning(warning)
+		}
+	}
 	// store global config
 	config.GlobalConfig = tailpipeConfig
 
