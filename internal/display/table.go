@@ -43,7 +43,7 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 	table := &TableResource{
 		Name:        tableName,
 		Description: types.SafeString(configTable.Description),
-		Plugin:      constants.CorePluginName,
+		Plugin:      constants.CorePluginFullName,
 		Columns:     cols,
 	}
 
