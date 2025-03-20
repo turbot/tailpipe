@@ -95,9 +95,7 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 	slices.Sort(tables)
 
 	var formatTypes []string
-	for _, formatType := range desc.FormatTypes {
-		formatTypes = append(formatTypes, formatType)
-	}
+	formatTypes = append(formatTypes, desc.FormatTypes...)
 	slices.Sort(formatTypes)
 
 	var formatPresets []string
