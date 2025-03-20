@@ -113,34 +113,6 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 	return items, nil
 }
 
-// Get returns one installed plugin
-func Get(_ context.Context, pluginVersions map[string]*versionfile.InstalledVersion, imageRef string) (*PluginNameVersion, error) {
-	pluginBinary := filepaths.PluginInstallDir(imageRef)
-
-	parent := filepath.Dir(pluginBinary)
-	fullPluginName, err := filepath.Rel(filepaths.EnsurePluginDir(), parent)
-	if err != nil {
-		return nil, err
-	}
-	// for local plugin
-	item := PluginNameVersion{
-		Name:    fullPluginName,
-		Version: plugin.LocalPluginVersionString(),
-	}
-	// check if this plugin is recorded in plugin versions
-	installation := pluginVersions[fullPluginName]
-
-	// if not a local plugin, get the semver version
-	if !detectLocalPlugin(installation, pluginBinary) {
-		item.Version, err = plugin.NewPluginVersionString(installation.Version)
-		if err != nil {
-			return nil, fmt.Errorf("could not evaluate plugin version %s: %w", installation.Version, err)
-		}
-	}
-
-	return &item, nil
-}
-
 // detectLocalPlugin returns true if the modTime of the `pluginBinary` is after the installation date as recorded in the installation data
 // this may happen when a plugin is installed from the registry, but is then compiled from source
 func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary string) bool {
