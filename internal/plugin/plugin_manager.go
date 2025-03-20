@@ -170,7 +170,12 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string, customF
 		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
 	}
 
+	// build DescribeResponse from proto
 	res := plugin.DescribeResponseFromProto(describeResponse)
+
+	// add non-proto fields
+	res.PluginName = pluginDef.Plugin
+
 	return res, nil
 }
 
@@ -470,7 +475,7 @@ func ensureCorePlugin(ctx context.Context) error {
 		}
 
 		// compare the version(using semver) with the min version
-		satisfy, err := checkSatisfyMinVersion(installedVersion)
+		satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
 		if err != nil {
 			return err
 		}
@@ -511,14 +516,14 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	return nil
 }
 
-func checkSatisfyMinVersion(ver string) (bool, error) {
+func checkSatisfyMinVersion(ver string, pluginVersion string) (bool, error) {
 	// check if the version satisfies the min version requirement of core plugin
 	// Parse the versions
 	installedVer, err := version.NewVersion(ver)
 	if err != nil {
 		return false, err
 	}
-	minReq, err := version.NewVersion(constants.MinCorePluginVersion)
+	minReq, err := version.NewVersion(pluginVersion)
 	if err != nil {
 		return false, err
 	}

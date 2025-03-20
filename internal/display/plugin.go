@@ -59,11 +59,13 @@ func ListPlugins(ctx context.Context) ([]*PluginListDetails, error) {
 }
 
 type PluginResource struct {
-	Name       string   `json:"name"`
-	Version    string   `json:"version"`
-	Sources    []string `json:"sources"`
-	Partitions []string `json:"partitions"`
-	Tables     []string `json:"tables"`
+	Name          string   `json:"name"`
+	Version       string   `json:"version"`
+	Sources       []string `json:"sources"`
+	Partitions    []string `json:"partitions"`
+	Tables        []string `json:"tables"`
+	FormatTypes   []string `json:"format_types"`
+	FormatPresets []string `json:"format_presets"`
 }
 
 func GetPluginResource(ctx context.Context, name string) (*PluginResource, error) {
@@ -75,9 +77,9 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 	}
 
-	installedInfo, err := plugin.Get(ctx, config.GlobalConfig.PluginVersions, name)
-	if err != nil {
-		return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
+	var version string
+	if pv, ok := config.GlobalConfig.PluginVersions[desc.PluginName]; ok {
+		version = pv.Version
 	}
 
 	var sources []string
@@ -92,11 +94,23 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 	}
 	slices.Sort(tables)
 
+	var formatTypes []string
+	formatTypes = append(formatTypes, desc.FormatTypes...)
+	slices.Sort(formatTypes)
+
+	var formatPresets []string
+	for formatPreset := range desc.FormatPresets {
+		formatPresets = append(formatPresets, formatPreset)
+	}
+	slices.Sort(formatPresets)
+
 	pr := &PluginResource{
-		Name:    name,
-		Version: installedInfo.Version.String(),
-		Sources: sources,
-		Tables:  tables,
+		Name:          desc.PluginName,
+		Version:       version,
+		Sources:       sources,
+		Tables:        tables,
+		FormatTypes:   formatTypes,
+		FormatPresets: formatPresets,
 	}
 
 	pr.setPartitions()
@@ -122,6 +136,8 @@ func (r *PluginResource) GetShowData() *printers.RowData {
 		printers.NewFieldValue("Sources", r.Sources),
 		printers.NewFieldValue("Tables", r.Tables),
 		printers.NewFieldValue("Partitions", r.Partitions),
+		printers.NewFieldValue("Format Types", r.FormatTypes),
+		printers.NewFieldValue("Format Presets", r.FormatPresets),
 	)
 	return res
 }
