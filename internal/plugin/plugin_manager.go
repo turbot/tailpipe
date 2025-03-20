@@ -170,7 +170,12 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string, customF
 		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
 	}
 
+	// build DescribeResponse from proto
 	res := plugin.DescribeResponseFromProto(describeResponse)
+
+	// add non-proto fields
+	res.PluginName = pluginDef.Plugin
+
 	return res, nil
 }
 
