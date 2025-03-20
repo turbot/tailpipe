@@ -58,7 +58,7 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	// now validate the config
 	diags := tailpipeConfig.Validate()
 	if diags != nil && diags.HasErrors() {
-		ew.Error = error_helpers.HclDiagsToError("config validatriuon failed", diags)
+		ew.Error = error_helpers.HclDiagsToError("config validation failed", diags)
 	}
 	// merge in any warnings
 	ew.Warnings = append(ew.Warnings, error_helpers.HclDiagsToWarnings(diags)...)
