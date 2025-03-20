@@ -13,7 +13,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
-	pparse "github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/parse"
 )
@@ -71,11 +70,8 @@ func SetAppSpecificConstants() {
 	}
 	app_specific.DefaultConfigPath = strings.Join([]string{".", globalConfigPath}, ":")
 
-	// override the resource name parser used by DecodeHclBody
-	// (we use a common pipe-fitting function for this but we use a different ParsedResourceName to pipe-fittings
-	/// so we override the name parsing function)
-	pparse.AppSpecificParseResourceNameFunc = func(propertyPath string) (modconfig.ResourceNameProvider, error) {
-		return parse.ParseResourceName(propertyPath)
-	}
-
+	// override the resource name parser
+	// there is code in pipe-fittings which uses ParsedResourceName, but we need a different implementation of this
+	// which does not have mods, but does have resource subtypes
+	modconfig.ResourceNameParseFunc = parse.ParseResourceNameWithSubtype
 }
