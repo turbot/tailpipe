@@ -9,12 +9,13 @@ import (
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
-	"github.com/turbot/pipe-fittings/v2/constants"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
@@ -29,22 +30,24 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 	}()
 
 	// load the tailpipe config
-	tailpipeConfig, err := parseTailpipeConfig(viper.GetString(constants.ArgConfigPath))
-	if err != nil {
-		return nil, error_helpers.NewErrorsAndWarning(err)
+	tailpipeConfig, ew = parseTailpipeConfig(viper.GetString(pconstants.ArgConfigPath))
+	if ew.Error != nil {
+		return nil, ew
 	}
 
 	// load plugin versions
 	v, err := versionfile.LoadPluginVersionFile(ctx)
 	if err != nil {
-		return nil, error_helpers.NewErrorsAndWarning(err)
+		ew.Error = err
+		return nil, ew
 	}
 
 	// TODO KAI CHECK THIS
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
 	err = v.AddLocalPlugins(ctx)
 	if err != nil {
-		return nil, error_helpers.NewErrorsAndWarning(err)
+		ew.Error = err
+		return nil, ew
 	}
 
 	tailpipeConfig.PluginVersions = v.Plugins
@@ -54,7 +57,11 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 
 	// now validate the config
 	diags := tailpipeConfig.Validate()
-	ew = DiagsToErrorsAndWarnings("", diags)
+	if diags != nil && diags.HasErrors() {
+		ew.Error = error_helpers.HclDiagsToError("config validation failed", diags)
+	}
+	// merge in any warnings
+	ew.Warnings = append(ew.Warnings, error_helpers.HclDiagsToWarnings(diags)...)
 
 	return tailpipeConfig, ew
 }
@@ -62,10 +69,12 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 // load config from the given folder and update TailpipeConfig
 // NOTE: this mutates steampipe config
 
-func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error) {
+func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_helpers.ErrorAndWarnings) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = helpers.ToError(r)
+			if ew.Error == nil {
+				ew.Error = helpers.ToError(r)
+			}
 		}
 	}()
 
@@ -77,39 +86,45 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 		Include: filehelpers.InclusionsFromExtensions([]string{app_specific.ConfigExtension}),
 	})
 	if err != nil {
-		return nil, err
+		return nil, error_helpers.NewErrorsAndWarning(err)
 	}
 	if len(configPaths) == 0 {
-		return res, nil
+		return res, ew
 	}
 
 	// load the file data
 	fileData, diags := parse.LoadFileData(configPaths...)
 	if diags != nil && diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
+		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
 
 	// parse the files
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []parse.ParseHclOpt{
-		//parse.WithDisableTemplateForProperties(sdkconstants.GrokConfigProperties),
+		// legacy auto-escaping of 'file_layout' property
+		parse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+		// escape properties within backticks
 		parse.WithEscapeBackticks(true),
 	}
 
 	//
 	body, diags := parse.ParseHclFiles(fileData, parseOpts...)
 	if diags != nil && diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
+		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
-	content, diags := body.Content(parse.TailpipeConfigBlockSchema)
-	if diags != nil && diags.HasErrors() {
-		return nil, error_helpers.HclDiagsToError("Failed to parse config", diags)
+	content, moreDiags := body.Content(parse.TailpipeConfigBlockSchema)
+	diags = append(diags, moreDiags...)
+	if diags.HasErrors() {
+		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
+	// convert diags to errors and warnings to capture any warnings
+	ew.Warnings = error_helpers.HclDiagsToWarnings(diags)
 
 	// create parse context for the decode
 	parseCtx, err := NewConfigParseContext(configPath)
 	if err != nil {
-		return nil, err
+		ew.Error = err
+		return nil, ew
 	}
 	parseCtx.SetDecodeContent(content, fileData)
 
@@ -121,7 +136,8 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 	for attempts := 0; ; attempts++ {
 		diags = decodeTailpipeConfig(parseCtx)
 		if diags != nil && diags.HasErrors() {
-			return nil, error_helpers.HclDiagsToError("Failed to decode all config files", diags)
+			ew.Error = error_helpers.HclDiagsToError("Failed to decode all config files", diags)
+			return nil, ew
 		}
 
 		// if there are no unresolved blocks, we are done
@@ -133,12 +149,13 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, err error
 		// if the number of unresolved blocks has NOT reduced, fail
 		if prevUnresolvedBlocks != 0 && unresolvedBlocks >= prevUnresolvedBlocks {
 			str := parseCtx.FormatDependencies()
-			return nil, fmt.Errorf("failed to resolve workspace profile dependencies after %d attempts\nDependencies:\n%s", attempts+1, str)
+			ew.Error = fmt.Errorf("failed to resolve config dependencies after %d attempts\nDependencies:\n%s", attempts+1, str)
+			return nil, ew
 		}
 		// update prevUnresolvedBlocks
 		prevUnresolvedBlocks = unresolvedBlocks
 	}
 
-	return parseCtx.tailpipeConfig, nil
+	return parseCtx.tailpipeConfig, ew
 
 }
