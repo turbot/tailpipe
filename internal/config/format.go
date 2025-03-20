@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
@@ -56,11 +55,11 @@ func NewFormat(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Di
 
 func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
-	parts := strings.Split(presetName, ".")
-	if len(parts) != 2 {
+	parsed, err := modconfig.ParseResourceName(presetName)
+	if err != nil {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  "'format' block requires 2 labels: 'type' and 'name'",
+			Summary:  "failed to parse preset format name",
 			Subject:  hclhelpers.BlockRangePointer(block),
 		})
 		return nil, diags
@@ -69,7 +68,7 @@ func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnost
 	return &Format{
 		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, presetName),
 		Preset:          presetName,
-		Type:            parts[0],
+		Type:            parsed.GetSubType(),
 	}, diags
 }
 

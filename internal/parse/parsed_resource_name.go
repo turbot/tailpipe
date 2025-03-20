@@ -52,6 +52,10 @@ type ParsedResourceNameWithSubtype struct {
 	Original string
 }
 
+func (p *ParsedResourceNameWithSubtype) GetSubType() string {
+	return p.SubType
+}
+
 func (p *ParsedResourceNameWithSubtype) ToFullName() string {
 	//TODO implement me
 	panic("implement me")
