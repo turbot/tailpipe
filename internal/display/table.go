@@ -7,8 +7,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dustin/go-humanize"
-
 	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/sanitize"
@@ -97,7 +95,7 @@ type TableResourceFiles struct {
 // GetShowData implements the printers.Showable interface
 func (r *TableResource) GetShowData() *printers.RowData {
 
-	statusString := fmt.Sprintf("\n  %d local file(s)\n  %s local", r.Local.FileCount, humanizeBytes(r.Local.FileSize))
+	statusString := fmt.Sprintf("\n  local file count: %s\n  local file size: %s", humanizeCount(r.Local.FileCount), humanizeBytes(r.Local.FileSize))
 
 	res := printers.NewRowData(
 		printers.NewFieldValue("Name", r.Name),
@@ -115,8 +113,8 @@ func (r *TableResource) GetListData() *printers.RowData {
 		printers.NewFieldValue("NAME", r.Name),
 		printers.NewFieldValue("PLUGIN", r.Plugin),
 		printers.NewFieldValue("LOCAL SIZE", humanizeBytes(r.Local.FileSize)),
-		printers.NewFieldValue("FILES", humanize.Comma(r.Local.FileCount)),
-		printers.NewFieldValue("ROWS", humanize.Comma(r.Local.RowCount)),
+		printers.NewFieldValue("FILES", humanizeCount(r.Local.FileCount)),
+		printers.NewFieldValue("ROWS", humanizeCount(r.Local.RowCount)),
 		printers.NewFieldValue("DESCRIPTION", r.Description),
 	)
 	return res
