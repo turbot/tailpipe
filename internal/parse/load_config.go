@@ -148,9 +148,20 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 		}
 		// if the number of unresolved blocks has NOT reduced, fail
 		if prevUnresolvedBlocks != 0 && unresolvedBlocks >= prevUnresolvedBlocks {
-			str := parseCtx.FormatDependencies()
-			ew.Error = fmt.Errorf("failed to resolve config dependencies after %d attempts\nDependencies:\n%s", attempts+1, str)
-			return nil, ew
+			// so all dependencies have been resolved that we are able
+			// do one further pass where we try to resolve format s
+			// we do this at the end to be sure that if a format preset is overridden by a format in the config,
+			// we correctly resolve the format in the config
+			if !parseCtx.resolveFormatPresets {
+				// set the resolveFormatPresets so that the next decode round will resolve format presets
+				parseCtx.resolveFormatPresets = true
+			} else {
+				// we have already tried to resolve format presets and still have dependency errors
+				str := parseCtx.FormatDependencies()
+				ew.Error = fmt.Errorf("failed to resolve config dependencies after %d attempts\nDependencies:\n%s", attempts+1, str)
+				return nil, ew
+			}
+
 		}
 		// update prevUnresolvedBlocks
 		prevUnresolvedBlocks = unresolvedBlocks

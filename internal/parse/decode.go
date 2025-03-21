@@ -93,7 +93,9 @@ func decodeResource(block *hcl.Block, parseCtx *ConfigParseContext) (modconfig.H
 		tableRes := parse.NewDecodeResult()
 		tableRes.HandleDecodeDiags(diags)
 		// if the res has a dependency because of a format preset, resolve it
-		if len(tableRes.Depends) > 0 {
+		// NOTE: we only resolve the format presets after resolving all other resources
+		// - parseContext.resolveFormatPresets will be true
+		if len(tableRes.Depends) > 0 && parseCtx.resolveFormatPresets {
 			var formatPreset string
 			if formatPreset, tableRes = extractPresetNameFromDependencyError(parseCtx, tableRes); formatPreset != "" {
 				format, diags := config.NewPresetFormat(block, formatPreset)
@@ -268,8 +270,10 @@ func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config
 		case schema.AttributeFormat:
 			// resolve the format reference
 			format, formatRes := resolveReference[*config.Format](parseCtx, attr)
-			if len(formatRes.Depends) > 0 {
-				// if the res has a dependency because of a format preset, resolve it
+			// if the res has a dependency because of a format preset, resolve it
+			// NOTE: we only resolve the format presets after resolving all other resources
+			// - parseContext.resolveFormatPresets will be true
+			if len(formatRes.Depends) > 0 && parseCtx.resolveFormatPresets {
 				formatPreset, formatRes := extractPresetNameFromDependencyError(parseCtx, formatRes)
 				if formatPreset != "" {
 					format, diags = config.NewPresetFormat(block.AsHCLBlock(), formatPreset)

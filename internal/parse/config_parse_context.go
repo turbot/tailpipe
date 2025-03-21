@@ -27,6 +27,11 @@ type ConfigParseContext struct {
 	// the config which is being generated
 	tailpipeConfig    *config.TailpipeConfig
 	pluginVersionFile *versionfile.PluginVersionFile
+	// we must not resolve format presets until we have resolved all other dependencies
+	// (this is to allow for the case where a local format overrides a preset)
+	// so when decoding reaches a point where no more dependencies can be normally resolved
+	// set resolveFormatPresets to true and try one more pass
+	resolveFormatPresets bool
 }
 
 func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceName) (resource modconfig.HclResource, found bool) {
