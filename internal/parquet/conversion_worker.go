@@ -140,9 +140,9 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	// render query
 	selectQuery := fmt.Sprintf(w.converter.viewQueryFormat, jsonlFilePath)
 
-	// if the partition includes a filter, add a WHERE clause
+	// if the partition includes a filter, add a where clause
 	if partition.Filter != "" {
-		selectQuery += fmt.Sprintf(" WHERE %s", partition.Filter)
+		selectQuery += fmt.Sprintf(" where %s", partition.Filter)
 	}
 	// Create a query to write to partitioned parquet files
 

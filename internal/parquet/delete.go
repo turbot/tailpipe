@@ -49,12 +49,12 @@ func deletePartitionFrom(db *database.DuckDb, dataDir string, partition *config.
 	parquetGlobPath := filepaths.GetParquetFileGlobForPartition(dataDir, partition.TableName, partition.ShortName, "")
 
 	query := fmt.Sprintf(`
-    SELECT 
-    DISTINCT '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date AS hive_path,
-	COUNT(*) OVER() AS total_files
-    FROM read_parquet('%s', hive_partitioning=true)
-    WHERE tp_partition = ?
- 	AND tp_date >= ?`,
+    select 
+    distinct '%s/tp_table=' || tp_table || '/tp_partition=' || tp_partition || '/tp_index=' || tp_index || '/tp_date=' || tp_date as hive_path,
+	count(*) over() as total_files
+    from read_parquet('%s', hive_partitioning=true)
+    where tp_partition = ?
+ 	and tp_date >= ?`,
 		dataDir, parquetGlobPath)
 
 	rows, err := db.Query(query, partition.ShortName, from)
@@ -93,9 +93,9 @@ func deletePartition(db *database.DuckDb, dataDir string, partition *config.Part
 
 	// get count of parquet files
 	query := fmt.Sprintf(`
-		SELECT COUNT(DISTINCT filename)
-		FROM read_parquet('%s', hive_partitioning=true, filename=true)
-		WHERE tp_partition = ?
+		select count(distinct filename)
+		from read_parquet('%s', hive_partitioning=true, filename=true)
+		where tp_partition = ?
 	`, parquetGlobPath)
 
 	// Execute the query with a parameter for the tp_partition filter

@@ -217,7 +217,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 
 	// Test Query
 	t.Run("Query", func(t *testing.T) {
-		rows, err := db.Query("SELECT 1")
+		rows, err := db.Query("select 1")
 		if err != nil {
 			t.Errorf("Query failed: %v", err)
 		}
@@ -229,7 +229,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 	// Test QueryContext
 	t.Run("QueryContext", func(t *testing.T) {
 		ctx := context.Background()
-		rows, err := db.QueryContext(ctx, "SELECT 1")
+		rows, err := db.QueryContext(ctx, "select 1")
 		if err != nil {
 			t.Errorf("QueryContext failed: %v", err)
 		}
@@ -240,7 +240,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 
 	// Test QueryRow
 	t.Run("QueryRow", func(t *testing.T) {
-		row := db.QueryRow("SELECT 1")
+		row := db.QueryRow("select 1")
 		if row == nil {
 			t.Error("QueryRow returned nil")
 		}
@@ -249,7 +249,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 	// Test QueryRowContext
 	t.Run("QueryRowContext", func(t *testing.T) {
 		ctx := context.Background()
-		row := db.QueryRowContext(ctx, "SELECT 1")
+		row := db.QueryRowContext(ctx, "select 1")
 		if row == nil {
 			t.Error("QueryRowContext returned nil")
 		}
@@ -257,7 +257,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 
 	// Test Exec
 	t.Run("Exec", func(t *testing.T) {
-		result, err := db.Exec("SELECT 1")
+		result, err := db.Exec("select 1")
 		if err != nil {
 			t.Errorf("Exec failed: %v", err)
 		}
@@ -269,7 +269,7 @@ func TestDuckDb_WrapperMethods(t *testing.T) {
 	// Test ExecContext
 	t.Run("ExecContext", func(t *testing.T) {
 		ctx := context.Background()
-		result, err := db.ExecContext(ctx, "SELECT 1")
+		result, err := db.ExecContext(ctx, "select 1")
 		if err != nil {
 			t.Errorf("ExecContext failed: %v", err)
 		}

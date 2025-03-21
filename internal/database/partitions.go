@@ -20,7 +20,7 @@ func ListPartitions(ctx context.Context) ([]string, error) {
 
 	// Build DuckDB query to get the names of all partitions underneath data dir
 	parquetPath := filepaths.GetParquetFileGlobForTable(dataDir, "*", "")
-	query := `SELECT DISTINCT tp_table || '.' || tp_partition FROM read_parquet('` + parquetPath + `', hive_partitioning=true)`
+	query := `select distinct tp_table || '.' || tp_partition from read_parquet('` + parquetPath + `', hive_partitioning=true)`
 
 	// Open DuckDB in-memory database
 	db, err := NewDuckDb()

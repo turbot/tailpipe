@@ -64,20 +64,20 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 		return err
 	}
 
-	// Step 2: Build the SELECT clause - cast tp_index as string
+	// Step 2: Build the select clause - cast tp_index as string
 	// (this is necessary as duckdb infers the type from the partition column name
 	// if the index looks like a number, it will infer the column as an int)
 	var typeOverrides = map[string]string{
-		"tp_partition": "VARCHAR",
-		"tp_index":     "VARCHAR",
-		"tp_date":      "DATE",
+		"tp_partition": "varchar",
+		"tp_index":     "varchar",
+		"tp_date":      "data",
 	}
 	var selectClauses []string
 	for _, col := range columns {
 		wrappedCol := fmt.Sprintf(`"%s"`, col)
 		if overrideType, ok := typeOverrides[col]; ok {
 			// Apply the override with casting
-			selectClauses = append(selectClauses, fmt.Sprintf("CAST(%s AS %s) AS %s", col, overrideType, wrappedCol))
+			selectClauses = append(selectClauses, fmt.Sprintf("cast(%s as %s) as %s", col, overrideType, wrappedCol))
 		} else {
 			// Add the column as-is
 			selectClauses = append(selectClauses, wrappedCol)
@@ -85,15 +85,15 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 	}
 	selectClause := strings.Join(selectClauses, ", ")
 
-	// Step 3: Build the WHERE clause
+	// Step 3: Build the where clause
 	filterString := ""
 	if len(filters) > 0 {
-		filterString = fmt.Sprintf(" WHERE %s", strings.Join(filters, " AND "))
+		filterString = fmt.Sprintf(" where %s", strings.Join(filters, " and "))
 	}
 
 	// Step 4: Construct the final query
 	query := fmt.Sprintf(
-		"CREATE OR REPLACE VIEW %s AS SELECT %s FROM '%s'%s",
+		"create or replace view %s as select %s from '%s'%s",
 		tableName, selectClause, parquetPath, filterString,
 	)
 
@@ -109,7 +109,7 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 
 // query the provided parquet path to get the columns
 func getColumnNames(ctx context.Context, parquetPath string, db *DuckDb) ([]string, error) {
-	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath)
+	columnQuery := fmt.Sprintf("select * from '%s' limit 0", parquetPath)
 	rows, err := db.QueryContext(ctx, columnQuery)
 	if err != nil {
 		return nil, err
@@ -170,9 +170,9 @@ func GetRowCount(ctx context.Context, tableName string, partitionName *string) (
 	if !tableNameRegex.MatchString(tableName) {
 		return 0, fmt.Errorf("invalid table name")
 	}
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
+	query := fmt.Sprintf("select count(*) from %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
 	if partitionName != nil {
-		query = fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE tp_partition = '%s'", tableName, *partitionName) // #nosec G201 // this is a controlled query tableName must match a regex
+		query = fmt.Sprintf("select count(*) from %s where tp_partition = '%s'", tableName, *partitionName) // #nosec G201 // this is a controlled query tableName must match a regex
 	}
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
@@ -198,7 +198,7 @@ func GetTableViews(ctx context.Context) ([]string, error) {
 	}
 	defer db.Close()
 
-	query := "SELECT table_name FROM information_schema.tables WHERE table_type='VIEW';"
+	query := "select table_name from information_schema.tables where table_type='VIEW';"
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get table views: %w", err)
@@ -226,9 +226,9 @@ func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string
 	defer db.Close()
 
 	query := `
-		SELECT column_name, data_type 
-		FROM information_schema.columns 
-		WHERE table_name = ? ORDER BY columns.column_name;
+		select column_name, data_type 
+		from information_schema.columns 
+		where table_name = ? ORDER BY columns.column_name;
 	`
 	rows, err := db.QueryContext(ctx, query, viewName)
 	if err != nil {
@@ -243,8 +243,8 @@ func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan column schema: %w", err)
 		}
-		if strings.HasPrefix(columnType, "STRUCT") {
-			columnType = "STRUCT"
+		if strings.HasPrefix(columnType, "struct") {
+			columnType = "struct"
 		}
 		schema[columnName] = columnType
 	}

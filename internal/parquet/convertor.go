@@ -257,9 +257,9 @@ func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 
 	// Query to infer schema using json_structure
 	query := `
-		SELECT json_structure(json)::VARCHAR as schema 
-		FROM read_json_auto(?) 
-		LIMIT 1;
+		select json_structure(json)::varchar as schema 
+		from read_json_auto(?) 
+		limit 1;
 	`
 
 	var schemaStr string
