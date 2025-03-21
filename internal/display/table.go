@@ -248,7 +248,8 @@ func (r *TableResource) getColumnsRenderFunc() printers.RenderFunc {
 		})
 
 		for _, c := range r.Columns {
-			line := fmt.Sprintf("  %s: %s", c.ColumnName, c.Type)
+			// type is forced to lowercase, this should be the case for our tables/plugins but this provides consistency for custom tables, etc
+			line := fmt.Sprintf("  %s: %s", c.ColumnName, strings.ToLower(c.Type))
 			lines = append(lines, line)
 		}
 

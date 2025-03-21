@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
