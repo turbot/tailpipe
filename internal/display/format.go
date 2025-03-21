@@ -107,6 +107,14 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 	return out, nil
 }
 
+//func GetFormatResource(ctx context.Context, name string) (*FormatResource, error) {
+//	pluginName, ok := config.DetermineFormatPluginFromName(name)
+//	if !ok {
+//		return nil, fmt.Errorf("no plugin found for format '%s'", name)
+//	}
+
+
+// OLD
 func GetFormatResource(ctx context.Context, name string) (*FormatResource, error) {
 	// format should be specified as `type.instance` - validate we have 2 parts
 	parts := strings.Split(name, ".")
@@ -142,6 +150,7 @@ func getFormatInstance(ctx context.Context, name string) (*FormatResource, error
 	} else {
 		pluginName = pn
 	}
+	// OLD
 
 	// determine if custom format
 	var customFormats []*config.Format
