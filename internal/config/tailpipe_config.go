@@ -95,16 +95,43 @@ func GetPluginForTable(tableName string, versionMap map[string]*versionfile.Inst
 	return parts[0]
 }
 
+// DetermineFormatPlugin determines the source plugin for the given partition
+// try to use the source information registered in the version file
+// if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
+func DetermineFormatPlugin(format *Format) (string, bool) {
+	// first check if this is a preset of a type  of any installed plugin
+	// this handles the case where a plugin has a preset in a format which is provided bu cores
+	var pluginName string
+	var ok bool
+
+	if format.PresetName != "" {
+		// presets formats are always provided by the plugin which defines the preset, event if the type is
+		// provided by the core plugin
+		pluginName, ok = GetPluginForFormatPreset(format.PresetName, GlobalConfig.PluginVersions)
+	} else {
+		pluginName, ok = GetPluginForFormatType(format.Type, GlobalConfig.PluginVersions)
+	}
+
+	return pluginName, ok
+}
+
+func DetermineFormatPluginFromName(formatName string) (string, bool) {
+	// check config for this format
+	format, ok := GlobalConfig.Formats[formatName]
+	if ok {
+		return DetermineFormatPlugin(format)
+	}
+	// so - is this a preset?
+	return GetPluginForFormatPreset(formatName, GlobalConfig.PluginVersions)
+}
+
 // GetPluginForFormatPreset returns the plugin name that provides the given format [preset.
 // Format name should be in the format "type.name"
 func GetPluginForFormatPreset(fullName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
-	// we expect the fullName to have the prefix "format." (as it is a hcl reference
-	if !strings.HasPrefix(fullName, "format.") {
-		// if missing, fail
-		return "", false
+	if strings.HasPrefix(fullName, "format.") {
+		// remove the prefix as the presets registered int he version file do not have them
+		fullName = strings.TrimPrefix(fullName, "format.")
 	}
-	// remove the prefix as the presets registered int he version file do not have them
-	fullName = strings.TrimPrefix(fullName, "format.")
 	// Check format_presets in metadata
 	for pluginName, version := range versionMap {
 		if presets, ok := version.Metadata["format_presets"]; ok {
