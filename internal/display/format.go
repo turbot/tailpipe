@@ -8,7 +8,7 @@ import (
 	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
-	"github.com/turbot/tailpipe-plugin-sdk/formats"
+	sdktypes "github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
 
@@ -16,10 +16,10 @@ import (
 )
 
 type FormatResource struct {
-	formats.FormatDescription
+	sdktypes.FormatDescription
 }
 
-func NewFormatResource(format *formats.FormatDescription) *FormatResource {
+func NewFormatResource(format *sdktypes.FormatDescription) *FormatResource {
 	return &FormatResource{
 		FormatDescription: *format,
 	}
@@ -75,7 +75,7 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 
 	// add custom formats
 	for _, f := range config.GlobalConfig.Formats {
-		formatMap[f.GetUnqualifiedName()] = NewFormatResource(&formats.FormatDescription{
+		formatMap[f.GetUnqualifiedName()] = NewFormatResource(&sdktypes.FormatDescription{
 			Name:        f.ShortName,
 			Type:        f.Type,
 			Description: types.SafeString(f.Description),
@@ -126,7 +126,7 @@ func GetFormatResource(ctx context.Context, name string) (*FormatResource, error
 	// describe plugin to get format info, if custom we need to pass it in
 	pm := plugin.NewPluginManager()
 	defer pm.Close()
-	desc, err := pm.Describe(ctx, pluginName, customFormats...)
+	desc, err := pm.Describe(ctx, pluginName, plugin.WithCustomFormats(customFormats...))
 	if err != nil {
 		return nil, fmt.Errorf("failed to describe format '%s': %w", name, err)
 	}

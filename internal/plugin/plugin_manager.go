@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -28,7 +29,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
-	"github.com/turbot/tailpipe-plugin-sdk/plugin"
+	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
@@ -121,17 +122,12 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	}
 
 	// now populate the format if necessary
-	// ask the partition to resolve the format for us - it will check the source and the custom table (if present)
 	if format := partition.GetFormat(); format != nil {
-		req.SourceFormat = format.ToProto()
-
-		// now check if the format is provided by the table plugin or whether we need to start 	a format plugin
-		formatPluginReattach, err := p.getFormatPluginReattach(ctx, format.Type, tablePlugin, sourcePluginReattach)
+		f, err := p.getFormat(ctx, format, tablePlugin)
 		if err != nil {
 			return nil, err
 		}
-		// set format plugin reattach on the request (may be nil - this is fine)
-		req.FormatPlugin = formatPluginReattach
+		req.SourceFormat = f
 	}
 
 	collectResponse, err := tablePluginClient.Collect(req)
@@ -147,8 +143,54 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
+func (p *PluginManager) getFormat(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
+	// now check if the format is provided by the table plugin or whether we need to starta format plugin
+	formatPlugin, err := p.determineFormatPlugin(format.Type)
+	if err != nil {
+		return nil, fmt.Errorf("error determining source plugin for format %s: %w", format.Type, err)
+	}
+	if formatPlugin.Plugin == tablePlugin.Plugin {
+		// the format is provided by the table plugin - nothing to do
+		return format.ToProto(), nil
+	}
+	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
+
+	// describe just this format
+	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, WithCustomFormats(format), WithCustomFormatsOnly())
+	if err != nil {
+		return nil, fmt.Errorf("error resolving format: %w", err)
+	}
+	// we expect the custom format to be the one we asked for
+	desc, ok := describeResponse.CustomFormats[format.FullName]
+	if !ok {
+		return nil, fmt.Errorf("plugin returned no description for format %s", format.PresetName)
+	}
+
+	return &proto.FormatData{
+		Name:  format.FullName,
+		Regex: desc.Regex}, nil
+}
+
+type DescribeOpts func(*proto.DescribeRequest)
+
+func WithCustomFormats(customFormats ...*config.Format) DescribeOpts {
+	return func(req *proto.DescribeRequest) {
+		var customFormatsProto []*proto.FormatData
+		for _, f := range customFormats {
+			customFormatsProto = append(customFormatsProto, f.ToProto())
+		}
+		req.CustomFormats = customFormatsProto
+	}
+}
+
+func WithCustomFormatsOnly() DescribeOpts {
+	return func(req *proto.DescribeRequest) {
+		req.CustomFormatsOnly = true
+	}
+}
+
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string, customFormats ...*config.Format) (*plugin.DescribeResponse, error) {
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -157,21 +199,19 @@ func (p *PluginManager) Describe(ctx context.Context, pluginName string, customF
 		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
 	}
 
-	// convert the custom formats to proto
-	var customFormatsProto []*proto.FormatData
-	for _, f := range customFormats {
-		customFormatsProto = append(customFormatsProto, f.ToProto())
+	req := &proto.DescribeRequest{}
+	// apply opts - these may set the custom formats and custom formats only flag
+	for _, opt := range opts {
+		opt(req)
 	}
-	req := &proto.DescribeRequest{
-		CustomFormats: customFormatsProto,
-	}
+
 	describeResponse, err := pluginClient.Describe(req)
 	if err != nil {
 		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
 	}
 
 	// build DescribeResponse from proto
-	res := plugin.DescribeResponseFromProto(describeResponse)
+	res := types.DescribeResponseFromProto(describeResponse)
 
 	// add non-proto fields
 	res.PluginName = pluginDef.Plugin
@@ -236,35 +276,6 @@ func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *
 	sourcePluginReattach := proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 
 	return sourcePluginReattach, nil
-}
-
-func (p *PluginManager) getFormatPluginReattach(ctx context.Context, formatType string, tablePlugin *pplugin.Plugin, sourcePlugin *proto.SourcePluginReattach) (*proto.SourcePluginReattach, error) {
-
-	// determine the source plugin for the format
-	formatPlugin, err := p.determineFormatPlugin(formatType)
-	if err != nil {
-		return nil, fmt.Errorf("error determining source plugin for format %s: %w", formatType, err)
-	}
-	// if th eplugin is the same as the table plugin, we do not need to start it
-	if formatPlugin.Plugin == tablePlugin.Plugin {
-		return nil, nil
-	}
-
-	// if the plugin is the same as the source plugin, we can use the source plugin reattach
-	if sourcePlugin != nil && formatPlugin.Plugin == sourcePlugin.Plugin {
-		return sourcePlugin, nil
-	}
-
-	// so this plugin is different from the plugin that provides the table, we need to start the format plugin,
-	// and then pass reattach info
-
-	formatPluginClient, err := p.getPlugin(ctx, formatPlugin)
-	if err != nil {
-		return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", formatPlugin.Alias, formatType, err)
-	}
-	formatPluginReattach := proto.NewSourcePluginReattach(formatType, formatPlugin.Alias, formatPluginClient.Client.ReattachConfig())
-
-	return formatPluginReattach, nil
 }
 
 // getExecutionId generates a unique id based on the current time
