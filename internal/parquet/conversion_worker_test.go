@@ -175,7 +175,7 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"JsonField": 'JSON'
+			"JsonField": 'json'
 		}
 	)`,
 			// NOTE: the data is returned as a json string
