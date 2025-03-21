@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
@@ -64,6 +65,9 @@ func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnost
 		})
 		return nil, diags
 	}
+
+	// remove the `format.` from the name
+	presetName = strings.TrimPrefix(presetName, "format.")
 
 	return &Format{
 		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, presetName),

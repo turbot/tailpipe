@@ -57,13 +57,11 @@ func (p *ParsedResourceNameWithSubtype) GetSubType() string {
 }
 
 func (p *ParsedResourceNameWithSubtype) ToFullName() string {
-	//TODO implement me
-	panic("implement me")
+	return p.ToResourceName()
 }
 
-func (p *ParsedResourceNameWithSubtype) ToFullNameWithMod(mod string) string {
-	//TODO implement me
-	panic("implement me")
+func (p *ParsedResourceNameWithSubtype) ToFullNameWithMod(string) string {
+	return p.ToResourceName()
 }
 
 func (p *ParsedResourceNameWithSubtype) GetMod() string {
