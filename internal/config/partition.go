@@ -83,7 +83,7 @@ func (c *Partition) AddFilter(filter string) {
 	if c.Filter == "" {
 		c.Filter = filter
 	} else {
-		c.Filter += " AND " + filter
+		c.Filter += " and " + filter
 	}
 }
 

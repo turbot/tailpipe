@@ -18,12 +18,12 @@ func buildViewQuery(rowSchema *schema.TableSchema) string {
 		}
 
 		columnStrings.WriteString(getSqlForField(column, 1))
-		if column.Type == "STRUCT[]" {
+		if column.Type == "struct[]" {
 			structSliceColumns = append(structSliceColumns, column)
 		}
 		// TODO take nested struct arays into account
 		//for _, nestedColumn := range column.StructFields {
-		//	if nestedColumn.Type == "STRUCT[]" {
+		//	if nestedColumn.Type == "struct[]" {
 		//		structSliceColumns = append(structSliceColumns, nestedColumn)
 		//	}
 		//
@@ -34,7 +34,7 @@ func buildViewQuery(rowSchema *schema.TableSchema) string {
 	columnDefinitions := getReadJSONColumnDefinitions(rowSchema)
 
 	columnStrings.WriteString(fmt.Sprintf(`
-FROM
+from
 	read_ndjson(
 		'%%s',
 %s
@@ -42,15 +42,15 @@ FROM
 
 	// if there are no struct[] fields, we are done - just add the select at the start
 	if len(structSliceColumns) == 0 {
-		return fmt.Sprintf("SELECT\n%s", columnStrings.String())
+		return fmt.Sprintf("select\n%s", columnStrings.String())
 	}
 
 	// if there are struct[] fields, we need to build a more complex query
 
 	// add row number in case of potential grouping
 	var str strings.Builder
-	str.WriteString("SELECT\n")
-	str.WriteString("\trow_number() OVER () AS rowid,\n")
+	str.WriteString("select\n")
+	str.WriteString("\trow_number() over () as rowid,\n")
 	str.WriteString(columnStrings.String())
 
 	// build the struct slice query
@@ -60,7 +60,7 @@ FROM
 
 // return the column definitions for the row schema, in the format required for the duck db read_json_auto function
 func getReadJSONColumnDefinitions(rowSchema *schema.TableSchema) string {
-	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
+	// columns = {BooleanField: 'boolean', BooleanField2: 'boolean', BooleanField3: 'boolean'})
 	var str strings.Builder
 	str.WriteString("columns = {")
 	for i, column := range rowSchema.Columns {
@@ -79,8 +79,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 
 	/* this is the what we want
 
-	WITH raw AS (
-	    SELECT
+	with raw AS (
+	    select
 	        row_number() OVER () AS rowid,
 	        "StructArrayField" AS "struct_array_field",
 	        "IntField" AS "int_field",
@@ -91,47 +91,47 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	        "StringArrayArrayField" AS "string_array_field",
 	        "FloatArrayField" AS "float_array_field",
 	        "BooleanArrayField" AS "boolean_array_field"
-	    FROM
+	    from
 	        read_ndjson(
 	            '/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/1.jsonl',
 	            columns = {
-	                "StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]',
-	                "IntField": 'INTEGER',
-	                "StringField": 'VARCHAR',
-	                "FloatField": 'FLOAT',
-	                "BooleanField": 'BOOLEAN',
-	                "IntArrayField": 'INTEGER[]',
-	                "StringArrayArrayField": 'VARCHAR[]',
-	                "FloatArrayField": 'FLOAT[]',
-	                "BooleanArrayField": 'BOOLEAN[]'
+	                "StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]',
+	                "IntField": 'integer',
+	                "StringField": 'varchar',
+	                "FloatField": 'float',
+	                "BooleanField": 'boolean',
+	                "IntArrayField": 'integer[]',
+	                "StringArrayArrayField": 'varchar[]',
+	                "FloatArrayField": 'float[]',
+	                "BooleanArrayField": 'boolean[]'
 	            }
 	        )
 	), unnest_struct_array_field AS (
-	    SELECT
+	    select
 	        rowid,
-	        UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	    FROM
+	        unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	    from
 	        raw
 	), rebuild_unnest_struct_array_field AS (
-	    SELECT
+	    select
 	        rowid,
-	        struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-	        struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	    FROM
+	        struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+	        struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	    from
 	        unnest_struct_array_field
 	), grouped_unnest_struct_array_field AS (
-	    SELECT
+	    select
 	        rowid,
 	        array_agg(struct_pack(
-	            struct_string_field := StructArrayField_StructStringField::VARCHAR,
-	            struct_int_field := StructArrayField_StructIntField::INTEGER
-	        )) AS struct_array_field
-	    FROM
+	            struct_string_field := StructArrayField_StructStringField::varchar,
+	            struct_int_field := StructArrayField_StructIntField::integer
+	        )) as struct_array_field
+	    from
 	        rebuild_unnest_struct_array_field
 	    GROUP BY
 	        rowid
 	)
-	SELECT
+	select
 	    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
 	    raw.int_field,
 	    raw.string_field,
@@ -141,16 +141,16 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	    raw.string_array_field,
 	    raw.float_array_field,
 	    raw.boolean_array_field
-	FROM
+	from
 	    raw
 	LEFT JOIN
 	    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
 	*/
 
-	/* 	WITH raw AS (
+	/* 	with raw as (
 
 	 */
-	str.WriteString("WITH raw AS (\n")
+	str.WriteString("with raw as (\n")
 	str.WriteString(helpers.Tabify(q, "\t"))
 	str.WriteString("\n)")
 
@@ -159,73 +159,73 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 
 		/*
 			, unnest_struct_array_field AS (
-			    SELECT
+			    select
 			        rowid,
 		*/
 		unnestName := fmt.Sprintf(`unnest_%s`, structSliceCol.ColumnName)
 
-		str.WriteString(fmt.Sprintf(`, %s AS (
-    SELECT
+		str.WriteString(fmt.Sprintf(`, %s as (
+    select
         rowid,`, unnestName))
 
 		/*
-			UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
+			unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
 		*/
 
 		str.WriteString(fmt.Sprintf(`
-		UNNEST(COALESCE("%s", ARRAY[]::%s)::%s) AS %s`, structSliceCol.ColumnName, structSliceCol.FullType(), structSliceCol.FullType(), structSliceCol.ColumnName))
+		unnest(coalesce("%s", array[]::%s)::%s) as %s`, structSliceCol.ColumnName, structSliceCol.FullType(), structSliceCol.FullType(), structSliceCol.ColumnName))
 
 		/*
-		   	FROM
+		   	from
 		   		raw
 		   )
 		*/
 
 		str.WriteString(`
-	FROM
+	from
 		raw
 )`)
 
 		/*
 		   , rebuild_unnest_struct_array_field AS (
-		      SELECT
+		      select
 		   	   rowid,
 		*/
 		rebuildName := fmt.Sprintf(`rebuild_%s`, unnestName)
 
-		str.WriteString(fmt.Sprintf(`, %s AS (
-	SELECT
+		str.WriteString(fmt.Sprintf(`, %s as (
+	select
 		rowid`, rebuildName))
 
 		// loop over fields in the struct
 		/*
-			        struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
+			        struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
 			)
 		*/
 		for _, structField := range structSliceCol.StructFields {
 			str.WriteString(",\n")
-			str.WriteString(fmt.Sprintf(`		%s->>'%s' AS %s_%s`, structSliceCol.ColumnName, structField.SourceName, structSliceCol.SourceName, structField.SourceName))
+			str.WriteString(fmt.Sprintf(`		%s->>'%s' as %s_%s`, structSliceCol.ColumnName, structField.SourceName, structSliceCol.SourceName, structField.SourceName))
 		}
 		/*
-		   	FROM
+		   	from
 		   		unnest_struct_array_field
 		   )
 		*/
 
 		str.WriteString(fmt.Sprintf(`
-	FROM
+	from
 		%s
 )`, unnestName))
 
 		/*
 		      , grouped_unnest_struct_array_field AS (
-		      	    SELECT
+		      	    select
 		      	        rowid,
 		      	        array_agg(struct_pack(
-		   				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-		      	            struct_int_field := StructArrayField_StructIntField::INTEGER
-		      	        )) AS struct_array_field
-		      	    FROM
+		   				struct_string_field := StructArrayField_StructStringField::varchar,
+		      	            struct_int_field := StructArrayField_StructIntField::integer
+		      	        )) as struct_array_field
+		      	    from
 		      	        rebuild_unnest_struct_array_field
 		      	    GROUP BY
 		      	        rowid
@@ -233,9 +233,9 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 
 		*/
 		groupedName := fmt.Sprintf(`grouped_%s`, unnestName)
-		str.WriteString(fmt.Sprintf(`, %s AS (`, groupedName))
+		str.WriteString(fmt.Sprintf(`, %s as (`, groupedName))
 		str.WriteString(`
-	SELECT
+	select
 		rowid,	
 		array_agg(struct_pack(
 `)
@@ -247,8 +247,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 			str.WriteString(fmt.Sprintf(`				%s := %s_%s::%s`, structField.ColumnName, structSliceCol.SourceName, structField.SourceName, structField.Type))
 		}
 		str.WriteString(fmt.Sprintf(`
-		)) AS %s	
-	FROM
+		)) as %s	
+	from
 		%s	
 	GROUP BY
 		rowid	
@@ -257,7 +257,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	}
 	// build the final select
 	/*
-		SELECT
+		select
 			    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
 			    raw.int_field,
 			    raw.string_field,
@@ -267,7 +267,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 			    raw.string_array_field,
 			    raw.float_array_field,
 			    raw.boolean_array_field
-			FROM
+			from
 			    raw
 			LEFT JOIN
 			    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
@@ -283,7 +283,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 		joinedName := fmt.Sprintf(`joined_%s`, column.ColumnName)
 		groupedName := fmt.Sprintf(`grouped_unnest_%s`, column.ColumnName)
 
-		coalesceFields.WriteString(fmt.Sprintf(`	COALESCE(%s.%s, NULL) AS %s`, joinedName, column.ColumnName, column.ColumnName))
+		coalesceFields.WriteString(fmt.Sprintf(`	coalesce(%s.%s, null) as %s`, joinedName, column.ColumnName, column.ColumnName))
 		leftJoins.WriteString(fmt.Sprintf(`LEFT JOIN
 	%s %s ON raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
 
@@ -291,17 +291,17 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 
 	// now construct final select
 	str.WriteString(fmt.Sprintf(`
-SELECT
+select
 %s`, coalesceFields.String()))
 
 	for _, column := range rowSchema.Columns {
-		if column.Type != "STRUCT[]" {
+		if column.Type != "struct[]" {
 			str.WriteString(",\n")
 			str.WriteString(fmt.Sprintf(`	raw.%s`, column.ColumnName))
 		}
 	}
 	str.WriteString(fmt.Sprintf(`
-FROM
+from
 	raw	
 %s`, leftJoins.String()))
 
@@ -314,13 +314,13 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	tab := strings.Repeat("\t", tabs)
 
 	switch column.Type {
-	case "STRUCT":
+	case "struct":
 		var str strings.Builder
 
-		// Start CASE logic to handle NULL values for the struct
-		str.WriteString(fmt.Sprintf("%sCASE\n", tab))
-		str.WriteString(fmt.Sprintf("%s\tWHEN \"%s\" IS NULL THEN NULL\n", tab, column.SourceName))
-		str.WriteString(fmt.Sprintf("%s\tELSE struct_pack(\n", tab))
+		// Start case logic to handle null values for the struct
+		str.WriteString(fmt.Sprintf("%scase\n", tab))
+		str.WriteString(fmt.Sprintf("%s\twhen \"%s\" is null then null\n", tab, column.SourceName))
+		str.WriteString(fmt.Sprintf("%s\telse struct_pack(\n", tab))
 
 		// Add nested fields to the struct_pack
 		for j, nestedColumn := range column.StructFields {
@@ -331,18 +331,18 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+2))
 		}
 
-		// Close struct_pack and CASE
+		// Close struct_pack and case
 		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
-		str.WriteString(fmt.Sprintf("%sEND AS \"%s\"", tab, column.ColumnName))
+		str.WriteString(fmt.Sprintf("%send as \"%s\"", tab, column.ColumnName))
 		return str.String()
 
 	case "JSON":
 		// Convert the value using json()
-		return fmt.Sprintf("%sjson(\"%s\") AS \"%s\"", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
 
 	default:
 		// Scalar fields
-		return fmt.Sprintf("%s\"%s\" AS \"%s\"", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf("%s\"%s\" as \"%s\"", tab, column.SourceName, column.ColumnName)
 	}
 }
 
@@ -351,13 +351,13 @@ func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, ta
 	tab := strings.Repeat("\t", tabs)
 
 	switch column.Type {
-	case "STRUCT":
+	case "struct":
 		var str strings.Builder
 
-		// Add CASE logic to handle NULL values for the struct
-		str.WriteString(fmt.Sprintf("%s\"%s\" := CASE\n", tab, column.ColumnName))
-		str.WriteString(fmt.Sprintf("%s\tWHEN %s.\"%s\" IS NULL THEN NULL\n", tab, parentName, column.SourceName))
-		str.WriteString(fmt.Sprintf("%s\tELSE struct_pack(\n", tab))
+		// Add case logic to handle null values for the struct
+		str.WriteString(fmt.Sprintf("%s\"%s\" := case\n", tab, column.ColumnName))
+		str.WriteString(fmt.Sprintf("%s\twhen %s.\"%s\" is null then null\n", tab, parentName, column.SourceName))
+		str.WriteString(fmt.Sprintf("%s\telse struct_pack(\n", tab))
 
 		// Loop through nested fields and add them to the struct_pack
 		for j, nestedColumn := range column.StructFields {
@@ -369,9 +369,9 @@ func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, ta
 			str.WriteString(getTypeSqlForStructField(nestedColumn, newParent, tabs+2))
 		}
 
-		// Close struct_pack and CASE
+		// Close struct_pack and case
 		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
-		str.WriteString(fmt.Sprintf("%sEND", tab))
+		str.WriteString(fmt.Sprintf("%send", tab))
 		return str.String()
 
 	default:
