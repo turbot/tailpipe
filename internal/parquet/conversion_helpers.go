@@ -2,9 +2,10 @@ package parquet
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"strings"
 )
 
 func buildViewQuery(rowSchema *schema.TableSchema) string {
@@ -336,7 +337,7 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 		str.WriteString(fmt.Sprintf("%send as \"%s\"", tab, column.ColumnName))
 		return str.String()
 
-	case "JSON":
+	case "json":
 		// Convert the value using json()
 		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
 

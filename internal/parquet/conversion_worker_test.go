@@ -162,7 +162,7 @@ from
 						{
 							SourceName: "JsonField",
 							ColumnName: "json_field",
-							Type:       "JSON",
+							Type:       "json",
 						},
 					},
 				},
@@ -175,7 +175,7 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"JsonField": 'JSON'
+			"JsonField": 'json'
 		}
 	)`,
 			// NOTE: the data is returned as a json string
