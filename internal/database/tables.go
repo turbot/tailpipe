@@ -70,7 +70,7 @@ func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...
 	var typeOverrides = map[string]string{
 		"tp_partition": "varchar",
 		"tp_index":     "varchar",
-		"tp_date":      "data",
+		"tp_date":      "date",
 	}
 	var selectClauses []string
 	for _, col := range columns {

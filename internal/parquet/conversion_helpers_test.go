@@ -137,11 +137,11 @@ import (
 //		{
 //			name:           "date",
 //			input:          "2024-03-14",
-//			columnType:     "data",
+//			columnType:     "date",
 //			sourceName:     "date_field",
 //			columnName:     "date_field",
 //			expectedSQL:    "\t\"date_field\"::data as \"date_field\"",
-//			expectedDbType: "data",
+//			expectedDbType: "date",
 //			expectedValue:  time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC),
 //		},
 //		{
@@ -346,11 +346,11 @@ import (
 //		{
 //			name:           "invalid date",
 //			input:          "2024-13-45", // Invalid month and day
-//			columnType:     "data",
+//			columnType:     "date",
 //			sourceName:     "date_field",
 //			columnName:     "date_field",
 //			expectedSQL:    "\t\"date_field\"::data as \"date_field\"",
-//			expectedDbType: "data",
+//			expectedDbType: "date",
 //			expectedError:  "date field value out of range: \"2024-13-45\", expected format is (YYYY-MM-DD)",
 //		},
 //		{
@@ -493,7 +493,7 @@ import (
 //		{
 //			name:          "iso date no format",
 //			input:         "2024-03-14",
-//			columnType:    "data",
+//			columnType:    "date",
 //			timeFormat:    "",
 //			sourceName:    "date_field",
 //			columnName:    "date_field",
@@ -524,7 +524,7 @@ import (
 //		{
 //			name:          "european date format DD/MM/YYYY",
 //			input:         "14/03/2024",
-//			columnType:    "data",
+//			columnType:    "date",
 //			timeFormat:    "%d/%m/%Y",
 //			sourceName:    "date_field",
 //			columnName:    "date_field",
@@ -534,7 +534,7 @@ import (
 //		{
 //			name:          "american date format MM/DD/YYYY",
 //			input:         "03/14/2024",
-//			columnType:    "data",
+//			columnType:    "date",
 //			timeFormat:    "%m/%d/%Y",
 //			sourceName:    "date_field",
 //			columnName:    "date_field",
