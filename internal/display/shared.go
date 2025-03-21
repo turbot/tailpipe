@@ -13,16 +13,18 @@ type FileMetadata struct {
 	FileCount int64 `json:"file_count"`
 }
 
-func (f *FileMetadata) HumanizeSize() string {
-	return humanizeBytes(f.FileSize)
-}
-
-func (f *FileMetadata) HumanizeCount() string {
-	return humanize.Comma(f.FileCount)
-}
-
 func humanizeBytes(bytes int64) string {
+	if bytes == 0 {
+		return "-"
+	}
 	return humanize.Bytes(uint64(math.Max(float64(bytes), 0)))
+}
+
+func humanizeCount(count int64) string {
+	if count == 0 {
+		return "-"
+	}
+	return humanize.Comma(count)
 }
 
 func getFileMetadata(basePath string) (FileMetadata, error) {
