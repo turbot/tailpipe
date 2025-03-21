@@ -25,7 +25,7 @@ type Format struct {
 	// the raw HCL of the format (this will be decoded by the plugin which implements the format)
 	Config *HclBytes `cty:"config"`
 	// alternatively, the preset name opf the format
-	Preset string `cty:"preset"`
+	PresetName string `cty:"preset"`
 }
 
 // GetSubType returns the subtype for the format block (the type).
@@ -71,7 +71,7 @@ func NewPresetFormat(block *hcl.Block, presetName string) (*Format, hcl.Diagnost
 
 	return &Format{
 		HclResourceImpl: modconfig.NewHclResourceImpl(&hcl.Block{}, presetName),
-		Preset:          presetName,
+		PresetName:      presetName,
 		Type:            parsed.GetSubType(),
 	}, diags
 }
@@ -81,8 +81,8 @@ func (f *Format) ToProto() *proto.FormatData {
 		Name: f.ShortName,
 	}
 	// set either preset name or config
-	if f.Preset != "" {
-		res.Preset = f.Preset
+	if f.PresetName != "" {
+		res.PresetName = f.PresetName
 	} else if f.Config != nil {
 		res.Config = &proto.ConfigData{
 			Target: "format." + f.Type,
