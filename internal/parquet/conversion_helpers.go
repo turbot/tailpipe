@@ -296,7 +296,7 @@ select
 %s`, coalesceFields.String()))
 
 	for _, column := range rowSchema.Columns {
-		if column.Type != "struct[]" {
+		if column.Type != constants.CDuckDbTypeStructArray {
 			str.WriteString(",\n")
 			str.WriteString(fmt.Sprintf(`	raw.%s`, column.ColumnName))
 		}
