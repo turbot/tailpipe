@@ -58,15 +58,23 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 	// map so that custom formats can override built-in format presets
 	formatMap := make(map[string]*FormatResource)
 
-	// add preset formats
+	// add preset formats and types from plugins
 	pm := plugin.NewPluginManager()
 	defer pm.Close()
 	for _, pluginVersion := range config.GlobalConfig.PluginVersions {
-		if _, hasPresets := pluginVersion.Metadata["format_presets"]; hasPresets {
+		if pluginVersion.Metadata != nil {
 			desc, err := pm.Describe(ctx, pluginVersion.Name)
 			if err != nil {
 				return nil, err
 			}
+
+			// populate types
+			for _, t := range desc.FormatTypes {
+				// types do not have an instance name or description
+				formatMap[t] = NewFormatResource(&sdktypes.FormatDescription{Type: t})
+			}
+
+			// populate presets
 			for k, f := range desc.FormatPresets {
 				formatMap[k] = NewFormatResource(f)
 			}
@@ -102,12 +110,30 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 func GetFormatResource(ctx context.Context, name string) (*FormatResource, error) {
 	// format should be specified as `type.instance` - validate we have 2 parts
 	parts := strings.Split(name, ".")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("format should be specified as `type.instance`")
+	switch len(parts) {
+	case 1:
+		// assume type
+		return getFormatType(ctx, name)
+	case 2:
+		// assume type.instance
+		return getFormatInstance(ctx, name)
+	default:
+		return nil, fmt.Errorf("format should be specified as `type` or `type.instance`")
 	}
+}
 
-	formatType := parts[0]
-	// formatInstance := parts[1]
+func getFormatType(_ context.Context, formatType string) (*FormatResource, error) {
+	// Check this is a valid type exported by a plugin
+	if _, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions); ok {
+		// TODO: #graza once we add source of format add plugin name here https://github.com/turbot/tailpipe/issues/283
+		return NewFormatResource(&sdktypes.FormatDescription{Type: formatType}), nil
+	}
+	// if not found, return error
+	return nil, fmt.Errorf("no plugin found for type '%s'", formatType)
+}
+
+func getFormatInstance(ctx context.Context, name string) (*FormatResource, error) {
+	formatType := strings.Split(name, ".")[0]
 
 	// get plugin for type
 	var pluginName string
