@@ -209,11 +209,11 @@ import (
 //		{
 //			name:           "json",
 //			input:          "{\"key\": \"value\"}",
-//			columnType:     "JSON",
+//			columnType:     "json",
 //			sourceName:     "json_field",
 //			columnName:     "json_field",
 //			expectedSQL:    "\tjson(\"json_field\") as \"json_field\"",
-//			expectedDbType: "JSON",
+//			expectedDbType: "json",
 //			expectedValue:  "{\"key\":\"value\"}",
 //		},
 //		{
@@ -410,11 +410,11 @@ import (
 //		{
 //			name:           "invalid json",
 //			input:          "{not_valid_json",
-//			columnType:     "JSON",
+//			columnType:     "json",
 //			sourceName:     "json_field",
 //			columnName:     "json_field",
 //			expectedSQL:    "\tjson(\"json_field\") as \"json_field\"",
-//			expectedDbType: "JSON",
+//			expectedDbType: "json",
 //			expectedError:  "Malformed JSON",
 //		},
 //		// Invalid interval format

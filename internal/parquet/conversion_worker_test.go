@@ -162,7 +162,7 @@ from
 						{
 							SourceName: "JsonField",
 							ColumnName: "json_field",
-							Type:       "JSON",
+							Type:       "json",
 						},
 					},
 				},
