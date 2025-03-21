@@ -71,11 +71,11 @@ import (
 //		{
 //			name:           "usmallint",
 //			input:          "65535",
-//			columnType:     "USMALLINT",
+//			columnType:     "usmallint",
 //			sourceName:     "usmallint_field",
 //			columnName:     "usmallint_field",
-//			expectedSQL:    "\t\"usmallint_field\"::USMALLINT as \"usmallint_field\"",
-//			expectedDbType: "USMALLINT",
+//			expectedSQL:    "\t\"usmallint_field\"::usmallint as \"usmallint_field\"",
+//			expectedDbType: "usmallint",
 //			expectedValue:  uint16(65535),
 //		},
 //		{

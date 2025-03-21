@@ -105,7 +105,7 @@ func Test_buildViewQuery(t *testing.T) {
 		       c.Type = "integer"
 		       c.Type = "bigint"
 		       c.Type = "utinyint"
-		       c.Type = "USMALLINT"
+		       c.Type = "usmallint"
 		       c.Type = "uinteger"
 		       c.Type = "ubigint"
 		       c.Type = "float"
