@@ -26,7 +26,6 @@ import (
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe-plugin-core/core"
-	"github.com/turbot/tailpipe-plugin-sdk/formats"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
@@ -34,7 +33,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
-	"github.com/turbot/tailpipe/internal/parse"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
@@ -153,35 +151,18 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 // - if the format is implemented by a different plugin, we need to start that plugin and ask it to describe the format
 // - if the format is a built-in format, we can just ask it to describe itself
 func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
-	desc, err := p.describeFormat(ctx, format, tablePlugin)
-	if err != nil {
-		return nil, err
-	}
-	return &proto.FormatData{
-		Name:  format.FullName,
-		Regex: desc.Regex}, nil
-}
-
-func (p *PluginManager) describeFormat(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*types.FormatDescription, error) {
-	// if this is a built in format which is NOT a preset, we can just ask it to describe itself
-	// (after converting to sdk config data and parsing it)
-	if _, ok := formats.BuiltInFormats[format.FullName]; ok && format.PresetName == "" {
-		parsedFormat, err := parse.ParseBuiltInSdkFormat(format)
-		if err != nil {
-			return nil, err
-		}
-		// now use sdk to describe the format
-		return formats.DescribeFormat(parsedFormat), nil
-	}
-
-	// so it is not a built-in custom format
-
-	// now check if the format is provided by the table plugin or whether we need to start format plugin
+	//  check if the format is provided by the table plugin or whether we need to start format plugin
 	formatPluginName, ok := config.GetPluginForFormat(format)
 	if !ok {
 		return nil, fmt.Errorf("error determining source plugin for format %s", format.FullName)
 	}
+	// if the format is provided by the table plugin, we can just convert it to proto
+	if formatPluginName == tablePlugin.Plugin {
+		slog.Info("format is provided by the table plugin - converting to proto", "format", format.FullName, "plugin", formatPluginName)
+		return format.ToProto(), nil
+	}
 
+	// so the plugin is NOT the table plugin - start it if needed
 	formatPlugin := pplugin.NewPlugin(formatPluginName)
 	if formatPlugin.Plugin == tablePlugin.Plugin {
 		// the format is provided by the table plugin - nothing to do
@@ -190,18 +171,33 @@ func (p *PluginManager) describeFormat(ctx context.Context, format *config.Forma
 	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
 
 	// so the format is provided by a different plugin - start it if needed and execute a describe
-	// describe just this format
-	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, WithCustomFormats(format), WithCustomFormatsOnly())
+	// if format is NOT a preset, we need to pass the custom formats to the describe call
+	var opts []DescribeOpts
+	if format.PresetName == "" {
+		opts = append(opts, WithCustomFormats(format), WithCustomFormatsOnly())
+	}
+
+	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("error resolving format: %w", err)
 	}
-	// we expect the custom format to be the one we asked for
-	desc, ok := describeResponse.CustomFormats[format.FullName]
-	if !ok {
-		return nil, fmt.Errorf("plugin returned no description for format %s", format.FullName)
+
+	var desc *types.FormatDescription
+	if format.PresetName != "" {
+		// if format is a preset
+		desc, ok = describeResponse.FormatPresets[format.PresetName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format preset '%s'", formatPluginName, format.PresetName)
+		}
+	} else {
+		// we expect the custom format to be the one we asked for
+		desc, ok = describeResponse.CustomFormats[format.FullName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.PresetName)
+		}
 	}
 
-	return desc, nil
+	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
 }
 
 type DescribeOpts func(*proto.DescribeRequest)
