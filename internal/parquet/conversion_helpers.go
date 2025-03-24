@@ -8,12 +8,15 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
-func buildViewQuery(rowSchema *schema.TableSchema) string {
+func buildViewQuery(tableSchema *schema.TableSchema) string {
+	// ensure the schema types are normalised
+	tableSchema.NormaliseColumnTypes()
+
 	var structSliceColumns []*schema.ColumnSchema
 
 	// first build the columns to select from the jsonl file
 	var columnStrings strings.Builder
-	for i, column := range rowSchema.Columns {
+	for i, column := range tableSchema.Columns {
 		if i > 0 {
 			columnStrings.WriteString(",\n")
 		}
@@ -32,7 +35,7 @@ func buildViewQuery(rowSchema *schema.TableSchema) string {
 	}
 
 	// build column definitions
-	columnDefinitions := getReadJSONColumnDefinitions(rowSchema)
+	columnDefinitions := getReadJSONColumnDefinitions(tableSchema)
 
 	columnStrings.WriteString(fmt.Sprintf(`
 from
@@ -55,7 +58,7 @@ from
 	str.WriteString(columnStrings.String())
 
 	// build the struct slice query
-	return getViewQueryForStructSlices(str.String(), rowSchema, structSliceColumns)
+	return getViewQueryForStructSlices(str.String(), tableSchema, structSliceColumns)
 
 }
 
@@ -314,6 +317,7 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	// Calculate the tab spacing
 	tab := strings.Repeat("\t", tabs)
 
+	// NOTE: we will have normalised column types to lower case
 	switch column.Type {
 	case "struct":
 		var str strings.Builder

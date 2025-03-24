@@ -154,14 +154,14 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	// in the case of a failure
 	// once the conversion is complete we will rename them
 	partitionColumns := []string{sdkconstants.TpTable, sdkconstants.TpPartition, sdkconstants.TpIndex, sdkconstants.TpDate}
-	exportQuery := fmt.Sprintf(`COPY (%s) TO '%s' (
-		FORMAT PARQUET,
-		PARTITION_BY (%s),
-		RETURN_FILES TRUE,
-		OVERWRITE_OR_IGNORE,
-		FILENAME_PATTERN '%s_{i}',
-		FILE_EXTENSION '%s'
-	);`,
+	exportQuery := fmt.Sprintf(`copy (%s) to '%s' (
+		format parquet,
+		partition_by (%s),
+		return_files true,
+		overwrite_or_ignore,
+		filename_pattern '%s_{i}',
+		file_extension '%s'
+);`,
 		selectQuery,
 		w.destDir,
 		strings.Join(partitionColumns, ","),
