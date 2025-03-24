@@ -161,8 +161,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 		overwrite_or_ignore,
 		filename_pattern '%s_{i}',
 		file_extension '%s'
-);
-	);`,
+);`,
 		selectQuery,
 		w.destDir,
 		strings.Join(partitionColumns, ","),
