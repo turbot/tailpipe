@@ -8,10 +8,11 @@ import (
 	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
+	"github.com/turbot/tailpipe-plugin-sdk/formats"
 	sdktypes "github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/parse"
 	"github.com/turbot/tailpipe/internal/plugin"
-
 	"golang.org/x/exp/slices"
 )
 
@@ -107,16 +108,8 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 	return out, nil
 }
 
-//func GetFormatResource(ctx context.Context, name string) (*FormatResource, error) {
-//	pluginName, ok := config.DetermineFormatPluginFromName(name)
-//	if !ok {
-//		return nil, fmt.Errorf("no plugin found for format '%s'", name)
-//	}
-
-
-// OLD
 func GetFormatResource(ctx context.Context, name string) (*FormatResource, error) {
-	// format should be specified as `type.instance` - validate we have 2 parts
+	// format should be specified as `type.instance` (for a format instance) or 'type' (for a format type)
 	parts := strings.Split(name, ".")
 	switch len(parts) {
 	case 1:
@@ -131,34 +124,59 @@ func GetFormatResource(ctx context.Context, name string) (*FormatResource, error
 }
 
 func getFormatType(_ context.Context, formatType string) (*FormatResource, error) {
-	// Check this is a valid type exported by a plugin
-	if _, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions); ok {
-		// TODO: #graza once we add source of format add plugin name here https://github.com/turbot/tailpipe/issues/283
-		return NewFormatResource(&sdktypes.FormatDescription{Type: formatType}), nil
+	if _, ok := formats.BuiltInFormats[formatType]; ok {
+		desc := &sdktypes.FormatDescription{
+			Type: formatType,
+			//Description: "Format type.",
+			//Source: constants.BuiltIn
+		}
+		return NewFormatResource(desc), nil
 	}
-	// if not found, return error
-	return nil, fmt.Errorf("no plugin found for type '%s'", formatType)
+	// Check this is a valid type exported by a plugin
+	_, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions)
+	if !ok {
+		// if not found, return error
+		return nil, fmt.Errorf("no plugin found for type '%s'", formatType)
+	}
+
+	// TODO: #graza once we add source of format add plugin name here https://github.com/turbot/tailpipe/issues/283
+	return NewFormatResource(&sdktypes.FormatDescription{Type: formatType}), nil
+
 }
 
 func getFormatInstance(ctx context.Context, name string) (*FormatResource, error) {
-	formatType := strings.Split(name, ".")[0]
 
-	// get plugin for type
-	var pluginName string
-	if pn, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions); !ok {
-		return nil, fmt.Errorf("no plugin found for type '%s'", formatType)
-	} else {
-		pluginName = pn
-	}
-	// OLD
-
-	// determine if custom format
+	// construct a list of custom formats - this will have zero or 1 items in it and we do it purely so we
+	// can pass it as a variadic parameter to the Describe function
 	var customFormats []*config.Format
-	if customFormat, isCustom := config.GlobalConfig.Formats[name]; isCustom {
+
+	// if this is a custom format of a type implemented by the sdk, we can just describe it directly
+	customFormat, ok := config.GlobalConfig.Formats[name]
+	if ok {
 		customFormats = append(customFormats, customFormat)
+		// is this a built in format?
+		if _, ok := formats.BuiltInFormats[customFormat.Type]; ok {
+			// // parse the format
+			parsedFormat, err := parse.ParseBuiltInSdkFormat(customFormat)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing built-in format %s: %w", customFormat.FullName, err)
+			}
+			desc := formats.DescribeFormat(parsedFormat)
+			return NewFormatResource(desc), nil
+		}
 	}
 
-	// describe plugin to get format info, if custom we need to pass it in
+	// otherwise we find the plugin responsible for either defining this format or the plugin which
+
+	// get the plugin which provides the format (note  config.GetPluginForFormatByName is smart enough
+	// to check whether this format is a preset and if so, return the plugin which provides the preset)
+	pluginName, ok := config.GetPluginForFormatByName(name)
+	if !ok {
+		return nil, fmt.Errorf("no plugin found for format '%s'", name)
+	}
+
+	// describe plugin to get format info, passing the custom formats list in case this is custom
+	// (we will have determined this above)
 	pm := plugin.NewPluginManager()
 	defer pm.Close()
 	desc, err := pm.Describe(ctx, pluginName, plugin.WithCustomFormats(customFormats...))

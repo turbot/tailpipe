@@ -26,6 +26,7 @@ import (
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe-plugin-core/core"
+	"github.com/turbot/tailpipe-plugin-sdk/formats"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
@@ -33,6 +34,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
+	"github.com/turbot/tailpipe/internal/parse"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
@@ -124,11 +126,11 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// now populate the format if necessary
 	if format := partition.GetFormat(); format != nil {
 		// populate the format data to pass to the plugin
-		f, err := p.getFormat(ctx, format, tablePlugin)
+		pf, err := p.formatToProto(ctx, format, tablePlugin)
 		if err != nil {
 			return nil, err
 		}
-		req.SourceFormat = f
+		req.SourceFormat = pf
 	}
 
 	collectResponse, err := tablePluginClient.Collect(req)
@@ -144,20 +146,50 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
-func (p *PluginManager) getFormat(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
-	// now check if the format is provided by the table plugin or whether we need to starta format plugin
-	formatPluginName, ok := config.DetermineFormatPlugin(format)
+// formatToProto takes a config.Format, describes the format and returns the proto.FormatData for the plugin
+// NOTE:
+// - if the format is implemented by the table plugin, we just convert the config.Format directly to proto.FormatData
+// passing the raw HCL - the table plugin will parse it
+// - if the format is implemented by a different plugin, we need to start that plugin and ask it to describe the format
+// - if the format is a built-in format, we can just ask it to describe itself
+func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
+	desc, err := p.describeFormat(ctx, format, tablePlugin)
+	if err != nil {
+		return nil, err
+	}
+	return &proto.FormatData{
+		Name:  format.FullName,
+		Regex: desc.Regex}, nil
+}
+
+func (p *PluginManager) describeFormat(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*types.FormatDescription, error) {
+	// if this is a built in format which is NOT a preset, we can just ask it to describe itself
+	// (after converting to sdk config data and parsing it)
+	if _, ok := formats.BuiltInFormats[format.FullName]; ok && format.PresetName == "" {
+		parsedFormat, err := parse.ParseBuiltInSdkFormat(format)
+		if err != nil {
+			return nil, err
+		}
+		// now use sdk to describe the format
+		return formats.DescribeFormat(parsedFormat), nil
+	}
+
+	// so it is not a built-in custom format
+
+	// now check if the format is provided by the table plugin or whether we need to start format plugin
+	formatPluginName, ok := config.GetPluginForFormat(format)
 	if !ok {
 		return nil, fmt.Errorf("error determining source plugin for format %s", format.FullName)
 	}
-	formatPlugin := pplugin.NewPlugin(formatPluginName)
 
+	formatPlugin := pplugin.NewPlugin(formatPluginName)
 	if formatPlugin.Plugin == tablePlugin.Plugin {
 		// the format is provided by the table plugin - nothing to do
-		return format.ToProto(), nil
+		return nil, nil
 	}
 	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
 
+	// so the format is provided by a different plugin - start it if needed and execute a describe
 	// describe just this format
 	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, WithCustomFormats(format), WithCustomFormatsOnly())
 	if err != nil {
@@ -169,9 +201,7 @@ func (p *PluginManager) getFormat(ctx context.Context, format *config.Format, ta
 		return nil, fmt.Errorf("plugin returned no description for format %s", format.FullName)
 	}
 
-	return &proto.FormatData{
-		Name:  format.FullName,
-		Regex: desc.Regex}, nil
+	return desc, nil
 }
 
 type DescribeOpts func(*proto.DescribeRequest)
