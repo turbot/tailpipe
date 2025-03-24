@@ -145,11 +145,6 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 }
 
 // formatToProto takes a config.Format, describes the format and returns the proto.FormatData for the plugin
-// NOTE:
-// - if the format is implemented by the table plugin, we just convert the config.Format directly to proto.FormatData
-// passing the raw HCL - the table plugin will parse it
-// - if the format is implemented by a different plugin, we need to start that plugin and ask it to describe the format
-// - if the format is a built-in format, we can just ask it to describe itself
 func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
 	//  check if the format is provided by the table plugin or whether we need to start format plugin
 	formatPluginName, ok := config.GetPluginForFormat(format)
