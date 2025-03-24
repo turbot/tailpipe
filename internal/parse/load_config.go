@@ -44,9 +44,9 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 
 	// TODO KAI CHECK THIS
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
-	err = v.AddLocalPlugins(ctx)
-	if err != nil {
-		ew.Error = err
+	localPluginErrors := v.AddLocalPlugins(ctx)
+	ew.Merge(localPluginErrors)
+	if ew.Error != nil {
 		return nil, ew
 	}
 

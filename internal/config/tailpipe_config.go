@@ -95,14 +95,41 @@ func GetPluginForTable(tableName string, versionMap map[string]*versionfile.Inst
 	return parts[0]
 }
 
-// GetPluginForFormatPreset returns the plugin name that provides the given format [preset.
+// GetPluginForFormat determines the plugin which provides the given format, using the plugin versions file,
+// Call either GetPluginForFormatPreset or GetPluginForFormatType
+func GetPluginForFormat(format *Format) (string, bool) {
+	// first check if this is a preset of a type of any installed plugin
+	// this handles the case where a plugin has a preset in a format which is provided by cores
+	var pluginName string
+	var ok bool
+
+	// presets formats are always provided by the plugin which defines the preset,
+	// even if the type is provided by the core plugin
+	if format.PresetName != "" {
+		pluginName, ok = GetPluginForFormatPreset(format.PresetName, GlobalConfig.PluginVersions)
+	} else {
+		// otherwise just return the plugin which provides the type
+		pluginName, ok = GetPluginForFormatType(format.Type, GlobalConfig.PluginVersions)
+	}
+
+	return pluginName, ok
+}
+
+// GetPluginForFormatByName returns the plugin name that provides the given format name.
+// Call either GetPluginForFormatPreset or GetPluginForFormatType
+func GetPluginForFormatByName(formatName string) (string, bool) {
+	// is this a format defined in config? If so retrieve the format and call GetPluginForFormat
+	format, ok := GlobalConfig.Formats[formatName]
+	if ok {
+		return GetPluginForFormat(format)
+	}
+	// otherwise is must be a preset
+	return GetPluginForFormatPreset(formatName, GlobalConfig.PluginVersions)
+}
+
+// GetPluginForFormatPreset returns the plugin name that provides the given format preset.
 // Format name should be in the format "type.name"
 func GetPluginForFormatPreset(fullName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
-	// we expect the fullName to have the prefix "format." (as it is a hcl reference
-	if !strings.HasPrefix(fullName, "format.") {
-		// if missing, fail
-		return "", false
-	}
 	// remove the prefix as the presets registered int he version file do not have them
 	fullName = strings.TrimPrefix(fullName, "format.")
 	// Check format_presets in metadata
@@ -119,6 +146,7 @@ func GetPluginForFormatPreset(fullName string, versionMap map[string]*versionfil
 	return "", false
 }
 
+// GetPluginForFormatType returns the plugin name that provides the given format type.
 func GetPluginForFormatType(typeName string, versionMap map[string]*versionfile.InstalledVersion) (string, bool) {
 	// Check format_types in metadata
 	for pluginName, version := range versionMap {

@@ -123,11 +123,12 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// now populate the format if necessary
 	if format := partition.GetFormat(); format != nil {
-		f, err := p.getFormat(ctx, format, tablePlugin)
+		// populate the format data to pass to the plugin
+		pf, err := p.formatToProto(ctx, format, tablePlugin)
 		if err != nil {
 			return nil, err
 		}
-		req.SourceFormat = f
+		req.SourceFormat = pf
 	}
 
 	collectResponse, err := tablePluginClient.Collect(req)
@@ -143,32 +144,55 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
-func (p *PluginManager) getFormat(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
-	// now check if the format is provided by the table plugin or whether we need to starta format plugin
-	formatPlugin, err := p.determineFormatPlugin(format.Type)
-	if err != nil {
-		return nil, fmt.Errorf("error determining source plugin for format %s: %w", format.Type, err)
+// formatToProto takes a config.Format, describes the format and returns the proto.FormatData for the plugin
+func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
+	//  check if the format is provided by the table plugin or whether we need to start format plugin
+	formatPluginName, ok := config.GetPluginForFormat(format)
+	if !ok {
+		return nil, fmt.Errorf("error determining source plugin for format %s", format.FullName)
 	}
+	// if the format is provided by the table plugin, we can just convert it to proto
+	if formatPluginName == tablePlugin.Plugin {
+		slog.Info("format is provided by the table plugin - converting to proto", "format", format.FullName, "plugin", formatPluginName)
+		return format.ToProto(), nil
+	}
+
+	// so the plugin is NOT the table plugin - start it if needed
+	formatPlugin := pplugin.NewPlugin(formatPluginName)
 	if formatPlugin.Plugin == tablePlugin.Plugin {
 		// the format is provided by the table plugin - nothing to do
-		return format.ToProto(), nil
+		return nil, nil
 	}
 	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
 
-	// describe just this format
-	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, WithCustomFormats(format), WithCustomFormatsOnly())
+	// so the format is provided by a different plugin - start it if needed and execute a describe
+	// if format is NOT a preset, we need to pass the custom formats to the describe call
+	var opts []DescribeOpts
+	if format.PresetName == "" {
+		opts = append(opts, WithCustomFormats(format), WithCustomFormatsOnly())
+	}
+
+	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("error resolving format: %w", err)
 	}
-	// we expect the custom format to be the one we asked for
-	desc, ok := describeResponse.CustomFormats[format.FullName]
-	if !ok {
-		return nil, fmt.Errorf("plugin returned no description for format %s", format.PresetName)
+
+	var desc *types.FormatDescription
+	if format.PresetName != "" {
+		// if format is a preset
+		desc, ok = describeResponse.FormatPresets[format.PresetName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format preset '%s'", formatPluginName, format.PresetName)
+		}
+	} else {
+		// we expect the custom format to be the one we asked for
+		desc, ok = describeResponse.CustomFormats[format.FullName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.PresetName)
+		}
 	}
 
-	return &proto.FormatData{
-		Name:  format.FullName,
-		Regex: desc.Regex}, nil
+	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
 }
 
 type DescribeOpts func(*proto.DescribeRequest)
@@ -438,24 +462,6 @@ func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*ppl
 	}
 
 	pluginName := config.GetPluginForSourceType(sourceType, config.GlobalConfig.PluginVersions)
-
-	// now return the plugin
-	return pplugin.NewPlugin(pluginName), nil
-}
-
-// determineFormatPlugin determines the source plugin for the given partition
-// try to use the source information registered in the version file
-// if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
-func (p *PluginManager) determineFormatPlugin(formatType string) (*pplugin.Plugin, error) {
-	pluginName, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions)
-
-	// we failed to retrieve the plugun name by inspecting the version file - fall back to the legacy method
-	if !ok {
-		// no installed plugin provides this format
-		// note we do NOT use the fallback approach as all plugin versions which provide formats WILL have registered
-		// the source type in the version file
-		return nil, fmt.Errorf("no installed plugin provides the format %s", formatType)
-	}
 
 	// now return the plugin
 	return pplugin.NewPlugin(pluginName), nil
