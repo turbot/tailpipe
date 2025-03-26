@@ -222,7 +222,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 		executionId := ev.ExecutionId
-		chunkNumber := int(ev.ChunkNumber)
+		chunkNumber := ev.ChunkNumber
 
 		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {

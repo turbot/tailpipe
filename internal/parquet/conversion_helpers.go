@@ -26,13 +26,7 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 		if column.Type == "struct[]" {
 			structSliceColumns = append(structSliceColumns, column)
 		}
-		// TODO take nested struct arays into account
-		//for _, nestedColumn := range column.StructFields {
-		//	if nestedColumn.Type == "struct[]" {
-		//		structSliceColumns = append(structSliceColumns, nestedColumn)
-		//	}
-		//
-		//}
+		// TODO take nested struct arrays into account
 	}
 
 	// build column definitions
