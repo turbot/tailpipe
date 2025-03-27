@@ -113,7 +113,8 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int) error {
 
 	// delete JSON file (configurable?)
 	if err := os.Remove(jsonFilePath); err != nil {
-		return fmt.Errorf("failed to delete JSONL file %s: %w", jsonFilePath, err)
+		// log the error but don't fail
+		slog.Error("failed to delete JSONL file", "file", jsonFilePath, "error", err)
 	}
 	activeDuration := time.Since(startTime)
 	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
@@ -131,10 +132,6 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	// verify file exists
 	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
 		return 0, fmt.Errorf("file does not exist: %s", jsonlFilePath)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(w.destDir), 0755); err != nil {
-		return 0, fmt.Errorf("failed to create parquet folder: %w", err)
 	}
 
 	// render query
@@ -174,7 +171,9 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	var files []interface{}
 	err := row.Scan(&rowCount, &files)
 	if err != nil {
-		return 0, fmt.Errorf("error reading files: %w", err)
+		// try to get the row count of the file we failed to convert
+		return 0, handleConversionError(err, jsonlFilePath)
+
 	}
 	slog.Debug("created parquet files", "count", len(files), "files", files)
 

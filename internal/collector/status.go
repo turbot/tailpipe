@@ -7,9 +7,8 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
-
 	"github.com/turbot/pipe-fittings/v2/utils"
-	"github.com/turbot/tailpipe-plugin-sdk/error_types"
+	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/parquet"
@@ -18,18 +17,11 @@ import (
 const uiErrorsToDisplay = 3
 
 type status struct {
-	LatestArtifactPath       string
-	ArtifactsDiscovered      int64
-	ArtifactsDownloaded      int64
-	ArtifactsDownloadedBytes int64
-	ArtifactsExtracted       int64
-	ArtifactErrors           int64
-	RowsReceived             int64
-	RowsEnriched             int64
-	RowsConverted            int64
-	PluginErrors             int64
-	ConversionErrors         int64
-	RowErrors                *error_types.RowErrors
+	events.Status
+
+	rowsConverted         int64
+	rowConversionFailures int64
+	conversionErrors      []error
 
 	// additional fields for display (not from updates)
 	started          time.Time
@@ -49,21 +41,13 @@ func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTim
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
 func (s *status) UpdateWithPluginStatus(event *proto.EventStatus) {
-	s.LatestArtifactPath = event.LatestArtifactPath
-	s.ArtifactsDiscovered = event.ArtifactsDiscovered
-	s.ArtifactsDownloaded = event.ArtifactsDownloaded
-	s.ArtifactsDownloadedBytes = event.ArtifactsDownloadedBytes
-	s.ArtifactsExtracted = event.ArtifactsExtracted
-	s.ArtifactErrors = event.ArtifactErrors
-	s.RowsReceived = event.RowsReceived
-	s.RowsEnriched = event.RowsEnriched
-	s.PluginErrors = event.Errors
-	s.RowErrors = error_types.RowErrorsFromProto(event.RowErrors)
+	s.Status = *events.StatusFromProto(event)
 }
 
-func (s *status) UpdateConversionStatus(rowsConverted, errors int64) {
-	s.RowsConverted = rowsConverted
-	s.ConversionErrors = errors
+func (s *status) UpdateConversionStatus(rowsConverted, failedRows int64, errors ...error) {
+	s.rowsConverted = rowsConverted
+	s.rowConversionFailures = failedRows
+	s.conversionErrors = append(s.conversionErrors, errors...)
 }
 
 func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStatus) {
@@ -100,7 +84,7 @@ func (s *status) String() string {
 	rowCountLen := len(humanize.Comma(s.RowsReceived))
 
 	// default values
-	displayPath := s.LatestArtifactPath
+	displayPath := s.LatestArtifactLocation
 	timeLabel := "Time:"
 	compaction := "Verifying..."
 
@@ -129,8 +113,9 @@ func (s *status) String() string {
 		out.WriteString(writeCountLine("Discovered:", artifactMaxKeyLen, s.ArtifactsDiscovered, artifactCountLen, &displayPath))
 		out.WriteString(writeCountLine("Downloaded:", artifactMaxKeyLen, s.ArtifactsDownloaded, artifactCountLen, &downloadedDisplay))
 		out.WriteString(writeCountLine("Extracted:", artifactMaxKeyLen, s.ArtifactsExtracted, artifactCountLen, nil))
-		if s.ArtifactErrors > 0 {
-			out.WriteString(writeCountLine("Errors:", artifactMaxKeyLen, s.ArtifactErrors, artifactCountLen, nil))
+		// combine source errors which came form event and from status
+		if sourceErrorCount := int64(len(s.SourceErrors)); sourceErrorCount > 0 {
+			out.WriteString(writeCountLine("Errors:", artifactMaxKeyLen, sourceErrorCount, artifactCountLen, nil))
 		}
 		out.WriteString("\n")
 	}
@@ -143,15 +128,14 @@ func (s *status) String() string {
 	out.WriteString("Rows:\n")
 	out.WriteString(writeCountLine("Received:", rowMaxKeyLen, s.RowsReceived, rowCountLen, nil))
 	out.WriteString(writeCountLine("Enriched:", rowMaxKeyLen, s.RowsEnriched, rowCountLen, nil))
-	out.WriteString(writeCountLine("Saved:", rowMaxKeyLen, s.RowsConverted, rowCountLen, nil))
-	// TODO: verify s.ConversionErrors is a count of rows that failed conversion (not one error per file)
-	rowErrCount := rowErrorsTotal + s.PluginErrors + s.ConversionErrors
+	out.WriteString(writeCountLine("Saved:", rowMaxKeyLen, s.rowsConverted, rowCountLen, nil))
+	rowErrCount := rowErrorsTotal + s.rowConversionFailures
 	if rowErrCount > 0 {
 		out.WriteString(writeCountLine("Errors:", rowMaxKeyLen, rowErrCount, rowCountLen, nil))
 	}
 	if s.compactionStatus != nil {
 		// TODO: Validate this logic
-		filteredRowCount := s.RowsEnriched - (s.RowsConverted + rowErrCount)
+		filteredRowCount := s.RowsEnriched - (s.rowsConverted + rowErrCount)
 		if filteredRowCount > 0 {
 			out.WriteString(writeCountLine("Filtered:", rowMaxKeyLen, filteredRowCount, rowCountLen, nil))
 		}
@@ -173,7 +157,6 @@ func (s *status) String() string {
 
 	// Errors section
 	if rowErrorsTotal > 0 {
-		// TODO: #error Consider displaying errors for ArtifactErrors, PluginErrors, and ConversionErrors
 		out.WriteString("Errors:\n")
 		rowErrors := s.RowErrors.Errors()
 		for i, e := range rowErrors {

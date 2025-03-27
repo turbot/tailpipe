@@ -267,20 +267,20 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			}
 		}()
 
-		// TODO #errors non fatal errors should be aggregated by the plugin - only fatal errors should be sent as error event
 	case *proto.Event_ErrorEvent:
-		ev := e.GetErrorEvent()
-		// TODO think about fatal vs non fatal errors https://github.com/turbot/tailpipe/issues/179
-		// for now just store errors and display at end
-		//c.execution.state = ExecutionState_ERROR
-		//c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
-		slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
-		c.errors = append(c.errors, ev.Error)
-		c.writeCollectorError(ev.Error)
-		// if we're displaying a tea.app, update its error collection
-		if c.app != nil {
-			c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
-		}
+		// TODO #errors error events are deprectaed an will only be sent for plugins not using sdk > v0.2.0
+		// TODO #errors decide what (if anything) we should do with error events from old plugins
+		//ev := e.GetErrorEvent()
+		//// for now just store errors and display at end
+		////c.execution.state = ExecutionState_ERROR
+		////c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
+		//slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
+		//c.errors = append(c.errors, ev.Error)
+		//c.writeCollectorError(ev.Error)
+		//// if we're displaying a tea.app, update its error collection
+		//if c.app != nil {
+		//	c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
+		//}
 	}
 }
 
@@ -334,11 +334,11 @@ func (c *Collector) showMinimalCollectionStatus() error {
 }
 
 // updateRowCount is called directly by the parquet writer to update the row count
-func (c *Collector) updateRowCount(rowCount, errorCount int64) {
+func (c *Collector) updateRowCount(rowCount, errorCount int64, errors ...error) {
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
 
-	c.status.UpdateConversionStatus(rowCount, errorCount)
+	c.status.UpdateConversionStatus(rowCount, errorCount, errors...)
 
 	c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 }
