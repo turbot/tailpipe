@@ -92,8 +92,6 @@ func (c *Collector) Close() {
 		c.parquetConvertor.Close()
 	}
 
-	c.updateApp(CollectionFinishedMsg{})
-
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
 
@@ -189,7 +187,10 @@ func (c *Collector) Compact(ctx context.Context) error {
 	c.updateApp(AwaitingCompactionMsg{})
 
 	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
-		c.updateApp(CompactionStatusUpdateMsg{status: &compactionStatus})
+		c.statusLock.Lock()
+		defer c.statusLock.Unlock()
+		c.status.UpdateCompactionStatus(&compactionStatus)
+		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)
 	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
@@ -197,6 +198,16 @@ func (c *Collector) Compact(ctx context.Context) error {
 		return fmt.Errorf("failed to compact data files: %w", err)
 	}
 	return nil
+}
+
+func (c *Collector) Completed() {
+	c.status.complete = true
+	c.updateApp(CollectionFinishedMsg{status: c.status})
+
+	// if we suppressed progress display, we should write the summary
+	if !viper.GetBool(pconstants.ArgProgress) {
+		fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // we are writing to stdout
+	}
 }
 
 // handlePluginEvent handles an event from a plugin
@@ -208,8 +219,10 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		slog.Info("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
+		c.statusLock.Lock()
+		defer c.statusLock.Unlock()
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		c.updateApp(c.status)
+		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 		executionId := ev.ExecutionId
@@ -285,15 +298,17 @@ func (c *Collector) createTableView(ctx context.Context) error {
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime, c.errorFilePath)
+
 	if viper.GetBool(pconstants.ArgProgress) {
-		return c.showTeaAppAsync(resolvedFromTime)
+		return c.showTeaAppAsync()
 	}
 
-	return c.showMinimalCollectionStatus(resolvedFromTime)
+	return c.showMinimalCollectionStatus()
 }
 
-func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTime) error {
-	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
+func (c *Collector) showTeaAppAsync() error {
+	c.app = tea.NewProgram(newCollectionModel(c.status))
 
 	go func() {
 		model, err := c.app.Run()
@@ -309,13 +324,9 @@ func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTim
 	return nil
 }
 
-func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+func (c *Collector) showMinimalCollectionStatus() error {
 	// display initial message
-	fromTimeSourceStr := ""
-	if resolvedFromTime.Source != "" {
-		fromTimeSourceStr = fmt.Sprintf("(%s)", resolvedFromTime.Source)
-	}
-	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr) //nolint:forbidigo //desired output
+	_, err := fmt.Fprintf(os.Stdout, c.status.CollectionHeader()) //nolint:forbidigo //desired output
 	return err
 }
 
@@ -326,12 +337,11 @@ func (c *Collector) updateRowCount(rowCount, errorCount int64) {
 
 	c.status.UpdateConversionStatus(rowCount, errorCount)
 
-	c.updateApp(c.status)
+	c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 }
 
 func (c *Collector) StatusString() string {
 	var str strings.Builder
-	str.WriteString("Collection complete.\n\n")
 	str.WriteString(c.status.String())
 	str.WriteString("\n")
 	// print out the execution status

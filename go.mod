@@ -18,7 +18,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
-	github.com/turbot/go-kit v1.1.0
+	github.com/turbot/go-kit v1.2.0
 	github.com/turbot/pipe-fittings/v2 v2.3.0-rc.2
 	github.com/turbot/tailpipe-plugin-sdk v0.2.0-alpha.3
 	github.com/zclconf/go-cty v1.14.4

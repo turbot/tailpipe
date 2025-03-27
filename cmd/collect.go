@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -159,10 +158,7 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 		}
 	}
 
-	// if we suppressed progress display, we should write the summary
-	if !viper.GetBool(pconstants.ArgProgress) {
-		fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // we are writing to stdout
-	}
+	c.Completed()
 
 	return nil
 }
