@@ -39,7 +39,6 @@ require (
 	github.com/hashicorp/go-plugin v1.6.1
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
-	github.com/marcboeker/go-duckdb v1.8.3
 	github.com/marcboeker/go-duckdb/v2 v2.0.3
 	github.com/thediveo/enumflag/v2 v2.0.5
 	github.com/turbot/tailpipe-plugin-core v0.1.4-rc.0
