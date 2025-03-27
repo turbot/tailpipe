@@ -158,6 +158,7 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 		}
 	}
 
+	// update status to show complete and display collection summary
 	c.Completed()
 
 	return nil

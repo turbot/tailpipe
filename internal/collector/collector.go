@@ -200,6 +200,9 @@ func (c *Collector) Compact(ctx context.Context) error {
 	return nil
 }
 
+// Completed marks the collection as complete and renders the summary
+// - progress = true : sends completed event to tea app
+// - progress = false : writes the summary to stdout
 func (c *Collector) Completed() {
 	c.status.complete = true
 	c.updateApp(CollectionFinishedMsg{status: c.status})
