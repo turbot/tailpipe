@@ -50,11 +50,6 @@ type Collector struct {
 	// bubble tea app
 	app    *tea.Program
 	cancel context.CancelFunc
-
-	// errors which occurred during the collection
-	errors        []string
-	errorFilePath string
-	errorFileMut  sync.Mutex
 }
 
 func New(pluginManager *plugin.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
@@ -125,8 +120,6 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	resolvedFromTime := collectResponse.FromTime
 	// now set the execution id
 	c.execution.id = collectResponse.ExecutionId
-
-	c.errorFilePath = fmt.Sprintf("%s/%s_%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), time.Now().Format("20060102T150405"), c.partition.GetUnqualifiedName())
 
 	// validate the schema returned by the plugin
 	err = collectResponse.Schema.Validate()
@@ -275,12 +268,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		////c.execution.state = ExecutionState_ERROR
 		////c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
 		//slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
-		//c.errors = append(c.errors, ev.Error)
-		//c.writeCollectorError(ev.Error)
-		//// if we're displaying a tea.app, update its error collection
-		//if c.app != nil {
-		//	c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
-		//}
 	}
 }
 
@@ -301,7 +288,7 @@ func (c *Collector) createTableView(ctx context.Context) error {
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
-	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime, c.errorFilePath)
+	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime)
 
 	if viper.GetBool(pconstants.ArgProgress) {
 		return c.showTeaAppAsync()
@@ -419,24 +406,5 @@ func (c *Collector) doCancel() {
 func (c *Collector) updateApp(msg tea.Msg) {
 	if c.app != nil {
 		c.app.Send(msg)
-	}
-}
-
-func (c *Collector) writeCollectorError(errorString string) {
-	c.errorFileMut.Lock()
-	defer c.errorFileMut.Unlock()
-	// if a file exists append to it, else create a new file and insert the error
-	filePath := c.errorFilePath
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		slog.Error("Failed to open error file", "error", err, "file", filePath)
-		return
-	}
-	defer file.Close()
-
-	_, err = file.WriteString(errorString + "\n")
-	if err != nil {
-		slog.Error("Failed to write error to file", "error", err, "file", filePath)
-		return
 	}
 }

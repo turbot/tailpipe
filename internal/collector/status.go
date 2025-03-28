@@ -29,14 +29,12 @@ type status struct {
 	partitionName    string
 	fromTime         *row_source.ResolvedFromTime
 	compactionStatus *parquet.CompactionStatus
-	errorFilePath    string
 }
 
-func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTime, errorFilePath string) {
+func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTime) {
 	s.started = time.Now()
 	s.partitionName = partitionName
 	s.fromTime = fromTime
-	s.errorFilePath = errorFilePath
 }
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
@@ -164,7 +162,6 @@ func (s *status) String() string {
 				out.WriteString(fmt.Sprintf("  %s\n", e))
 			} else {
 				out.WriteString(fmt.Sprintf("  … and %d more.\n", len(rowErrors)-uiErrorsToDisplay))
-				out.WriteString(fmt.Sprintf("  See %s for full details.\n", s.errorFilePath))
 				break
 			}
 		}
