@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"fmt"
-	"golang.org/x/exp/maps"
 	"strings"
 
 	"github.com/turbot/go-kit/helpers"
@@ -30,7 +29,7 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	}
 
 	// build column definitions
-	columnDefinitions := getReadJSONColumnDefinitions(maps.Values(tableSchema.SourceColumns))
+	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
 
 	columnStrings.WriteString(fmt.Sprintf(`
 from
@@ -61,7 +60,7 @@ from
 }
 
 // return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
-func getReadJSONColumnDefinitions(sourceColumns []*schema.ColumnSchema) string {
+func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string {
 	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
 	var str strings.Builder
 	str.WriteString("columns = {")
@@ -70,7 +69,7 @@ func getReadJSONColumnDefinitions(sourceColumns []*schema.ColumnSchema) string {
 			str.WriteString(", ")
 		}
 		str.WriteString(fmt.Sprintf(`
-	"%s": '%s'`, column.SourceName, column.FullType()))
+	"%s": '%s'`, column.Name, column.Type))
 	}
 	str.WriteString("\n}")
 	return str.String()
