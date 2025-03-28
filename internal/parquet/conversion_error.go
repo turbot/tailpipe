@@ -3,6 +3,7 @@ package parquet
 import (
 	"bytes"
 	"io"
+	"log/slog"
 	"os"
 )
 
@@ -12,9 +13,14 @@ func handleConversionError(err error, path string) error {
 	// try to count the number of lines in the file
 	lines, countErr := countLines(path)
 	if countErr != nil {
-		// just return the error as is
+		// just log and return the error as is
+		slog.Error("parquet conversion failed", "error", err, "path", path)
 		return err
 	}
+
+	// log the error with line count & then return a conversion error
+	slog.Error("parquet conversion failed", "error", err, "path", path, "lines", lines)
+
 	return NewConversionError(err, lines)
 }
 
