@@ -105,7 +105,8 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int) error {
 	// process the ParquetJobPool
 	rowCount, err := w.convertFile(jsonFilePath)
 	if err != nil {
-		return fmt.Errorf("failed to convert file %s: %w", jsonFilePath, err)
+		// don't wrap error already a ConversionError
+		return err
 	}
 
 	// update the row count
@@ -127,11 +128,11 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
-		return 0, fmt.Errorf("invalid file type - conversionWorker only supports JSONL files: %s", jsonlFilePath)
+		return 0, NewConversionError("invalid file type - conversionWorker only supports .jsonl files", 0, jsonlFilePath)
 	}
 	// verify file exists
 	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
-		return 0, fmt.Errorf("file does not exist: %s", jsonlFilePath)
+		return 0, NewConversionError("file does not exist", 0, jsonlFilePath)
 	}
 
 	// render query

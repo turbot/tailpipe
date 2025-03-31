@@ -2,7 +2,7 @@ package collector
 
 import (
 	"fmt"
-	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -10,11 +10,12 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
+	"github.com/turbot/tailpipe-plugin-sdk/logging"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
-const uiErrorsToDisplay = 3
+const uiErrorsToDisplay = 15
 
 type status struct {
 	events.Status
@@ -60,6 +61,7 @@ func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStat
 	s.compactionStatus.Update(*compactionStatus)
 }
 
+// CollectionHeader returns a string to display at the top of the collection status for app or alone for non-progress display
 func (s *status) CollectionHeader() string {
 	// wrap the source in parentheses if it exists
 	fromTimeSource := s.fromTime.Source
@@ -70,110 +72,217 @@ func (s *status) CollectionHeader() string {
 	return fmt.Sprintf("\nCollecting logs for %s from %s %s\n\n", s.partitionName, s.fromTime.Time.Format(time.DateOnly), fromTimeSource)
 }
 
+// String returns a string representation of the status used as body of app display or final output for non-progress display
 func (s *status) String() string {
 	var out strings.Builder
 
-	// length of longest keys in the sections (used for spacing/alignment)
-	artifactMaxKeyLen := 11
-	rowMaxKeyLen := 9
-
-	// establish maximum value lengths for display alignment
-	artifactCountLen := len(humanize.Comma(s.ArtifactsDiscovered))
-	rowCountLen := len(humanize.Comma(s.RowsReceived))
-
-	// default values
-	displayPath := s.LatestArtifactLocation
-	timeLabel := "Time:"
-	compaction := "Verifying..."
-
-	// override values if complete
-	if s.complete {
-		displayPath = ""
-		timeLabel = "Completed:"
-		compaction = "No files to compact."
-	}
-
-	// if we have artifacts, we should display the Artifacts section
-	if displayPath != "" || s.ArtifactsDiscovered > 0 {
-		// obtain file name from path
-		if strings.Contains(displayPath, string(os.PathSeparator)) {
-			displayPath = displayPath[strings.LastIndex(displayPath, string(os.PathSeparator))+1:]
-		}
-
-		// determine what to display for the size of files obtained, default to empty string
-		downloadedDisplay := ""
-		if s.ArtifactsDownloadedBytes > 0 {
-			downloadedDisplay = strings.ReplaceAll(humanize.Bytes(uint64(s.ArtifactsDownloadedBytes)), " ", "")
-		}
-
-		// Artifacts section
-		out.WriteString("Artifacts:\n")
-		out.WriteString(writeCountLine("Discovered:", artifactMaxKeyLen, s.ArtifactsDiscovered, artifactCountLen, &displayPath))
-		out.WriteString(writeCountLine("Downloaded:", artifactMaxKeyLen, s.ArtifactsDownloaded, artifactCountLen, &downloadedDisplay))
-		out.WriteString(writeCountLine("Extracted:", artifactMaxKeyLen, s.ArtifactsExtracted, artifactCountLen, nil))
-		// combine source errors which came form event and from status
-		if sourceErrorCount := int64(len(s.SourceErrors)); sourceErrorCount > 0 {
-			out.WriteString(writeCountLine("Errors:", artifactMaxKeyLen, sourceErrorCount, artifactCountLen, nil))
-		}
-		out.WriteString("\n")
+	// determine if we should show an Artifacts or Source section (source currently only shown if we have errors)
+	switch {
+	case s.ArtifactsDiscovered > 0 || s.LatestArtifactLocation != "":
+		out.WriteString(s.displayArtifactSection())
+	case len(s.SourceErrors) > 0:
+		out.WriteString(s.displaySourceSection())
 	}
 
 	// Rows section
-	var rowErrorsTotal int64
-	if s.RowErrors != nil {
-		rowErrorsTotal = s.RowErrors.Total
+	out.WriteString(s.displayRowSection())
+
+	// Files section
+	out.WriteString(s.displayFilesSection())
+
+	// Errors section
+	out.WriteString(s.displayErrorsSection())
+
+	// Timing Section
+	out.WriteString(s.displayTimingSection())
+
+	// return View
+	return out.String()
+}
+
+func (s *status) displayArtifactSection() string {
+	// length of longest key in the section (used for spacing/alignment)
+	artifactMaxKeyLen := 11
+
+	// establish maximum value lengths for display alignment
+	artifactCountLen := len(humanize.Comma(s.ArtifactsDiscovered))
+
+	// obtain file name from artifact path if we're not completed (we don't show the path if we are)
+	displayPath := ""
+	if !s.complete && s.LatestArtifactLocation != "" {
+		displayPath = filepath.Base(s.LatestArtifactLocation)
 	}
+
+	// determine file size to display human friendly
+	displaySize := ""
+	if s.ArtifactsDownloadedBytes > 0 {
+		displaySize = strings.ReplaceAll(humanize.Bytes(uint64(s.ArtifactsDownloadedBytes)), " ", "")
+	}
+
+	// obtain error count
+	sourceErrorCount := int64(len(s.SourceErrors))
+
+	// build artifact section
+	var out strings.Builder
+	out.WriteString("Artifacts:\n")
+	out.WriteString(writeCountLine("Discovered:", artifactMaxKeyLen, s.ArtifactsDiscovered, artifactCountLen, &displayPath))
+	out.WriteString(writeCountLine("Downloaded:", artifactMaxKeyLen, s.ArtifactsDownloaded, artifactCountLen, &displaySize))
+	out.WriteString(writeCountLine("Extracted:", artifactMaxKeyLen, s.ArtifactsExtracted, artifactCountLen, nil))
+	if sourceErrorCount > 0 {
+		out.WriteString(writeCountLine("Errors:", artifactMaxKeyLen, sourceErrorCount, artifactCountLen, nil))
+	}
+	out.WriteString("\n")
+
+	return out.String()
+}
+
+func (s *status) displaySourceSection() string {
+	// length of longest key in the section (used for spacing/alignment)
+	sourceMaxKeyLen := 7
+
+	// obtain error count
+	sourceErrorCount := int64(len(s.SourceErrors))
+
+	// if no errors, nothing to display
+	if sourceErrorCount == 0 {
+		return ""
+	}
+
+	// build source section
+	var out strings.Builder
+	out.WriteString("Source:\n")
+	out.WriteString(writeCountLine("Errors:", sourceMaxKeyLen, sourceErrorCount, len(humanize.Comma(sourceErrorCount)), nil))
+	out.WriteString("\n")
+
+	return out.String()
+}
+
+func (s *status) displayRowSection() string {
+	// length of longest key in the section (used for spacing/alignment)
+	rowMaxKeyLen := 9
+
+	// establish maximum value lengths for display alignment
+	rowCountLen := len(humanize.Comma(s.RowsReceived))
+
+	// obtain error count
+	var rowErrorCount int64
+	if s.RowErrors != nil {
+		rowErrorCount = s.RowErrors.Total
+	}
+	rowErrorCount += s.rowConversionFailures
+
+	// determine if we show a filtered count (we should be in compaction)
+	var filteredRowCount int64
+	if s.compactionStatus != nil {
+		filteredRowCount = s.RowsEnriched - (s.rowsConverted + rowErrorCount)
+	}
+
+	// build row section
+	var out strings.Builder
 	out.WriteString("Rows:\n")
 	out.WriteString(writeCountLine("Received:", rowMaxKeyLen, s.RowsReceived, rowCountLen, nil))
 	out.WriteString(writeCountLine("Enriched:", rowMaxKeyLen, s.RowsEnriched, rowCountLen, nil))
 	out.WriteString(writeCountLine("Saved:", rowMaxKeyLen, s.rowsConverted, rowCountLen, nil))
-	rowErrCount := rowErrorsTotal + s.rowConversionFailures
-	if rowErrCount > 0 {
-		out.WriteString(writeCountLine("Errors:", rowMaxKeyLen, rowErrCount, rowCountLen, nil))
+	if rowErrorCount > 0 {
+		out.WriteString(writeCountLine("Errors:", rowMaxKeyLen, rowErrorCount, rowCountLen, nil))
 	}
-	if s.compactionStatus != nil {
-		// TODO: Validate this logic
-		filteredRowCount := s.RowsEnriched - (s.rowsConverted + rowErrCount)
-		if filteredRowCount > 0 {
-			out.WriteString(writeCountLine("Filtered:", rowMaxKeyLen, filteredRowCount, rowCountLen, nil))
-		}
+	if filteredRowCount > 0 {
+		out.WriteString(writeCountLine("Filtered:", rowMaxKeyLen, filteredRowCount, rowCountLen, nil))
 	}
 	out.WriteString("\n")
 
-	// Files section
-	if s.compactionStatus != nil {
-		out.WriteString("Files:\n")
-		if s.compactionStatus.Source == 0 && s.compactionStatus.Uncompacted == 0 {
-			out.WriteString(fmt.Sprintf("  %s\n", compaction))
-		} else {
-			l := int64(s.compactionStatus.Source + s.compactionStatus.Uncompacted)
-			r := int64(s.compactionStatus.Dest + s.compactionStatus.Uncompacted)
-			out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
-		}
-		out.WriteString("\n")
-	}
-
-	// Errors section
-	if rowErrorsTotal > 0 {
-		out.WriteString("Errors:\n")
-		rowErrors := s.RowErrors.Errors()
-		for i, e := range rowErrors {
-			if i <= (uiErrorsToDisplay - 1) {
-				out.WriteString(fmt.Sprintf("  %s\n", e))
-			} else {
-				out.WriteString(fmt.Sprintf("  … and %d more.\n", len(rowErrors)-uiErrorsToDisplay))
-				break
-			}
-		}
-		out.WriteString("\n")
-	}
-
-	// Timing Section
-	duration := time.Since(s.started)
-	out.WriteString(fmt.Sprintf("%s %s\n", timeLabel, utils.HumanizeDuration(duration)))
-
-	// return View
 	return out.String()
+}
+
+func (s *status) displayFilesSection() string {
+	// if we're not at compaction, don't display this section
+	if s.compactionStatus == nil {
+		return ""
+	}
+
+	statusText := "Verifying..."
+	if s.complete {
+		statusText = "No files to compact."
+	}
+
+	var out strings.Builder
+	out.WriteString("Files:\n")
+	if s.compactionStatus.Source == 0 && s.compactionStatus.Uncompacted == 0 {
+		out.WriteString(fmt.Sprintf("  %s\n", statusText))
+	} else {
+		l := int64(s.compactionStatus.Source + s.compactionStatus.Uncompacted)
+		r := int64(s.compactionStatus.Dest + s.compactionStatus.Uncompacted)
+		out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
+	}
+
+	out.WriteString("\n")
+
+	return out.String()
+}
+
+func (s *status) displayErrorsSection() string {
+	// get error counts - if all 0 we don't display this section
+	var rowErrorsCount, convErrorsCount, srcErrorCount int
+	var rowErrors []string
+	if s.RowErrors != nil {
+		rowErrors = s.RowErrors.Errors()
+		rowErrorsCount = len(rowErrors)
+	}
+	convErrorsCount = len(s.conversionErrors)
+	srcErrorCount = len(s.SourceErrors)
+	totalErrors := rowErrorsCount + convErrorsCount + srcErrorCount
+
+	// if we have no errors, nothing to display
+	if totalErrors == 0 {
+		return ""
+	}
+
+	// make a fixed size slice to hold the errors we'll display
+	displayErrors := make([]string, 0, uiErrorsToDisplay)
+
+	// determine max errors to display (if we have less than our uiErrorsToDisplay, we'll display all)
+	displaySrc, displayConv, displayRow := errorCountsToDisplay(srcErrorCount, convErrorsCount, rowErrorsCount, uiErrorsToDisplay)
+	displayErrors = append(displayErrors, s.SourceErrors[:displaySrc]...)
+	for i, err := range s.conversionErrors {
+		if i >= displayConv {
+			break
+		}
+		displayErrors = append(displayErrors, err.Error())
+	}
+	displayErrors = append(displayErrors, rowErrors[:displayRow]...)
+
+	// build errors section
+	var out strings.Builder
+	out.WriteString("Errors:\n")
+
+	// display the errors
+	for _, e := range displayErrors {
+		out.WriteString(fmt.Sprintf("  %s\n", e))
+	}
+
+	// if we have more than shown, display truncated message
+	truncatedString := ""
+	if totalErrors > uiErrorsToDisplay {
+		truncatedString = "Truncated. "
+	}
+	// inform user how to see more details via setting log level
+	out.WriteString(fmt.Sprintf("  %sSet %s=ERROR for details.\n", truncatedString, logging.EnvLogLevel))
+
+	out.WriteString("\n")
+
+	return out.String()
+}
+
+func (s *status) displayTimingSection() string {
+	duration := time.Since(s.started)
+	timeLabel := "Time:"
+
+	// if we're complete, change the time label to show this
+	if s.complete {
+		timeLabel = "Completed:"
+	}
+
+	return fmt.Sprintf("%s %s\n", timeLabel, utils.HumanizeDuration(duration))
 }
 
 func writeCountLine(desc string, maxDescLen int, count int64, maxCountLen int, suffix *string) string {
@@ -182,4 +291,36 @@ func writeCountLine(desc string, maxDescLen int, count int64, maxCountLen int, s
 		s = fmt.Sprintf(" %s", *suffix)
 	}
 	return fmt.Sprintf("  %-*s %*s%s\n", maxDescLen, desc, maxCountLen, humanize.Comma(count), s)
+}
+
+func errorCountsToDisplay(srcCount, convCount, rowCount, max int) (displaySrc, displayConv, displayRow int) {
+	// initial allotment of display slots, capped at 1/3 of max
+	baseLimit := max / 3
+	displaySrc = min(srcCount, baseLimit)
+	displayConv = min(convCount, baseLimit)
+	displayRow = min(rowCount, baseLimit)
+
+	// determine if we have spare display slots
+	spare := max - (displaySrc + displayConv + displayRow)
+
+	// if we have spare, distribute it in priority order: source, conversion, row
+	for _, assign := range []struct {
+		count *int
+		avail int
+	}{
+		{&displaySrc, srcCount},
+		{&displayConv, convCount},
+		{&displayRow, rowCount},
+	} {
+		if spare == 0 {
+			break
+		}
+
+		avail := assign.avail - *assign.count
+		take := min(avail, spare)
+		*assign.count += take
+		spare -= take
+	}
+
+	return
 }

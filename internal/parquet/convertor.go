@@ -45,9 +45,6 @@ type Converter struct {
 	rowCount int64
 	// the number of rows hwich were NOT converted due to conversion errors encountered
 	failedRowCount int64
-	// error which occurred during execution
-	errors     []error
-	errorsLock sync.RWMutex
 
 	// the source file location
 	sourceDir string
@@ -294,21 +291,18 @@ func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 }
 
 func (w *Converter) addJobErrors(errorList ...error) {
-	w.errorsLock.Lock()
-	defer w.errorsLock.Unlock()
-
-	w.errors = append(w.errors, errorList...)
+	var failedRowCount int64
 
 	for _, err := range errorList {
 		var conversionError = &ConversionError{}
 		if errors.As(err, &conversionError) {
-			w.failedRowCount += conversionError.RowsAffected
+			failedRowCount = atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
 		}
 		slog.Error("conversion error", "error", err)
 	}
 
 	// update the status function with the new error count (no need to use atomic for errorList as we are already locked)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), w.failedRowCount)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), failedRowCount, errorList...)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc

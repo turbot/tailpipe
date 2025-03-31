@@ -2,26 +2,34 @@ package parquet
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 )
 
 // handleConversionError attempts to handle conversion errors by counting the number of lines in the file.
 // if we fail, just return the raw error.
 func handleConversionError(err error, path string) error {
-	// try to count the number of lines in the file
-	lines, countErr := countLines(path)
-	if countErr != nil {
-		// just log and return the error as is
-		slog.Error("parquet conversion failed", "error", err, "path", path)
-		return err
+	logArgs := []any{
+		"error",
+		err,
+		"path",
+		path,
 	}
 
-	// log the error with line count & then return a conversion error
-	slog.Error("parquet conversion failed", "error", err, "path", path, "lines", lines)
+	// try to count the number of rows in the file
+	rows, countErr := countLines(path)
+	if countErr == nil {
+		logArgs = append(logArgs, "rows_affected", rows)
+	}
 
-	return NewConversionError(err, lines)
+	// log error
+	slog.Error("parquet conversion failed", logArgs...)
+
+	// return wrapped error
+	return NewConversionError(fmt.Sprintf("failed to convert file: %s", err.Error()), rows, path)
 }
 
 func countLines(filename string) (int64, error) {
@@ -49,17 +57,19 @@ func countLines(filename string) (int64, error) {
 }
 
 type ConversionError struct {
+	SourceFile   string
 	BaseError    error
 	RowsAffected int64
 }
 
-func NewConversionError(err error, rowsAffected int64) *ConversionError {
+func NewConversionError(msg string, rowsAffected int64, path string) *ConversionError {
 	return &ConversionError{
-		BaseError:    err,
+		SourceFile:   filepath.Base(path),
+		BaseError:    fmt.Errorf(msg),
 		RowsAffected: rowsAffected,
 	}
 }
 
 func (c *ConversionError) Error() string {
-	return c.BaseError.Error()
+	return fmt.Sprintf("%s: %s", c.SourceFile, c.BaseError.Error())
 }

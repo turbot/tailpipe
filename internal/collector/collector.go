@@ -316,7 +316,8 @@ func (c *Collector) showTeaAppAsync() error {
 
 func (c *Collector) showMinimalCollectionStatus() error {
 	// display initial message
-	_, err := fmt.Fprintf(os.Stdout, c.status.CollectionHeader()) //nolint:forbidigo //desired output
+	initMsg := c.status.CollectionHeader()
+	_, err := fmt.Print(initMsg) //nolint:forbidigo //desired output
 	return err
 }
 
