@@ -22,7 +22,7 @@ type status struct {
 
 	rowsConverted         int64
 	rowConversionFailures int64
-	conversionErrors      []error
+	conversionErrors      []string
 
 	// additional fields for display (not from updates)
 	started          time.Time
@@ -32,6 +32,7 @@ type status struct {
 	compactionStatus *parquet.CompactionStatus
 }
 
+// Init initializes the status with the partition name and  resolved from time of the collection and marks start of collection for timing
 func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTime) {
 	s.started = time.Now()
 	s.partitionName = partitionName
@@ -43,12 +44,18 @@ func (s *status) UpdateWithPluginStatus(event *proto.EventStatus) {
 	s.Status = *events.StatusFromProto(event)
 }
 
+// UpdateConversionStatus updates the status with rows converted, rows the conversion failed on, and any errors
 func (s *status) UpdateConversionStatus(rowsConverted, failedRows int64, errors ...error) {
 	s.rowsConverted = rowsConverted
 	s.rowConversionFailures = failedRows
-	s.conversionErrors = append(s.conversionErrors, errors...)
+	if len(errors) > 0 {
+		for _, err := range errors {
+			s.conversionErrors = append(s.conversionErrors, err.Error())
+		}
+	}
 }
 
+// UpdateCompactionStatus updates the status with the values from the compaction status event
 func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStatus) {
 	if compactionStatus == nil {
 		return
@@ -100,6 +107,7 @@ func (s *status) String() string {
 	return out.String()
 }
 
+// displayArtifactSection returns a string representation of the artifact section of the status, used for artifact collections
 func (s *status) displayArtifactSection() string {
 	// length of longest key in the section (used for spacing/alignment)
 	artifactMaxKeyLen := 11
@@ -136,6 +144,7 @@ func (s *status) displayArtifactSection() string {
 	return out.String()
 }
 
+// displaySourceSection returns a string representation of the source section of the status, used for non-artifact collections
 func (s *status) displaySourceSection() string {
 	// length of longest key in the section (used for spacing/alignment)
 	sourceMaxKeyLen := 7
@@ -157,6 +166,7 @@ func (s *status) displaySourceSection() string {
 	return out.String()
 }
 
+// displayRowSection returns a string representation of the row section of the status (rows received, enriched, saved, errors, and filtered)
 func (s *status) displayRowSection() string {
 	// length of longest key in the section (used for spacing/alignment)
 	rowMaxKeyLen := 9
@@ -194,12 +204,14 @@ func (s *status) displayRowSection() string {
 	return out.String()
 }
 
+// displayFilesSection returns a string representation of the files section of the status (compacted file counts, etc.)
 func (s *status) displayFilesSection() string {
 	// if we're not at compaction, don't display this section
 	if s.compactionStatus == nil {
 		return ""
 	}
 
+	// determine status text to use when no counts are available
 	statusText := "Verifying..."
 	if s.complete {
 		statusText = "No files to compact."
@@ -208,8 +220,10 @@ func (s *status) displayFilesSection() string {
 	var out strings.Builder
 	out.WriteString("Files:\n")
 	if s.compactionStatus.Source == 0 && s.compactionStatus.Uncompacted == 0 {
+		// no counts available, display status text
 		out.WriteString(fmt.Sprintf("  %s\n", statusText))
 	} else {
+		// display counts source => dest
 		l := int64(s.compactionStatus.Source + s.compactionStatus.Uncompacted)
 		r := int64(s.compactionStatus.Dest + s.compactionStatus.Uncompacted)
 		out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
@@ -220,6 +234,7 @@ func (s *status) displayFilesSection() string {
 	return out.String()
 }
 
+// displayErrorsSection returns a string representation of the errors section of the status (limited to uiErrorsToDisplay, with help on how to see more details)
 func (s *status) displayErrorsSection() string {
 	// get error counts - if all 0 we don't display this section
 	var rowErrorsCount, convErrorsCount, srcErrorCount int
@@ -243,12 +258,7 @@ func (s *status) displayErrorsSection() string {
 	// determine max errors to display (if we have less than our uiErrorsToDisplay, we'll display all)
 	displaySrc, displayConv, displayRow := errorCountsToDisplay(srcErrorCount, convErrorsCount, rowErrorsCount, uiErrorsToDisplay)
 	displayErrors = append(displayErrors, s.SourceErrors[:displaySrc]...)
-	for i, err := range s.conversionErrors {
-		if i >= displayConv {
-			break
-		}
-		displayErrors = append(displayErrors, err.Error())
-	}
+	displayErrors = append(displayErrors, s.conversionErrors[:displayConv]...)
 	displayErrors = append(displayErrors, rowErrors[:displayRow]...)
 
 	// build errors section
@@ -273,6 +283,7 @@ func (s *status) displayErrorsSection() string {
 	return out.String()
 }
 
+// displayTimingSection returns a string representation of the timing section of the status (time elapsed since start of collection)
 func (s *status) displayTimingSection() string {
 	duration := time.Since(s.started)
 	timeLabel := "Time:"
@@ -285,6 +296,7 @@ func (s *status) displayTimingSection() string {
 	return fmt.Sprintf("%s %s\n", timeLabel, utils.HumanizeDuration(duration))
 }
 
+// writeCountLine returns a formatted string for a count line in the status display, used for alignment and readability
 func writeCountLine(desc string, maxDescLen int, count int64, maxCountLen int, suffix *string) string {
 	s := ""
 	if suffix != nil {
@@ -293,6 +305,7 @@ func writeCountLine(desc string, maxDescLen int, count int64, maxCountLen int, s
 	return fmt.Sprintf("  %-*s %*s%s\n", maxDescLen, desc, maxCountLen, humanize.Comma(count), s)
 }
 
+// errorCountsToDisplay determines how many of each type of error to display in the status, based on the counts and a maximum limit
 func errorCountsToDisplay(srcCount, convCount, rowCount, max int) (displaySrc, displayConv, displayRow int) {
 	// initial allotment of display slots, capped at 1/3 of max
 	baseLimit := max / 3
