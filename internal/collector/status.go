@@ -124,7 +124,7 @@ func (s *status) displayArtifactSection() string {
 	// determine file size to display human friendly
 	displaySize := ""
 	if s.ArtifactsDownloadedBytes > 0 {
-		displaySize = strings.ReplaceAll(humanize.Bytes(uint64(s.ArtifactsDownloadedBytes)), " ", "")
+		displaySize = strings.ReplaceAll(humanize.Bytes(uint64(s.ArtifactsDownloadedBytes)), " ", "") //nolint:gosec // should be safe
 	}
 
 	// obtain error count
