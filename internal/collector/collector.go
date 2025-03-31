@@ -261,8 +261,8 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		}()
 
 	case *proto.Event_ErrorEvent:
-		// TODO #errors error events are deprectaed an will only be sent for plugins not using sdk > v0.2.0
-		// TODO #errors decide what (if anything) we should do with error events from old plugins
+		// TODO #errors error events are deprecated an will only be sent for plugins not using sdk > v0.2.0
+		// TODO #errors decide what (if anything) we should do with error events from old plugins https://github.com/turbot/tailpipe/issues/297
 		//ev := e.GetErrorEvent()
 		//// for now just store errors and display at end
 		////c.execution.state = ExecutionState_ERROR

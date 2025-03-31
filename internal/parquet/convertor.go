@@ -43,7 +43,7 @@ type Converter struct {
 	completionCount int32
 	// the number of rows written
 	rowCount int64
-	// the number of rows hwich were NOT converted due to conversion errors encountered
+	// the number of rows which were NOT converted due to conversion errors encountered
 	failedRowCount int64
 
 	// the source file location
