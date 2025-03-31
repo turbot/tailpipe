@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcboeker/go-duckdb"
+	"github.com/marcboeker/go-duckdb/v2"
 )
 
 // executeWithParquetErrorRetry executes a function with retry logic for invalid parquet files.

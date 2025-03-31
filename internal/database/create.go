@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/marcboeker/go-duckdb/v2"
 	filehelpers "github.com/turbot/go-kit/files"
 	_ "github.com/turbot/go-kit/helpers"
 	_ "github.com/turbot/pipe-fittings/v2/utils"

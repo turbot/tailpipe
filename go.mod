@@ -18,7 +18,7 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
-	github.com/turbot/go-kit v1.1.0
+	github.com/turbot/go-kit v1.2.0
 	github.com/turbot/pipe-fittings/v2 v2.3.0-rc.2
 	github.com/turbot/tailpipe-plugin-sdk v0.2.0-alpha.3
 	github.com/zclconf/go-cty v1.14.4
@@ -39,7 +39,7 @@ require (
 	github.com/hashicorp/go-plugin v1.6.1
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
-	github.com/marcboeker/go-duckdb v1.8.3
+	github.com/marcboeker/go-duckdb/v2 v2.0.3
 	github.com/thediveo/enumflag/v2 v2.0.5
 	github.com/turbot/tailpipe-plugin-core v0.1.4-rc.0
 	golang.org/x/sync v0.11.0
@@ -48,10 +48,10 @@ require (
 )
 
 require (
-	github.com/goccy/go-json v0.10.3 // indirect
-	github.com/google/flatbuffers v24.3.25+incompatible // indirect
-	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
-	github.com/pierrec/lz4/v4 v4.1.21 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/google/flatbuffers v25.1.24+incompatible // indirect
+	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
+	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 )
 
@@ -65,7 +65,7 @@ require (
 	github.com/AdaLogics/go-fuzz-headers v0.0.0-20230811130428-ced1acdcaa24 // indirect
 	github.com/acarl005/stripansi v0.0.0-20180116102854-5a71ef0e047d // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
-	github.com/apache/arrow-go/v18 v18.0.0 // indirect
+	github.com/apache/arrow-go/v18 v18.1.0 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.44.183 // indirect
@@ -99,6 +99,12 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgraph-io/ristretto v0.2.0 // indirect
 	github.com/dlclark/regexp2 v1.4.0 // indirect
+	github.com/duckdb/duckdb-go-bindings v0.1.12 // indirect
+	github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.7 // indirect
+	github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.7 // indirect
+	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.7 // indirect
+	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.7 // indirect
+	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.7 // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.17.0 // indirect
@@ -114,6 +120,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
+	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/goccy/go-yaml v1.11.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
@@ -153,6 +160,8 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/magefile/mage v1.15.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
+	github.com/marcboeker/go-duckdb/arrowmapping v0.0.5 // indirect
+	github.com/marcboeker/go-duckdb/mapping v0.0.5 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect

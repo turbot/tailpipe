@@ -3,6 +3,7 @@ package parquet
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -42,11 +43,8 @@ type Converter struct {
 	completionCount int32
 	// the number of rows written
 	rowCount int64
-	// the number of conversion errors encountered
-	errorCount int64
-	// error which occurred during execution
-	errors     []error
-	errorsLock sync.RWMutex
+	// the number of rows which were NOT converted due to conversion errors encountered
+	failedRowCount int64
 
 	// the source file location
 	sourceDir string
@@ -66,10 +64,10 @@ type Converter struct {
 	// the partition being collected
 	Partition *config.Partition
 	// func which we call with updated row count
-	statusFunc func(rowCount, errorCount int64)
+	statusFunc func(int64, int64, ...error)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(int64, int64)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -292,20 +290,24 @@ func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 	return res, nil
 }
 
-func (w *Converter) addJobErrors(errors ...error) {
-	w.errorsLock.Lock()
-	defer w.errorsLock.Unlock()
+func (w *Converter) addJobErrors(errorList ...error) {
+	var failedRowCount int64
 
-	w.errors = append(w.errors, errors...)
-	w.errorCount += int64(len(errors))
+	for _, err := range errorList {
+		var conversionError = &ConversionError{}
+		if errors.As(err, &conversionError) {
+			failedRowCount = atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
+		}
+		slog.Error("conversion error", "error", err)
+	}
 
-	// update the status function with the new error count (no need to use atomic for errors as we are already locked)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), w.errorCount)
+	// update the status function with the new error count (no need to use atomic for errorList as we are already locked)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), failedRowCount, errorList...)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc
 func (w *Converter) updateRowCount(count int64) {
 	atomic.AddInt64(&w.rowCount, count)
 	// call the status function with the new row count
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.errorCount))
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount))
 }

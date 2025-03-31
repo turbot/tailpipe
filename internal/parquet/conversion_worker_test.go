@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/marcboeker/go-duckdb/v2"
 	"github.com/spf13/viper"
 	pcmdconfig "github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"

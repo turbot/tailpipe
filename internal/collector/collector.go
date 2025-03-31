@@ -50,11 +50,6 @@ type Collector struct {
 	// bubble tea app
 	app    *tea.Program
 	cancel context.CancelFunc
-
-	// errors which occurred during the collection
-	errors        []string
-	errorFilePath string
-	errorFileMut  sync.Mutex
 }
 
 func New(pluginManager *plugin.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
@@ -92,8 +87,6 @@ func (c *Collector) Close() {
 		c.parquetConvertor.Close()
 	}
 
-	c.updateApp(CollectionFinishedMsg{})
-
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
 
@@ -127,8 +120,6 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	resolvedFromTime := collectResponse.FromTime
 	// now set the execution id
 	c.execution.id = collectResponse.ExecutionId
-
-	c.errorFilePath = fmt.Sprintf("%s/%s_%s_errors.log", config.GlobalWorkspaceProfile.GetCollectionDir(), time.Now().Format("20060102T150405"), c.partition.GetUnqualifiedName())
 
 	// validate the schema returned by the plugin
 	err = collectResponse.Schema.Validate()
@@ -189,7 +180,10 @@ func (c *Collector) Compact(ctx context.Context) error {
 	c.updateApp(AwaitingCompactionMsg{})
 
 	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
-		c.updateApp(CompactionStatusUpdateMsg{status: &compactionStatus})
+		c.statusLock.Lock()
+		defer c.statusLock.Unlock()
+		c.status.UpdateCompactionStatus(&compactionStatus)
+		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)
 	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
@@ -197,6 +191,19 @@ func (c *Collector) Compact(ctx context.Context) error {
 		return fmt.Errorf("failed to compact data files: %w", err)
 	}
 	return nil
+}
+
+// Completed marks the collection as complete and renders the summary
+// - progress = true : sends completed event to tea app
+// - progress = false : writes the summary to stdout
+func (c *Collector) Completed() {
+	c.status.complete = true
+	c.updateApp(CollectionFinishedMsg{status: c.status})
+
+	// if we suppressed progress display, we should write the summary
+	if !viper.GetBool(pconstants.ArgProgress) {
+		fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // we are writing to stdout
+	}
 }
 
 // handlePluginEvent handles an event from a plugin
@@ -208,8 +215,10 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 		slog.Info("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
 		c.execution.state = ExecutionState_STARTED
 	case *proto.Event_StatusEvent:
+		c.statusLock.Lock()
+		defer c.statusLock.Unlock()
 		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
-		c.updateApp(c.status)
+		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	case *proto.Event_ChunkWrittenEvent:
 		ev := e.GetChunkWrittenEvent()
 		executionId := ev.ExecutionId
@@ -251,20 +260,14 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			}
 		}()
 
-		// TODO #errors non fatal errors should be aggregated by the plugin - only fatal errors should be sent as error event
 	case *proto.Event_ErrorEvent:
-		ev := e.GetErrorEvent()
-		// TODO think about fatal vs non fatal errors https://github.com/turbot/tailpipe/issues/179
-		// for now just store errors and display at end
-		//c.execution.state = ExecutionState_ERROR
-		//c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
-		slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
-		c.errors = append(c.errors, ev.Error)
-		c.writeCollectorError(ev.Error)
-		// if we're displaying a tea.app, update its error collection
-		if c.app != nil {
-			c.app.Send(CollectionErrorsMsg{errors: c.errors, errorFilePath: c.errorFilePath})
-		}
+		// TODO #errors error events are deprecated an will only be sent for plugins not using sdk > v0.2.0
+		// TODO #errors decide what (if anything) we should do with error events from old plugins https://github.com/turbot/tailpipe/issues/297
+		//ev := e.GetErrorEvent()
+		//// for now just store errors and display at end
+		////c.execution.state = ExecutionState_ERROR
+		////c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
+		//slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
 	}
 }
 
@@ -285,15 +288,17 @@ func (c *Collector) createTableView(ctx context.Context) error {
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime)
+
 	if viper.GetBool(pconstants.ArgProgress) {
-		return c.showTeaAppAsync(resolvedFromTime)
+		return c.showTeaAppAsync()
 	}
 
-	return c.showMinimalCollectionStatus(resolvedFromTime)
+	return c.showMinimalCollectionStatus()
 }
 
-func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTime) error {
-	c.app = tea.NewProgram(newCollectionModel(c.partition.GetUnqualifiedName(), *resolvedFromTime))
+func (c *Collector) showTeaAppAsync() error {
+	c.app = tea.NewProgram(newCollectionModel(c.status))
 
 	go func() {
 		model, err := c.app.Run()
@@ -309,29 +314,25 @@ func (c *Collector) showTeaAppAsync(resolvedFromTime *row_source.ResolvedFromTim
 	return nil
 }
 
-func (c *Collector) showMinimalCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
+func (c *Collector) showMinimalCollectionStatus() error {
 	// display initial message
-	fromTimeSourceStr := ""
-	if resolvedFromTime.Source != "" {
-		fromTimeSourceStr = fmt.Sprintf("(%s)", resolvedFromTime.Source)
-	}
-	_, err := fmt.Fprintf(os.Stdout, "\nCollecting logs for %s from %s %s\n\n", c.partition.GetUnqualifiedName(), resolvedFromTime.Time.Format(time.DateOnly), fromTimeSourceStr) //nolint:forbidigo //desired output
+	initMsg := c.status.CollectionHeader()
+	_, err := fmt.Print(initMsg) //nolint:forbidigo //desired output
 	return err
 }
 
 // updateRowCount is called directly by the parquet writer to update the row count
-func (c *Collector) updateRowCount(rowCount, errorCount int64) {
+func (c *Collector) updateRowCount(rowCount, errorCount int64, errors ...error) {
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
 
-	c.status.UpdateConversionStatus(rowCount, errorCount)
+	c.status.UpdateConversionStatus(rowCount, errorCount, errors...)
 
-	c.updateApp(c.status)
+	c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 }
 
 func (c *Collector) StatusString() string {
 	var str strings.Builder
-	str.WriteString("Collection complete.\n\n")
 	str.WriteString(c.status.String())
 	str.WriteString("\n")
 	// print out the execution status
@@ -406,24 +407,5 @@ func (c *Collector) doCancel() {
 func (c *Collector) updateApp(msg tea.Msg) {
 	if c.app != nil {
 		c.app.Send(msg)
-	}
-}
-
-func (c *Collector) writeCollectorError(errorString string) {
-	c.errorFileMut.Lock()
-	defer c.errorFileMut.Unlock()
-	// if a file exists append to it, else create a new file and insert the error
-	filePath := c.errorFilePath
-	file, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		slog.Error("Failed to open error file", "error", err, "file", filePath)
-		return
-	}
-	defer file.Close()
-
-	_, err = file.WriteString(errorString + "\n")
-	if err != nil {
-		slog.Error("Failed to write error to file", "error", err, "file", filePath)
-		return
 	}
 }
