@@ -26,11 +26,6 @@ type CollectionStatusUpdateMsg struct {
 	status status
 }
 
-type CollectionErrorsMsg struct {
-	errorFilePath string
-	errors        []string
-}
-
 func newCollectionModel(status status) collectionModel {
 	return collectionModel{
 		status: status,

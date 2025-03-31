@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -65,7 +66,7 @@ type ConversionError struct {
 func NewConversionError(msg string, rowsAffected int64, path string) *ConversionError {
 	return &ConversionError{
 		SourceFile:   filepath.Base(path),
-		BaseError:    fmt.Errorf(msg),
+		BaseError:    errors.New(msg),
 		RowsAffected: rowsAffected,
 	}
 }
