@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/spf13/viper"
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
@@ -98,7 +99,9 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
 
-	// parse the files
+	// first apply escaping - if properties have values surrounded in backticks, we need to escape them
+	// we also respected the legacy auto-escaping mechanism for specific properties
+	var moreDiags hcl.Diagnostics
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []parse.ParseHclOpt{
 		// legacy auto-escaping of 'file_layout' property
@@ -106,9 +109,11 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 		// escape properties within backticks
 		parse.WithEscapeBackticks(true),
 	}
+	fileData, moreDiags = parse.ApplyPropertyEscaping(fileData, parseOpts...)
+	diags = append(diags, moreDiags...)
 
-	//
-	body, diags := parse.ParseHclFiles(fileData, parseOpts...)
+	// now parse teh file data
+	body, diags := parse.ParseHclFiles(fileData)
 	if diags != nil && diags.HasErrors() {
 		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
