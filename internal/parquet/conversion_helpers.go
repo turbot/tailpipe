@@ -42,18 +42,18 @@ from
 	read_ndjson(
 		'%%s',
 %s
-	)`, helpers.Tabify(columnDefinitions, "\t\t")))
+	))`, helpers.Tabify(columnDefinitions, "\t\t")))
 
 	// if there are no struct[] fields, we are done - just add the select at the start
 	if len(structSliceColumns) == 0 {
-		return fmt.Sprintf("select\n%s", columnStrings.String())
+		return fmt.Sprintf("select * from(select\n%s", columnStrings.String())
 	}
 
 	// if there are struct[] fields, we need to build a more complex query
 
 	// add row number in case of potential grouping
 	var str strings.Builder
-	str.WriteString("select\n")
+	str.WriteString("select * from(select\n")
 	str.WriteString("\trow_number() over () as rowid,\n")
 	str.WriteString(columnStrings.String())
 
