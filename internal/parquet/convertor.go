@@ -2,6 +2,8 @@ package parquet
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -43,6 +45,9 @@ type Converter struct {
 	rowCount int64
 	// the number of rows which were NOT converted due to conversion errors encountered
 	failedRowCount int64
+	// error which occurred during execution
+	errors     []error
+	errorsLock sync.RWMutex
 
 	// the source file location
 	sourceDir string
@@ -349,20 +354,24 @@ func (w *Converter) inferSchemaForJSONLFileWithDescribe(filePath string) (*schem
 	return res, nil
 }
 
-func (w *Converter) addJobErrors(errors ...error) {
-	w.errorsLock.Lock()
-	defer w.errorsLock.Unlock()
+func (w *Converter) addJobErrors(errorList ...error) {
+	var failedRowCount int64
 
-	w.errors = append(w.errors, errors...)
-	w.errorCount += int64(len(errors))
+	for _, err := range errorList {
+		var conversionError = &ConversionError{}
+		if errors.As(err, &conversionError) {
+			failedRowCount = atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
+		}
+		slog.Error("conversion error", "error", err)
+	}
 
-	// update the status function with the new error count (no need to use atomic for errors as we are already locked)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), w.errorCount)
+	// update the status function with the new error count (no need to use atomic for errorList as we are already locked)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), failedRowCount, errorList...)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc
 func (w *Converter) updateRowCount(count int64) {
 	atomic.AddInt64(&w.rowCount, count)
 	// call the status function with the new row count
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.errorCount))
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount))
 }
