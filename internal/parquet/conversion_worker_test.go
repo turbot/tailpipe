@@ -178,8 +178,7 @@ from
 			"JsonField": 'json'
 		}
 	)`,
-			// NOTE: the data is returned as a json string
-			wantData: []any{`"JsonStringVal"`},
+			wantData: []any{`JsonStringVal`},
 		},
 		{
 			name: "struct with keyword names",
