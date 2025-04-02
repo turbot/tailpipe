@@ -570,7 +570,7 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 		}
 	}()
 
-	image, err := plugin.Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	image, err := plugin.Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{})
 	if err != nil {
 		msg := ""
 		// used to build data for the plugin install report to be used for display purposes
@@ -688,6 +688,10 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	// Get Resource(s)
 	resources, err := display.ListPlugins(ctx)
 	error_helpers.FailOnError(err)
+	if len(resources) == 0 {
+		fmt.Println("No plugins found. Install a plugin with: tailpipe plugin install <plugin>.") //nolint:forbidigo // ui output
+		return
+	}
 	printableResource := display.NewPrintableResource(resources...)
 
 	// Get Printer

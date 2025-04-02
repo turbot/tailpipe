@@ -1,14 +1,15 @@
 package parse
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/hashicorp/hcl/v2"
-	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/schema"
+	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -24,7 +25,13 @@ type ConfigParseContext struct {
 	resourceMap map[string]modconfig.HclResource
 
 	// the config which is being generated
-	tailpipeConfig *config.TailpipeConfig
+	tailpipeConfig    *config.TailpipeConfig
+	pluginVersionFile *versionfile.PluginVersionFile
+	// we must not resolve format presets until we have resolved all other dependencies
+	// (this is to allow for the case where a local format overrides a preset)
+	// so when decoding reaches a point where no more dependencies can be normally resolved
+	// set resolveFormatPresets to true and try one more pass
+	resolveFormatPresets bool
 }
 
 func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceName) (resource modconfig.HclResource, found bool) {
@@ -32,7 +39,7 @@ func (c *ConfigParseContext) GetResource(parsedName *modconfig.ParsedResourceNam
 	return resource, ok
 }
 
-func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
+func NewConfigParseContext(rootEvalPath string) (*ConfigParseContext, error) {
 	parseContext := parse.NewParseContext(rootEvalPath)
 	c := &ConfigParseContext{
 		ParseContext:   parseContext,
@@ -44,27 +51,27 @@ func NewConfigParseContext(rootEvalPath string) *ConfigParseContext {
 	// we load workspaces separately
 	c.SetBlockTypeExclusions(schema.BlockTypeWorkspaceProfile)
 
+	// load version file - we may use this to resolve format presets
+	v, err := versionfile.LoadPluginVersionFile(context.Background())
+	if err != nil {
+		return nil, err
+	}
+	c.pluginVersionFile = v
+
 	//override ResourceNameFromDependencyFunc to use a version
 	// which uses the local ParsedPropertyPath type
 	c.ResourceNameFromDependencyFunc = resourceNameFromDependency
 	c.buildEvalContext()
 
-	return c
+	return c, nil
 }
 
 // AddResource stores this resource as a variable to be added to the eval context.
 func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Diagnostics {
 	name := resource.Name()
-	// TODO look at using GetResourceCtyValue https://github.com/turbot/tailpipe/issues/33
-	//ctyVal, err := c.GetResourceCtyValue(resource)
-	ctyVal, err := cty_helpers.GetCtyValue(resource)
-	if err != nil {
-		return hcl.Diagnostics{&hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("failed to convert resource '%s' to its cty value", name),
-			Detail:   err.Error(),
-			Subject:  resource.GetDeclRange(),
-		}}
+	ctyVal, diags := c.GetResourceCtyValue(resource)
+	if diags.HasErrors() {
+		return diags
 	}
 
 	resourceType := resource.GetBlockType()
@@ -103,6 +110,9 @@ func (c *ConfigParseContext) AddResource(resource modconfig.HclResource) hcl.Dia
 
 	// rebuild eval context
 	c.buildEvalContext()
+
+	// store in resource map
+	c.resourceMap[name] = resource
 
 	return nil
 }

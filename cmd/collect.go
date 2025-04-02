@@ -20,7 +20,7 @@ import (
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/parquet"
-	"github.com/turbot/tailpipe/internal/plugin_manager"
+	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
 
@@ -48,7 +48,7 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
-		AddBoolFlag(pconstants.ArgTiming, false, "Show timing information")
+		AddBoolFlag(pconstants.ArgProgress, true, "Show active progress of collection, set to false to disable")
 
 	return cmd
 }
@@ -101,7 +101,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	// now we have the partitions, we can start collecting
 
 	// start the plugin manager
-	pluginManager := plugin_manager.New()
+	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
 
 	// collect each partition serially
@@ -131,7 +131,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	return nil
 }
 
-func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin_manager.PluginManager) error {
+func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin.PluginManager) (err error) {
 	c, err := collector.New(pluginManager, partition, cancel)
 	if err != nil {
 		return fmt.Errorf("failed to create collector: %w", err)
@@ -142,6 +142,7 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 		return err
 	}
 
+	slog.Info("collectPartition - waiting for completion", "partition", partition.Name)
 	// now wait for all collection to complete and close the collector
 	err = c.WaitForCompletion(ctx)
 	if err != nil {
@@ -156,8 +157,9 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 			return err
 		}
 	}
-	// TODO pass errors to UI https://github.com/turbot/tailpipe/issues/180
-	//errs := c.Errors()
+
+	// update status to show complete and display collection summary
+	c.Completed()
 
 	return nil
 }

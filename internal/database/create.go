@@ -2,8 +2,7 @@ package database
 
 import (
 	"context"
-	"database/sql"
-	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/marcboeker/go-duckdb/v2"
 	filehelpers "github.com/turbot/go-kit/files"
 	_ "github.com/turbot/go-kit/helpers"
 	_ "github.com/turbot/pipe-fittings/v2/utils"
@@ -18,7 +17,7 @@ func EnsureDatabaseFile(ctx context.Context) error {
 
 	//
 	// Open a DuckDB connection (creates the file if it doesn't exist)
-	db, err := sql.Open("duckdb", databaseFilePath)
+	db, err := NewDuckDb(WithDbFile(databaseFilePath))
 	if err != nil {
 		return err
 	}

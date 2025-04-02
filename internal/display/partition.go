@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dustin/go-humanize"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
@@ -26,8 +25,8 @@ func (r *PartitionResource) GetShowData() *printers.RowData {
 		printers.NewFieldValue("Name", r.Name),
 		printers.NewFieldValue("Description", r.Description),
 		printers.NewFieldValue("Plugin", r.Plugin),
-		printers.NewFieldValue("Local Size", r.Local.HumanizeSize()),
-		printers.NewFieldValue("Local Files", r.Local.HumanizeCount()),
+		printers.NewFieldValue("Local Size", humanizeBytes(r.Local.FileSize)),
+		printers.NewFieldValue("Local Files", humanizeBytes(r.Local.FileCount)),
 	)
 	return res
 }
@@ -37,15 +36,23 @@ func (r *PartitionResource) GetListData() *printers.RowData {
 	res := printers.NewRowData(
 		printers.NewFieldValue("NAME", r.Name),
 		printers.NewFieldValue("PLUGIN", r.Plugin),
-		printers.NewFieldValue("LOCAL SIZE", r.Local.HumanizeSize()),
-		printers.NewFieldValue("FILES", r.Local.HumanizeCount()),
-		printers.NewFieldValue("ROWS", humanize.Comma(r.Local.RowCount)),
+		printers.NewFieldValue("LOCAL SIZE", humanizeBytes(r.Local.FileSize)),
+		printers.NewFieldValue("FILES", humanizeCount(r.Local.FileCount)),
+		printers.NewFieldValue("ROWS", humanizeCount(r.Local.RowCount)),
 	)
 	return res
 }
 
 func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 	var res []*PartitionResource
+
+	// TODO Add in unconfigured partitions to list output
+	// load all partition names from the data
+	//partitionNames, err := database.ListPartitions(ctx)
+	//if err != nil {
+	//	return nil, fmt.Errorf("error listing partitions: %w", err)
+	//}
+	//fmt.Println(partitionNames)
 
 	partitions := config.GlobalConfig.Partitions
 	for _, p := range partitions {

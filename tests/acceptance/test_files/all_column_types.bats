@@ -2,7 +2,6 @@ load "$LIB_BATS_ASSERT/load.bash"
 load "$LIB_BATS_SUPPORT/load.bash"
 
 @test "verify single row count" {
-  skip "https://github.com/turbot/tailpipe/issues/187"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/chaos_all_col_types.tpc
 partition "chaos_all_columns" "chaos_all_column_types" {
   source "chaos_all_columns" {
@@ -12,7 +11,7 @@ partition "chaos_all_columns" "chaos_all_column_types" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_all_columns.chaos_all_column_types
+  tailpipe collect chaos_all_columns.chaos_all_column_types --progress=false
 
   # run tailpipe query and verify the row counts
   run tailpipe query "select count(*) as count from chaos_all_columns;" --output csv
@@ -20,6 +19,7 @@ EOF
 
   assert_equal "$output" "count
 1"
+
 
   # remove the config file
   rm -rf $TAILPIPE_INSTALL_DIR/config/chaos_all_col_types.tpc
@@ -36,7 +36,7 @@ partition "chaos_all_columns" "chaos_high_row_count" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_all_columns.chaos_high_row_count
+  tailpipe collect chaos_all_columns.chaos_high_row_count --progress=false
 
   # run tailpipe query and verify the row counts
   run tailpipe query "select count(*) as count from chaos_all_columns;" --output csv
@@ -60,7 +60,7 @@ partition "chaos_all_columns" "chaos_very_high_row_count" {
 EOF
 
   # tailpipe collect
-  tailpipe collect chaos_all_columns.chaos_very_high_row_count
+  tailpipe collect chaos_all_columns.chaos_very_high_row_count --progress=false
 
   # run tailpipe query and verify the row counts
   run tailpipe query "select count(*) as count from chaos_all_columns;" --output csv

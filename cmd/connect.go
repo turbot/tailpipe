@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"golang.org/x/exp/maps"
@@ -101,8 +100,8 @@ func generateDbFile(ctx context.Context) (string, error) {
 	}
 
 	// Open a DuckDB connection (creates the file if it doesn't exist)
-	var db *sql.DB
-	db, err = sql.Open("duckdb", databaseFilePath)
+	db, err := database.NewDuckDb(database.WithDbFile(databaseFilePath))
+
 	if err != nil {
 		return "", fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -155,7 +154,7 @@ func getFilters() ([]string, error) {
 		// format as SQL timestamp
 		fromDate := t.Format(time.DateOnly)
 		fromTimestamp := t.Format(time.DateTime)
-		result = append(result, fmt.Sprintf("tp_date >= DATE '%s' AND tp_timestamp >= TIMESTAMP '%s'", fromDate, fromTimestamp))
+		result = append(result, fmt.Sprintf("tp_date >= date '%s' and tp_timestamp >= timestamp '%s'", fromDate, fromTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgTo) {
 		to := viper.GetString(pconstants.ArgTo)
@@ -169,7 +168,7 @@ func getFilters() ([]string, error) {
 		// format as SQL timestamp
 		toDate := t.Format(time.DateOnly)
 		toTimestamp := t.Format(time.DateTime)
-		result = append(result, fmt.Sprintf("tp_date <= DATE '%s' AND tp_timestamp <= TIMESTAMP '%s'", toDate, toTimestamp))
+		result = append(result, fmt.Sprintf("tp_date <= date '%s' and tp_timestamp <= timestamp '%s'", toDate, toTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgPartition) {
 		// we have loaded tailpipe config by this time
@@ -276,7 +275,7 @@ func cleanupOldDbFiles() error {
 		}
 
 		// check for a lock on the file
-		db, err := sql.Open("duckdb", path)
+		db, err := database.NewDuckDb(database.WithDbFile(path))
 		if err != nil {
 			log.Printf("[INFO] Skipping deletion of file %s due to error: %v\n", path, err)
 			return nil
@@ -323,12 +322,12 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 
 		var tableCondition, partitionCondition string
 
-		// If there is no wildcard, use '=' instead of LIKE
+		// If there is no wildcard, use '=' instead of like
 		if table == "%" {
 			// Skip table condition if full wildcard
 			tableCondition = ""
 		} else if strings.Contains(table, "%") {
-			tableCondition = fmt.Sprintf("tp_table LIKE '%s'", table)
+			tableCondition = fmt.Sprintf("tp_table like '%s'", table)
 		} else {
 			tableCondition = fmt.Sprintf("tp_table = '%s'", table)
 		}
@@ -337,14 +336,14 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 			// Skip partition condition if full wildcard
 			partitionCondition = ""
 		} else if strings.Contains(partition, "%") {
-			partitionCondition = fmt.Sprintf("tp_partition LIKE '%s'", partition)
+			partitionCondition = fmt.Sprintf("tp_partition like '%s'", partition)
 		} else {
 			partitionCondition = fmt.Sprintf("tp_partition = '%s'", partition)
 		}
 
 		// Remove empty conditions and combine valid ones
 		if tableCondition != "" && partitionCondition != "" {
-			conditions = append(conditions, fmt.Sprintf("(%s AND %s)", tableCondition, partitionCondition))
+			conditions = append(conditions, fmt.Sprintf("(%s and %s)", tableCondition, partitionCondition))
 		} else if tableCondition != "" {
 			conditions = append(conditions, tableCondition)
 		} else if partitionCondition != "" {
@@ -371,9 +370,9 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 			// Skip index condition if full wildcard
 			conditions = append(conditions, "")
 		} else if strings.Contains(index, "*") {
-			// Replace '*' wildcard with '%' for SQL LIKE compatibility
+			// Replace '*' wildcard with '%' for SQL like compatibility
 			index = strings.ReplaceAll(index, "*", "%")
-			conditions = append(conditions, fmt.Sprintf("CAST(tp_index AS VARCHAR) LIKE '%s'", index))
+			conditions = append(conditions, fmt.Sprintf("cast(tp_index as varchar) like '%s'", index))
 		} else {
 			// Exact match using '='
 			conditions = append(conditions, fmt.Sprintf("tp_index = '%s'", index))

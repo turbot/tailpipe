@@ -54,6 +54,3 @@ if [ $# -eq 0 ]; then
 else
   $BATS_PATH --tap $MY_PATH/test_files/${1}
 fi
-
-# Setting the exit_code, to use in the github workflow(This only gets set to 0 when the above bats test suite passes)
-echo "::set-output name=exit_code::$(echo $?)"

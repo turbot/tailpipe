@@ -15,7 +15,7 @@ on:
       version:
         description: "Version (without 'v')"
         required: true
-        default: 0.1.\invalid
+        default: 0.2.\invalid
       confirmDevelop:
         description: Confirm running on develop branch
         required: true
@@ -108,7 +108,7 @@ jobs:
           repository: turbot/tailpipe-plugin-core
           path: tailpipe-plugin-core
           token: ${{ secrets.GH_ACCESS_TOKEN }}
-          ref: develop
+          ref: main
 
       - name: Calculate version
         id: calculate_version

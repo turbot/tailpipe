@@ -5,6 +5,9 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
+// PartitionPattern represents a pattern used to match partitions.
+// It consists of a table pattern and a partition pattern, both of which are
+// used to match a given table and partition name.
 type PartitionPattern struct {
 	Table     string
 	Partition string
@@ -17,7 +20,7 @@ func NewPartitionPattern(partition *config.Partition) PartitionPattern {
 	}
 }
 
-func ParquetPathMatchesPatterns(table, partition string, patterns []PartitionPattern) bool {
+func PartitionMatchesPatterns(table, partition string, patterns []PartitionPattern) bool {
 	if len(patterns) == 0 {
 		return true
 	}

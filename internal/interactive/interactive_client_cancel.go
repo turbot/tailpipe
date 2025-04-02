@@ -3,6 +3,8 @@ package interactive
 import (
 	"context"
 	"log"
+
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 )
 
 // create a cancel context for the interactive prompt, and set c.cancelFunc
@@ -13,6 +15,9 @@ func (c *InteractiveClient) createPromptContext(parentContext context.Context) c
 	}
 	ctx, cancel := context.WithCancel(parentContext)
 	c.cancelPrompt = cancel
+
+	ctx = statushooks.AddStatusHooksToContext(ctx, statushooks.NewStatusSpinnerHook())
+
 	return ctx
 }
 

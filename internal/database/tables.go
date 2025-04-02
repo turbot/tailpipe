@@ -2,19 +2,20 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
 
+	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
-func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
+func AddTableViews(ctx context.Context, db *DuckDb, filters ...string) error {
 	tables, err := getDirNames(config.GlobalWorkspaceProfile.GetDataDir())
 	if err != nil {
 		return fmt.Errorf("failed to get tables: %w", err)
@@ -39,14 +40,14 @@ func AddTableViews(ctx context.Context, db *sql.DB, filters ...string) error {
 
 // NOTE: tactical optimisation - it seems the first time DuckDB creates a view which inspects the file system it is slow
 // creating and empty view first and then dropping it seems to speed up the process
-func createAndDropEmptyView(ctx context.Context, db *sql.DB) {
+func createAndDropEmptyView(ctx context.Context, db *DuckDb) {
 	_ = AddTableView(ctx, "empty", db)
 	// drop again
 	_, _ = db.ExecContext(ctx, "DROP VIEW empty")
 }
 
-func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...string) error {
-	// TODO #SQL use params to avoid injection
+func AddTableView(ctx context.Context, tableName string, db *DuckDb, filters ...string) error {
+	slog.Info("creating view", "table", tableName, "filters", filters)
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	// Path to the Parquet directory
@@ -57,26 +58,26 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	columns, err := getColumnNames(ctx, parquetPath, db)
 	if err != nil {
 		// if this is because no parquet files match, suppress the error
-		if strings.Contains(err.Error(), "IO Error: No files found that match the pattern") {
+		if strings.Contains(err.Error(), "IO Error: No files found that match the pattern") || error_helpers.IsCancelledError(err) {
 			return nil
 		}
 		return err
 	}
 
-	// Step 2: Build the SELECT clause - cast tp_index as string
+	// Step 2: Build the select clause - cast tp_index as string
 	// (this is necessary as duckdb infers the type from the partition column name
 	// if the index looks like a number, it will infer the column as an int)
 	var typeOverrides = map[string]string{
-		"tp_partition": "VARCHAR",
-		"tp_index":     "VARCHAR",
-		"tp_date":      "DATE",
+		"tp_partition": "varchar",
+		"tp_index":     "varchar",
+		"tp_date":      "date",
 	}
 	var selectClauses []string
 	for _, col := range columns {
 		wrappedCol := fmt.Sprintf(`"%s"`, col)
 		if overrideType, ok := typeOverrides[col]; ok {
 			// Apply the override with casting
-			selectClauses = append(selectClauses, fmt.Sprintf("CAST(%s AS %s) AS %s", col, overrideType, wrappedCol))
+			selectClauses = append(selectClauses, fmt.Sprintf("cast(%s as %s) as %s", col, overrideType, wrappedCol))
 		} else {
 			// Add the column as-is
 			selectClauses = append(selectClauses, wrappedCol)
@@ -84,39 +85,41 @@ func AddTableView(ctx context.Context, tableName string, db *sql.DB, filters ...
 	}
 	selectClause := strings.Join(selectClauses, ", ")
 
-	// Step 3: Build the WHERE clause
+	// Step 3: Build the where clause
 	filterString := ""
 	if len(filters) > 0 {
-		filterString = fmt.Sprintf(" WHERE %s", strings.Join(filters, " AND "))
+		filterString = fmt.Sprintf(" where %s", strings.Join(filters, " and "))
 	}
 
 	// Step 4: Construct the final query
-	query := fmt.Sprintf( //nolint: gosec // this is a controlled query
-		"CREATE OR REPLACE VIEW %s AS SELECT %s FROM '%s'%s",
+	query := fmt.Sprintf(
+		"create or replace view %s as select %s from '%s'%s",
 		tableName, selectClause, parquetPath, filterString,
 	)
 
 	// Execute the query
 	_, err = db.ExecContext(ctx, query)
 	if err != nil {
+		slog.Warn("failed to create view", "table", tableName, "error", err)
 		return fmt.Errorf("failed to create view: %w", err)
 	}
+	slog.Info("created view", "table", tableName)
 	return nil
 }
 
 // query the provided parquet path to get the columns
-func getColumnNames(ctx context.Context, parquetPath string, db *sql.DB) ([]string, error) {
-	columnQuery := fmt.Sprintf("SELECT * FROM '%s' LIMIT 0", parquetPath) //nolint: gosec // this is a controlled query
+func getColumnNames(ctx context.Context, parquetPath string, db *DuckDb) ([]string, error) {
+	columnQuery := fmt.Sprintf("select * from '%s' limit 0", parquetPath)
 	rows, err := db.QueryContext(ctx, columnQuery)
 	if err != nil {
-		return nil, fmt.Errorf("failed to infer schema: %w", err)
+		return nil, err
 	}
 	defer rows.Close()
 
 	// Retrieve column names
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get column names: %w", err)
+		return nil, err
 	}
 
 	// Sort column names alphabetically but with tp_ fields on the end
@@ -157,7 +160,7 @@ func getDirNames(folderPath string) ([]string, error) {
 
 func GetRowCount(ctx context.Context, tableName string, partitionName *string) (int64, error) {
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
@@ -167,9 +170,9 @@ func GetRowCount(ctx context.Context, tableName string, partitionName *string) (
 	if !tableNameRegex.MatchString(tableName) {
 		return 0, fmt.Errorf("invalid table name")
 	}
-	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
+	query := fmt.Sprintf("select count(*) from %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
 	if partitionName != nil {
-		query = fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE tp_partition = '%s'", tableName, *partitionName) // #nosec G201 // this is a controlled query tableName must match a regex
+		query = fmt.Sprintf("select count(*) from %s where tp_partition = '%s'", tableName, *partitionName) // #nosec G201 // this is a controlled query tableName must match a regex
 	}
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
@@ -189,13 +192,13 @@ func GetRowCount(ctx context.Context, tableName string, partitionName *string) (
 
 func GetTableViews(ctx context.Context) ([]string, error) {
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 	defer db.Close()
 
-	query := "SELECT table_name FROM information_schema.tables WHERE table_type='VIEW';"
+	query := "select table_name from information_schema.tables where table_type='VIEW';"
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get table views: %w", err)
@@ -216,16 +219,16 @@ func GetTableViews(ctx context.Context) ([]string, error) {
 
 func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string, error) {
 	// Open a DuckDB connection
-	db, err := sql.Open("duckdb", filepaths.TailpipeDbFilePath())
+	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 	defer db.Close()
 
 	query := `
-		SELECT column_name, data_type 
-		FROM information_schema.columns 
-		WHERE table_name = ? ORDER BY columns.column_name;
+		select column_name, data_type 
+		from information_schema.columns 
+		where table_name = ? ORDER BY columns.column_name;
 	`
 	rows, err := db.QueryContext(ctx, query, viewName)
 	if err != nil {
@@ -240,8 +243,8 @@ func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan column schema: %w", err)
 		}
-		if strings.HasPrefix(columnType, "STRUCT") {
-			columnType = "STRUCT"
+		if strings.HasPrefix(columnType, "struct") {
+			columnType = "struct"
 		}
 		schema[columnName] = columnType
 	}

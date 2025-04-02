@@ -17,7 +17,7 @@ import (
 var exitCode int
 
 var (
-	// These variables will be set by GoReleaser.
+	// these variables will be set by GoReleaser
 	version = localconstants.DefaultVersion
 	commit  = localconstants.DefaultCommit
 	date    = localconstants.DefaultDate
@@ -28,7 +28,7 @@ func main() {
 	ctx := context.Background()
 	utils.LogTime("main start")
 
-	// add the auto-populated version properties into viper.
+	// add the auto-populated version properties into viper
 	setVersionProperties()
 
 	defer func() {

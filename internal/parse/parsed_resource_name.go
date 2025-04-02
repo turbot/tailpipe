@@ -2,22 +2,15 @@ package parse
 
 import (
 	"fmt"
+	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/perr"
 	"github.com/turbot/tailpipe/internal/config"
 	"strings"
 )
 
-// ParsedResourceName represents a parsed property path for a resource with a subtype
-type ParsedResourceName struct {
-	Type    string
-	SubType string
-	Name    string
-
-	Original string
-}
-
-func ParseResourceName(propertyPath string) (*ParsedResourceName, error) {
-	res := &ParsedResourceName{Original: propertyPath}
+// ParseResourceNameWithSubtype parses the name of a resource into type name and , where applicable, subtype.
+func ParseResourceNameWithSubtype(propertyPath string) (modconfig.ResourceNameParser, error) {
+	res := &ParsedResourceNameWithSubtype{Original: propertyPath}
 
 	// valid property paths (depending on whether this resource has a subtype):
 	// <resource_type>.<resource_subtype>.<resource_name>.<property path...>
@@ -50,13 +43,46 @@ func ParseResourceName(propertyPath string) (*ParsedResourceName, error) {
 	return res, nil
 }
 
-func (p *ParsedResourceName) ToResourceName() string {
+// ParsedResourceNameWithSubtype represents a parsed property path for a resource with a subtype
+type ParsedResourceNameWithSubtype struct {
+	Type    string
+	SubType string
+	Name    string
+
+	Original string
+}
+
+func (p *ParsedResourceNameWithSubtype) GetSubType() string {
+	return p.SubType
+}
+
+func (p *ParsedResourceNameWithSubtype) ToFullName() string {
+	return p.ToResourceName()
+}
+
+func (p *ParsedResourceNameWithSubtype) ToFullNameWithMod(string) string {
+	return p.ToResourceName()
+}
+
+func (p *ParsedResourceNameWithSubtype) GetMod() string {
+	return ""
+}
+
+func (p *ParsedResourceNameWithSubtype) GetItemType() string {
+	return p.Type
+}
+
+func (p *ParsedResourceNameWithSubtype) GetName() string {
+	return p.Name
+}
+
+func (p *ParsedResourceNameWithSubtype) ToResourceName() string {
 	if p.SubType == "" {
 		return fmt.Sprintf("%s.%s", p.Type, p.Name)
 	}
 	return fmt.Sprintf("%s.%s.%s", p.Type, p.SubType, p.Name)
 }
 
-func (p *ParsedResourceName) String() string {
+func (p *ParsedResourceNameWithSubtype) String() string {
 	return p.Original
 }

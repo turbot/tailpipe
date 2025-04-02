@@ -1,8 +1,9 @@
-package plugin_manager
+package plugin
 
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"os"
 	"os/exec"
@@ -15,11 +16,9 @@ import (
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
-	_ "github.com/marcboeker/go-duckdb"
-	"github.com/spf13/viper"
+	_ "github.com/marcboeker/go-duckdb/v2"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
-	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
@@ -30,10 +29,10 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
-	"github.com/turbot/tailpipe/internal/plugin"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	// refer to artifact source so sdk sources are registered
@@ -48,7 +47,7 @@ type PluginManager struct {
 	pluginPath  string
 }
 
-func New() *PluginManager {
+func NewPluginManager() *PluginManager {
 	return &PluginManager{
 		Plugins:    make(map[string]*grpc.PluginClient),
 		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
@@ -68,22 +67,6 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	tablePluginClient, err := p.getPlugin(ctx, tablePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
-	}
-
-	var sourcePluginReattach *proto.SourcePluginReattach
-	// identify which plugin provides the source
-	sourcePlugin, err := p.determineSourcePlugin(partition)
-	if err != nil {
-		return nil, fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
-	}
-	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
-	// and then pass reattach info
-	if sourcePlugin.Plugin != tablePlugin.Plugin {
-		sourcePluginClient, err := p.getPlugin(ctx, sourcePlugin)
-		if err != nil {
-			return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
-		}
-		sourcePluginReattach = proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 	}
 
 	// call into the plugin to collect log rows
@@ -117,7 +100,6 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		CollectionTempDir:   collectionTempDir,
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
-		SourcePlugin:        sourcePluginReattach,
 		FromTime:            timestamppb.New(fromTime),
 	}
 
@@ -125,21 +107,28 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		req.ConnectionData = partition.Source.Connection.ToProto()
 	}
 
-	if partition.Source.Format != nil {
-		req.SourceFormat = partition.Source.Format.ToProto()
+	// identify which plugin provides the source and if it is different from the table plugin,
+	// we need to start the source plugin, and then pass reattach info
+	sourcePluginReattach, err := p.getSourcePluginReattach(ctx, partition, tablePlugin)
+	if err != nil {
+		return nil, err
 	}
+	// set on req (may be nil - this is fine)
+	req.SourcePlugin = sourcePluginReattach
+
+	// populate the custom table
 	if partition.CustomTable != nil {
-		req.CustomTable = partition.CustomTable.ToProto()
-		// set the default source format if the source dow not provide one
-		if req.SourceFormat == nil && partition.CustomTable.DefaultSourceFormat != nil {
-			req.SourceFormat = partition.CustomTable.DefaultSourceFormat.ToProto()
-		}
-		if req.SourceFormat == nil {
-			return nil, fmt.Errorf("no source format defined for custom table %s", partition.CustomTable.ShortName)
-		}
+		req.CustomTableSchema = partition.CustomTable.ToProto()
 	}
-	if sourcePluginReattach != nil {
-		req.SourcePlugin = sourcePluginReattach
+
+	// now populate the format if necessary
+	if format := partition.GetFormat(); format != nil {
+		// populate the format data to pass to the plugin
+		pf, err := p.formatToProto(ctx, format, tablePlugin)
+		if err != nil {
+			return nil, err
+		}
+		req.SourceFormat = pf
 	}
 
 	collectResponse, err := tablePluginClient.Collect(req)
@@ -153,6 +142,113 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
+}
+
+// formatToProto takes a config.Format, describes the format and returns the proto.FormatData for the plugin
+func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
+	//  check if the format is provided by the table plugin or whether we need to start format plugin
+	formatPluginName, ok := config.GetPluginForFormat(format)
+	if !ok {
+		return nil, fmt.Errorf("error determining source plugin for format %s", format.FullName)
+	}
+	// if the format is provided by the table plugin, we can just convert it to proto
+	if formatPluginName == tablePlugin.Plugin {
+		slog.Info("format is provided by the table plugin - converting to proto", "format", format.FullName, "plugin", formatPluginName)
+		return format.ToProto(), nil
+	}
+
+	// so the plugin is NOT the table plugin - start it if needed
+	formatPlugin := pplugin.NewPlugin(formatPluginName)
+	if formatPlugin.Plugin == tablePlugin.Plugin {
+		// the format is provided by the table plugin - nothing to do
+		return nil, nil
+	}
+	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
+
+	// so the format is provided by a different plugin - start it if needed and execute a describe
+	// if format is NOT a preset, we need to pass the custom formats to the describe call
+	var opts []DescribeOpts
+	if format.PresetName == "" {
+		opts = append(opts, WithCustomFormats(format), WithCustomFormatsOnly())
+	}
+
+	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving format: %w", err)
+	}
+
+	var desc *types.FormatDescription
+	if format.PresetName != "" {
+		// if format is a preset
+		desc, ok = describeResponse.FormatPresets[format.PresetName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format preset '%s'", formatPluginName, format.PresetName)
+		}
+	} else {
+		// we expect the custom format to be the one we asked for
+		desc, ok = describeResponse.CustomFormats[format.FullName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.PresetName)
+		}
+	}
+
+	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
+}
+
+type DescribeOpts func(*proto.DescribeRequest)
+
+func WithCustomFormats(customFormats ...*config.Format) DescribeOpts {
+	return func(req *proto.DescribeRequest) {
+		var customFormatsProto []*proto.FormatData
+		for _, f := range customFormats {
+			customFormatsProto = append(customFormatsProto, f.ToProto())
+		}
+		req.CustomFormats = customFormatsProto
+	}
+}
+
+func WithCustomFormatsOnly() DescribeOpts {
+	return func(req *proto.DescribeRequest) {
+		req.CustomFormatsOnly = true
+	}
+}
+
+// Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
+	// build plugin ref from the name
+	pluginDef := pplugin.NewPlugin(pluginName)
+
+	pluginClient, err := p.getPlugin(ctx, pluginDef)
+	if err != nil {
+		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
+	}
+
+	req := &proto.DescribeRequest{}
+	// apply opts - these may set the custom formats and custom formats only flag
+	for _, opt := range opts {
+		opt(req)
+	}
+
+	describeResponse, err := pluginClient.Describe(req)
+	if err != nil {
+		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
+	}
+
+	// build DescribeResponse from proto
+	res := types.DescribeResponseFromProto(describeResponse)
+
+	// add non-proto fields
+	res.PluginName = pluginDef.Plugin
+
+	return res, nil
+}
+
+func (p *PluginManager) Close() {
+	p.pluginMutex.Lock()
+	defer p.pluginMutex.Unlock()
+	for _, plg := range p.Plugins {
+		plg.Client.Kill()
+	}
 }
 
 func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionStatePath string) error {
@@ -184,34 +280,26 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	return err
 }
 
-// Describe starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Describe(ctx context.Context, pluginName string) (*PluginDescribeResponse, error) {
-	// build plugin ref from the name
-	pluginDef := pplugin.NewPlugin(pluginName)
-
-	pluginClient, err := p.getPlugin(ctx, pluginDef)
+func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*proto.SourcePluginReattach, error) {
+	// identify which plugin provides the source
+	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
+		return nil, fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+	}
+	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
+	// and then pass reattach info
+	if sourcePlugin.Plugin == tablePlugin.Plugin {
+		return nil, nil
 	}
 
-	describeResponse, err := pluginClient.Describe()
+	// so the source plugin is different from the table plugin - start if needed
+	sourcePluginClient, err := p.getPlugin(ctx, sourcePlugin)
 	if err != nil {
-		return nil, fmt.Errorf("error starting describeion for plugin %s: %w", pluginClient.Name, err)
+		return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
 	}
+	sourcePluginReattach := proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 
-	res := DescribeResponseFromProto(describeResponse)
-	res.Name = pluginDef.Plugin
-
-	// just return - the observer is responsible for waiting for completion
-	return res, nil
-}
-
-func (p *PluginManager) Close() {
-	p.pluginMutex.Lock()
-	defer p.pluginMutex.Unlock()
-	for _, plg := range p.Plugins {
-		plg.Client.Kill()
-	}
+	return sourcePluginReattach, nil
 }
 
 // getExecutionId generates a unique id based on the current time
@@ -220,6 +308,8 @@ func getExecutionId() string {
 	return fmt.Sprintf("%d%d", time.Now().Unix(), rand.Int32N(1000)) //nolint:gosec// strong enough for the execution id
 }
 
+// getPlugin returns the plugin client for the given plugin definition, starting the plugin if needed or returning
+// the existing client if we have one
 func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
 	if pluginDef.Alias == constants.CorePluginName {
 		// ensure the core plugin is installed or the min version requirement is satisfied
@@ -249,6 +339,7 @@ func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin
 	return client, nil
 }
 
+// startPlugin starts the plugin and returns the client
 func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
 	pluginName := tp.Alias
 
@@ -330,6 +421,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 			return
 		case err := <-errChan:
 			if err != nil {
+				// TODO #error handle error
 				// ignore EOF errors
 				if !strings.Contains(err.Error(), "EOF") {
 					fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo// TODO #error
@@ -355,6 +447,9 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 
 }
 
+// determineSourcePlugin determines plugin which provides trhe given source type for the given partition
+// try to use the source information registered in the version file
+// if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {
 	sourceType := partition.Source.Type
 	// because we reference the core plugin, all sources it provides are registered with our source factory instance
@@ -366,8 +461,9 @@ func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*ppl
 		return pplugin.NewPlugin(constants.CorePluginName), nil
 	}
 
-	// assume the source type name is of form "<plugin>_<source>", eg. aws_s3_bucket -> "aws"
-	pluginName := strings.Split(sourceType, "_")[0]
+	pluginName := config.GetPluginForSourceType(sourceType, config.GlobalConfig.PluginVersions)
+
+	// now return the plugin
 	return pplugin.NewPlugin(pluginName), nil
 }
 
@@ -379,6 +475,8 @@ func ensureCorePlugin(ctx context.Context) error {
 		return err
 	}
 
+	action := "Installing"
+
 	// check if core plugin is already installed
 	exists, _ := pplugin.Exists(ctx, constants.CorePluginName)
 
@@ -388,26 +486,26 @@ func ensureCorePlugin(ctx context.Context) error {
 		pluginVersions := config.GlobalConfig.PluginVersions
 		// find the version of the core plugin from the pluginVersions
 		installedVersion := pluginVersions[constants.CorePluginFullName].Version
+		// if installed version is 'local', that will do
+		if installedVersion == "local" {
+			return nil
+		}
 
 		// compare the version(using semver) with the min version
-		satisfy, err := checkSatisfyMinVersion(installedVersion)
+		satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
 		if err != nil {
 			return err
 		}
-		if !satisfy {
-			// install the core plugin
-			if err = installCorePlugin(ctx, state, "Updating"); err != nil {
-				return err
-			}
+		// if satisfied - we are done
+		if satisfy {
+			return nil
 		}
 
-	} else {
-		// install the core plugin
-		if err = installCorePlugin(ctx, state, "Installing"); err != nil {
-			return err
-		}
+		// so an update is required - set action to updating and fall through to installation
+		action = "Updating"
 	}
-	return nil
+	// install the core plugin
+	return installCorePlugin(ctx, state, action)
 }
 
 func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string) error {
@@ -428,21 +526,21 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	progress := make(chan struct{}, 5)
 
 	// install plugin
-	_, err = plugin.Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{}, pociinstaller.WithSkipConfig(viper.GetBool(pconstants.ArgSkipConfig)))
+	_, err = Install(ctx, resolvedPlugin, progress, constants.BaseImageRef, ociinstaller.TailpipeMediaTypeProvider{})
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func checkSatisfyMinVersion(ver string) (bool, error) {
+func checkSatisfyMinVersion(ver string, pluginVersion string) (bool, error) {
 	// check if the version satisfies the min version requirement of core plugin
 	// Parse the versions
 	installedVer, err := version.NewVersion(ver)
 	if err != nil {
 		return false, err
 	}
-	minReq, err := version.NewVersion(constants.MinCorePluginVersion)
+	minReq, err := version.NewVersion(pluginVersion)
 	if err != nil {
 		return false, err
 	}

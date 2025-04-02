@@ -16,9 +16,10 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
-func RunBatchSession(ctx context.Context, args []string, db *sql.DB) (int, []error) {
+func RunBatchSession(ctx context.Context, args []string, db *database.DuckDb) (int, []error) {
 
 	var totalFailedRows int
 	var errors []error
@@ -41,7 +42,7 @@ func RunBatchSession(ctx context.Context, args []string, db *sql.DB) (int, []err
 	return totalFailedRows, errors
 }
 
-func ExecuteQuery(ctx context.Context, query string, db *sql.DB) (int, error) {
+func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, error) {
 	// Run the query
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {

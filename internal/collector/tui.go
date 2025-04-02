@@ -1,186 +1,99 @@
 package collector
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dustin/go-humanize"
-	"github.com/turbot/pipe-fittings/v2/utils"
-	"github.com/turbot/tailpipe-plugin-sdk/row_source"
+
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 type collectionModel struct {
-	partitionName string
-	fromTime      row_source.ResolvedFromTime
+	// status
+	status status
 
-	// artifacts
-	path            string
-	discovered      int64
-	downloaded      int64
-	downloadedBytes int64
-	extracted       int64
-	errors          int64
-
-	// rows
-	rowsReceived  int64
-	rowsEnriched  int64
-	rowsConverted int64
-	rowsErrors    int64
-
+	// cancelled
 	cancelled bool
-	complete  bool
-	initiated time.Time
-
-	// compaction
-	compactionStatus *parquet.CompactionStatus
 }
 
-type CollectionFinishedMsg struct{}
+type CollectionFinishedMsg struct {
+	status status
+}
 
 type AwaitingCompactionMsg struct{}
 
-type CompactionStatusUpdateMsg struct {
-	status *parquet.CompactionStatus
+type CollectionStatusUpdateMsg struct {
+	status status
 }
 
-func newCollectionModel(partitionName string, fromTime row_source.ResolvedFromTime) collectionModel {
+type tickMsg struct{}
+
+func newCollectionModel(status status) collectionModel {
 	return collectionModel{
-		partitionName:    partitionName,
-		fromTime:         fromTime,
-		initiated:        time.Now(),
-		compactionStatus: nil,
+		status: status,
 	}
 }
 
 func (c collectionModel) Init() tea.Cmd {
-	return nil
+	// start the ticker
+	return tickCmd()
 }
 
+// Update will handle messages sent to the model and return the new model and optional command
 func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch t := msg.(type) {
 	case tea.KeyMsg:
 		switch t.String() {
 		case "ctrl+c":
+			// cancel the collection & exit
 			c.cancelled = true
 			return c, tea.Quit
 		}
 	case CollectionFinishedMsg:
-		c.complete = true
+		// set final status and exit
+		c.status = t.status
 		return c, tea.Quit
 	case status:
-		c.path = t.LatestArtifactPath
-		c.discovered = t.ArtifactsDiscovered
-		c.downloaded = t.ArtifactsDownloaded
-		c.downloadedBytes = t.ArtifactsDownloadedBytes
-		c.extracted = t.ArtifactsExtracted
-		c.errors = t.ArtifactErrors
-		c.rowsReceived = t.RowsReceived
-		c.rowsEnriched = t.RowsEnriched
-		c.rowsConverted = t.RowsConverted
-		c.rowsErrors = t.Errors
+		// update the status
+		c.status = t
+		return c, nil
+	case CollectionStatusUpdateMsg:
+		// update the status
+		c.status = t.status
 		return c, nil
 	case AwaitingCompactionMsg:
+		// this doesn't do anything useful except trigger a view update with file compaction placeholder
 		cs := parquet.CompactionStatus{}
-		c.compactionStatus = &cs
+		c.status.compactionStatus = &cs
 		return c, nil
-	case CompactionStatusUpdateMsg:
-		if c.compactionStatus == nil {
-			c.compactionStatus = t.status
-			return c, nil
-		} else {
-			c.compactionStatus.Update(*t.status)
+	case tickMsg:
+		// if cancelled or complete just return no need to schedule next tick
+		if c.cancelled || c.status.complete {
 			return c, nil
 		}
+
+		// update view & schedule next tick event
+		return c, tickCmd()
 	}
 	return c, nil
 }
 
+// View will render the model
 func (c collectionModel) View() string {
-	var b strings.Builder
+	var out strings.Builder
+	header := c.status.CollectionHeader()
+	body := c.status.String()
 
-	displayPath := c.path
-	timeLabel := "Time:"
-	compaction := "Verifying..."
+	out.WriteString(header)
+	out.WriteString(body)
 
-	if c.complete {
-		displayPath = ""
-		timeLabel = "Completed:"
-		compaction = "No files to compact."
-	}
-
-	// header
-	fromTimeSource := c.fromTime.Source
-	if c.fromTime.Source != "" {
-		fromTimeSource = fmt.Sprintf("(%s)", c.fromTime.Source)
-	}
-	b.WriteString(fmt.Sprintf("\nCollecting logs for %s from %s %s\n\n", c.partitionName, c.fromTime.Time.Format(time.DateOnly), fromTimeSource))
-
-	// artifacts
-	artifactDescriptionLen := 11
-	artifactCountLen := len(humanize.Comma(c.discovered))
-	if c.path != "" || c.discovered > 0 {
-		if strings.Contains(displayPath, "/") {
-			displayPath = displayPath[strings.LastIndex(displayPath, "/")+1:]
-		}
-
-		downloadedDisplay := "0B" // Handle negative values gracefully
-		if c.downloadedBytes > 0 {
-			downloadedDisplay = strings.ReplaceAll(humanize.Bytes(uint64(c.downloadedBytes)), " ", "")
-		}
-
-		b.WriteString("Artifacts:\n")
-		b.WriteString(writeCountLine("Discovered:", artifactDescriptionLen, c.discovered, artifactCountLen, &displayPath))
-		b.WriteString(writeCountLine("Downloaded:", artifactDescriptionLen, c.downloaded, artifactCountLen, &downloadedDisplay))
-		b.WriteString(writeCountLine("Extracted:", artifactDescriptionLen, c.extracted, artifactCountLen, nil))
-		if c.errors > 0 {
-			b.WriteString(writeCountLine("Errors:", artifactDescriptionLen, c.errors, artifactCountLen, nil))
-		}
-		b.WriteString("\n")
-	}
-
-	// rows
-	rowDescriptionLen := 9
-	rowCountLen := len(humanize.Comma(c.rowsReceived))
-	b.WriteString("Rows:\n")
-	b.WriteString(writeCountLine("Received:", rowDescriptionLen, c.rowsReceived, rowCountLen, nil))
-	b.WriteString(writeCountLine("Enriched:", rowDescriptionLen, c.rowsEnriched, rowCountLen, nil))
-	b.WriteString(writeCountLine("Saved:", rowDescriptionLen, c.rowsConverted, rowCountLen, nil))
-	if c.compactionStatus != nil {
-		filtered := c.rowsReceived - (c.rowsConverted + c.rowsErrors)
-		if filtered > 0 {
-			b.WriteString(writeCountLine("Filtered:", rowDescriptionLen, filtered, rowCountLen, nil))
-		}
-	}
-	if c.rowsErrors > 0 {
-		b.WriteString(writeCountLine("Errors:", rowDescriptionLen, c.rowsErrors, rowCountLen, nil))
-	}
-	b.WriteString("\n")
-
-	// compaction
-	if c.compactionStatus != nil {
-		b.WriteString("Files:\n")
-		if c.compactionStatus.Source == 0 && c.compactionStatus.Uncompacted == 0 {
-			b.WriteString(fmt.Sprintf("  %s\n", compaction))
-		} else {
-			b.WriteString(fmt.Sprintf("  Compacted: %d => %d\n", c.compactionStatus.Source+c.compactionStatus.Uncompacted, c.compactionStatus.Dest+c.compactionStatus.Uncompacted))
-		}
-		b.WriteString("\n")
-	}
-
-	// run time
-	duration := time.Since(c.initiated)
-	b.WriteString(fmt.Sprintf("%s %s\n", timeLabel, utils.HumanizeDuration(duration)))
-
-	return b.String()
+	return out.String()
 }
 
-func writeCountLine(desc string, descLen int, count int64, maxCountLen int, suffix *string) string {
-	s := ""
-	if suffix != nil {
-		s = *suffix
-	}
-	return fmt.Sprintf("  %-*s %*s %s\n", descLen, desc, maxCountLen, humanize.Comma(count), s)
+// tickCmd returns a command that sends a tick message after specified duration
+func tickCmd() tea.Cmd {
+	return tea.Tick(time.Second*1, func(time.Time) tea.Msg {
+		return tickMsg{}
+	})
 }
