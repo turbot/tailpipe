@@ -452,38 +452,38 @@ from
 				sqlColumn: "varchar_field",
 			},
 			wantQuery: `select * from(select
-                "BooleanField" as "boolean_field",
-                "TinyIntField" as "tinyint_field",
-                "SmallIntField" as "smallint_field",
-                "IntegerField" as "integer_field",
-                "BigIntField" as "bigint_field",
-                "UTinyIntField" as "utinyint_field",
-                "USmallIntField" as "usmallint_field",
-                "UIntegerField" as "uinteger_field",
-                "UBigIntField" as "ubigint_field",
-                "FloatField" as "float_field",
-                "DoubleField" as "double_field",
-                "VarcharField" as "varchar_field",
-                "TimestampField" as "timestamp_field"
-        from
-                read_ndjson(
-                        '%s',
-                        columns = {
-                                "BooleanField": 'boolean', 
-                                "TinyIntField": 'tinyint', 
-                                "SmallIntField": 'smallint', 
-                                "IntegerField": 'integer', 
-                                "BigIntField": 'bigint', 
-                                "UTinyIntField": 'utinyint', 
-                                "USmallIntField": 'usmallint', 
-                                "UIntegerField": 'uinteger', 
-                                "UBigIntField": 'ubigint', 
-                                "FloatField": 'float', 
-                                "DoubleField": 'double', 
-                                "VarcharField": 'varchar', 
-                                "TimestampField": 'timestamp'
-                        }
-                ))`,
+	"BooleanField" as "boolean_field",
+	"TinyIntField" as "tinyint_field",
+	"SmallIntField" as "smallint_field",
+	"IntegerField" as "integer_field",
+	"BigIntField" as "bigint_field",
+	"UTinyIntField" as "utinyint_field",
+	"USmallIntField" as "usmallint_field",
+	"UIntegerField" as "uinteger_field",
+	"UBigIntField" as "ubigint_field",
+	"FloatField" as "float_field",
+	"DoubleField" as "double_field",
+	"VarcharField" as "varchar_field",
+	"TimestampField" as "timestamp_field"
+from
+	read_ndjson(
+		'%s',
+		columns = {
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
+		}
+	))`,
 			wantData: []any{"StringValue"},
 		},
 		{
@@ -539,38 +539,38 @@ from
 				sqlColumn: "boolean_field",
 			},
 			wantQuery: `select * from(select
-                "BooleanField" as "boolean_field",
-                "TinyIntField" as "tinyint_field",
-                "SmallIntField" as "smallint_field",
-                "IntegerField" as "integer_field",
-                "BigIntField" as "bigint_field",
-                "UTinyIntField" as "utinyint_field",
-                "USmallIntField" as "usmallint_field",
-                "UIntegerField" as "uinteger_field",
-                "UBigIntField" as "ubigint_field",
-                "FloatField" as "float_field",
-                "DoubleField" as "double_field",
-                "VarcharField" as "varchar_field",
-                "TimestampField" as "timestamp_field"
-        from
-                read_ndjson(
-                        '%s',
-                        columns = {
-                                "BooleanField": 'boolean', 
-                                "TinyIntField": 'tinyint', 
-                                "SmallIntField": 'smallint', 
-                                "IntegerField": 'integer', 
-                                "BigIntField": 'bigint', 
-                                "UTinyIntField": 'utinyint', 
-                                "USmallIntField": 'usmallint', 
-                                "UIntegerField": 'uinteger', 
-                                "UBigIntField": 'ubigint', 
-                                "FloatField": 'float', 
-                                "DoubleField": 'double', 
-                                "VarcharField": 'varchar', 
-                                "TimestampField": 'timestamp'
-                        }
-                ))`,
+	"BooleanField" as "boolean_field",
+	"TinyIntField" as "tinyint_field",
+	"SmallIntField" as "smallint_field",
+	"IntegerField" as "integer_field",
+	"BigIntField" as "bigint_field",
+	"UTinyIntField" as "utinyint_field",
+	"USmallIntField" as "usmallint_field",
+	"UIntegerField" as "uinteger_field",
+	"UBigIntField" as "ubigint_field",
+	"FloatField" as "float_field",
+	"DoubleField" as "double_field",
+	"VarcharField" as "varchar_field",
+	"TimestampField" as "timestamp_field"
+from
+	read_ndjson(
+		'%s',
+		columns = {
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
+		}
+	))`,
 			wantData: []any{true},
 		},
 		{
@@ -601,38 +601,38 @@ from
 				sqlColumn: "boolean_field",
 			},
 			wantQuery: `select * from(select
-                "BooleanField" as "boolean_field",
-                "TinyIntField" as "tinyint_field",
-                "SmallIntField" as "smallint_field",
-                "IntegerField" as "integer_field",
-                "BigIntField" as "bigint_field",
-                "UTinyIntField" as "utinyint_field",
-                "USmallIntField" as "usmallint_field",
-                "UIntegerField" as "uinteger_field",
-                "UBigIntField" as "ubigint_field",
-                "FloatField" as "float_field",
-                "DoubleField" as "double_field",
-                "VarcharField" as "varchar_field",
-                "TimestampField" as "timestamp_field"
-        from
-                read_ndjson(
-                        '%s',
-                        columns = {
-                                "BooleanField": 'boolean', 
-                                "TinyIntField": 'tinyint', 
-                                "SmallIntField": 'smallint', 
-                                "IntegerField": 'integer', 
-                                "BigIntField": 'bigint', 
-                                "UTinyIntField": 'utinyint', 
-                                "USmallIntField": 'usmallint', 
-                                "UIntegerField": 'uinteger', 
-                                "UBigIntField": 'ubigint', 
-                                "FloatField": 'float', 
-                                "DoubleField": 'double', 
-                                "VarcharField": 'varchar', 
-                                "TimestampField": 'timestamp'
-                        }
-                ))`,
+	"BooleanField" as "boolean_field",
+	"TinyIntField" as "tinyint_field",
+	"SmallIntField" as "smallint_field",
+	"IntegerField" as "integer_field",
+	"BigIntField" as "bigint_field",
+	"UTinyIntField" as "utinyint_field",
+	"USmallIntField" as "usmallint_field",
+	"UIntegerField" as "uinteger_field",
+	"UBigIntField" as "ubigint_field",
+	"FloatField" as "float_field",
+	"DoubleField" as "double_field",
+	"VarcharField" as "varchar_field",
+	"TimestampField" as "timestamp_field"
+from
+	read_ndjson(
+		'%s',
+		columns = {
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
+		}
+	))`,
 			wantData: []any{true, nil, true},
 		},
 		{
@@ -661,38 +661,38 @@ from
 				sqlColumn: "varchar_field",
 			},
 			wantQuery: `select * from(select
-                "BooleanField" as "boolean_field",
-                "TinyIntField" as "tinyint_field",
-                "SmallIntField" as "smallint_field",
-                "IntegerField" as "integer_field",
-                "BigIntField" as "bigint_field",
-                "UTinyIntField" as "utinyint_field",
-                "USmallIntField" as "usmallint_field",
-                "UIntegerField" as "uinteger_field",
-                "UBigIntField" as "ubigint_field",
-                "FloatField" as "float_field",
-                "DoubleField" as "double_field",
-                "VarcharField" as "varchar_field",
-                "TimestampField" as "timestamp_field"
-        from
-                read_ndjson(
-                        '%s',
-                        columns = {
-                                "BooleanField": 'boolean', 
-                                "TinyIntField": 'tinyint', 
-                                "SmallIntField": 'smallint', 
-                                "IntegerField": 'integer', 
-                                "BigIntField": 'bigint', 
-                                "UTinyIntField": 'utinyint', 
-                                "USmallIntField": 'usmallint', 
-                                "UIntegerField": 'uinteger', 
-                                "UBigIntField": 'ubigint', 
-                                "FloatField": 'float', 
-                                "DoubleField": 'double', 
-                                "VarcharField": 'varchar', 
-                                "TimestampField": 'timestamp'
-                        }
-                ))`,
+	"BooleanField" as "boolean_field",
+	"TinyIntField" as "tinyint_field",
+	"SmallIntField" as "smallint_field",
+	"IntegerField" as "integer_field",
+	"BigIntField" as "bigint_field",
+	"UTinyIntField" as "utinyint_field",
+	"USmallIntField" as "usmallint_field",
+	"UIntegerField" as "uinteger_field",
+	"UBigIntField" as "ubigint_field",
+	"FloatField" as "float_field",
+	"DoubleField" as "double_field",
+	"VarcharField" as "varchar_field",
+	"TimestampField" as "timestamp_field"
+from
+	read_ndjson(
+		'%s',
+		columns = {
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
+		}
+	))`,
 			wantData: []any{nil},
 		},
 		{
@@ -936,7 +936,8 @@ left join
 					},
 				},
 
-				json:      `{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}], "IntField": 10, "StringField": "SampleString", "FloatField": 10.5, "BooleanField": true, "IntArrayField": [1, 2, 3], "StringArrayField": ["String1", "String2"], "FloatArrayField": [1.1, 2.2, 3.3], "BooleanArrayField": [true, false, true]}`,
+				json: `{"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}], "IntField": 10, "StringField": "SampleString", "FloatField": 10.5, "BooleanField": true, "IntArrayField": [1, 2, 3], "StringArrayField": ["String1", "String2"], "FloatArrayField": [1.1, 2.2, 3.3], "BooleanArrayField": [true, false, true]}`,
+				// NOTE: arrays are 1-based
 				sqlColumn: "struct_array_field[1].struct_string_field",
 			},
 			wantQuery: `with raw as (
