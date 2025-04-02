@@ -41,6 +41,7 @@ func setup() error {
 	// Initialize workspace profile with parse options
 	parseOpts := []parse.ParseHclOpt{
 		parse.WithEscapeBackticks(true),
+		parse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
 	}
 	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
@@ -88,7 +89,7 @@ func Test_buildViewQuery(t *testing.T) {
 	defer teardown()
 
 	type args struct {
-		schema    *schema.TableSchema
+		schema    *schema.ConversionSchema
 		json      string
 		sqlColumn string
 	}
@@ -113,7 +114,7 @@ func Test_buildViewQuery(t *testing.T) {
 		       c.Type = "varchar"
 		           c.Type = "timestamp"
 
-		   c.Type = "BLOB"
+		   c.Type = "blob"
 		       c.Type = "array"
 		       c.Type = "struct"
 		       c.Type = "map"
@@ -121,15 +122,17 @@ func Test_buildViewQuery(t *testing.T) {
 		{
 			name: "struct",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructField",
-							ColumnName: "struct_field",
-							Type:       "struct",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "bigint"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructField",
+								ColumnName: "struct_field",
+								Type:       "struct",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "bigint"},
+								},
 							},
 						},
 					},
@@ -157,12 +160,14 @@ from
 		{
 			name: "json",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "JsonField",
-							ColumnName: "json_field",
-							Type:       "json",
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "JsonField",
+								ColumnName: "json_field",
+								Type:       "json",
+							},
 						},
 					},
 				},
@@ -183,14 +188,16 @@ from
 		{
 			name: "struct with keyword names",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "end",
-							ColumnName: "end",
-							Type:       "struct",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "any", ColumnName: "any", Type: "varchar"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "end",
+								ColumnName: "end",
+								Type:       "struct",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "any", ColumnName: "any", Type: "varchar"},
+								},
 							},
 						},
 					},
@@ -217,14 +224,16 @@ from
 		{
 			name: "null struct",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "end",
-							ColumnName: "end",
-							Type:       "struct",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "any", ColumnName: "any", Type: "varchar"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "end",
+								ColumnName: "end",
+								Type:       "struct",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "any", ColumnName: "any", Type: "varchar"},
+								},
 							},
 						},
 					},
@@ -251,29 +260,31 @@ from
 		{
 			name: "nested struct",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructField",
-							ColumnName: "struct_field",
-							Type:       "struct",
-							StructFields: []*schema.ColumnSchema{
-								{
-									SourceName: "NestedStruct",
-									ColumnName: "nested_struct",
-									Type:       "struct",
-									StructFields: []*schema.ColumnSchema{
-										{
-											SourceName: "NestedStructStringField",
-											ColumnName: "nested_struct_string_field",
-											Type:       "varchar",
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructField",
+								ColumnName: "struct_field",
+								Type:       "struct",
+								StructFields: []*schema.ColumnSchema{
+									{
+										SourceName: "NestedStruct",
+										ColumnName: "nested_struct",
+										Type:       "struct",
+										StructFields: []*schema.ColumnSchema{
+											{
+												SourceName: "NestedStructStringField",
+												ColumnName: "nested_struct_string_field",
+												Type:       "varchar",
+											},
 										},
 									},
-								},
-								{
-									SourceName: "StructStringField",
-									ColumnName: "struct_string_field",
-									Type:       "varchar",
+									{
+										SourceName: "StructStringField",
+										ColumnName: "struct_string_field",
+										Type:       "varchar",
+									},
 								},
 							},
 						},
@@ -307,29 +318,31 @@ from
 		{
 			name: "null nested struct",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructField",
-							ColumnName: "struct_field",
-							Type:       "struct",
-							StructFields: []*schema.ColumnSchema{
-								{
-									SourceName: "NestedStruct",
-									ColumnName: "nested_struct",
-									Type:       "struct",
-									StructFields: []*schema.ColumnSchema{
-										{
-											SourceName: "NestedStructStringField",
-											ColumnName: "nested_struct_string_field",
-											Type:       "varchar",
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructField",
+								ColumnName: "struct_field",
+								Type:       "struct",
+								StructFields: []*schema.ColumnSchema{
+									{
+										SourceName: "NestedStruct",
+										ColumnName: "nested_struct",
+										Type:       "struct",
+										StructFields: []*schema.ColumnSchema{
+											{
+												SourceName: "NestedStructStringField",
+												ColumnName: "nested_struct_string_field",
+												Type:       "varchar",
+											},
 										},
 									},
-								},
-								{
-									SourceName: "StructStringField",
-									ColumnName: "struct_string_field",
-									Type:       "varchar",
+									{
+										SourceName: "StructStringField",
+										ColumnName: "struct_string_field",
+										Type:       "varchar",
+									},
 								},
 							},
 						},
@@ -364,22 +377,24 @@ from
 		{
 			name: "nested struct with keyword names",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "end",
-							ColumnName: "end",
-							Type:       "struct",
-							StructFields: []*schema.ColumnSchema{
-								{
-									SourceName: "any",
-									ColumnName: "any",
-									Type:       "struct",
-									StructFields: []*schema.ColumnSchema{
-										{
-											SourceName: "for",
-											ColumnName: "for",
-											Type:       "varchar",
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "end",
+								ColumnName: "end",
+								Type:       "struct",
+								StructFields: []*schema.ColumnSchema{
+									{
+										SourceName: "any",
+										ColumnName: "any",
+										Type:       "struct",
+										StructFields: []*schema.ColumnSchema{
+											{
+												SourceName: "for",
+												ColumnName: "for",
+												Type:       "varchar",
+											},
 										},
 									},
 								},
@@ -414,21 +429,23 @@ from
 		{
 			name: "scalar types",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
-						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
-						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
-						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
-						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
-						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
-						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
-						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
-						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
-						{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
-						{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
-						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
-						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
+							{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
+							{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
+							{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
+							{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
+							{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
+							{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
+							{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
+							{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
+							{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
+							{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
+							{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
+							{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+						},
 					},
 				},
 				json:      `{"BooleanField": true, "TinyIntField": 1, "SmallIntField": 2, "IntegerField": 3, "BigIntField": 4, "UTinyIntField": 5, "USmallIntField": 6, "UIntegerField": 7, "UBigIntField": 8, "FloatField": 1.23, "DoubleField": 4.56, "VarcharField": "StringValue", "TimestampField": "2024-01-01T00:00:00Z"}`,
@@ -472,10 +489,12 @@ from
 		{
 			name: "scalar types - reserved names",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{SourceName: "end", ColumnName: "end", Type: "boolean"},
-						{SourceName: "for", ColumnName: "for", Type: "tinyint"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{SourceName: "end", ColumnName: "end", Type: "boolean"},
+							{SourceName: "for", ColumnName: "for", Type: "tinyint"},
+						},
 					},
 				},
 				json:      `{"end": true, "for": 1}`,
@@ -497,21 +516,23 @@ from
 		{
 			name: "scalar types - missing some data",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
-						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
-						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
-						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
-						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
-						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
-						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
-						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
-						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
-						{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
-						{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
-						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
-						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
+							{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
+							{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
+							{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
+							{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
+							{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
+							{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
+							{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
+							{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
+							{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
+							{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
+							{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
+							{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+						},
 					},
 				},
 				json:      `{"BooleanField": true}`,
@@ -555,21 +576,23 @@ from
 		{
 			name: "scalar types - some rows missing some data",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
-						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
-						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
-						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
-						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
-						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
-						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
-						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
-						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
-						{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
-						{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
-						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
-						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
+							{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
+							{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
+							{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
+							{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
+							{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
+							{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
+							{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
+							{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
+							{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
+							{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
+							{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
+							{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+						},
 					},
 				},
 				json: `{"BooleanField": true}
@@ -615,21 +638,23 @@ from
 		{
 			name: "scalar types, missing all data",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
-						{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
-						{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
-						{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
-						{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
-						{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
-						{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
-						{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
-						{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
-						{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
-						{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
-						{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
-						{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
+							{SourceName: "TinyIntField", ColumnName: "tinyint_field", Type: "tinyint"},
+							{SourceName: "SmallIntField", ColumnName: "smallint_field", Type: "smallint"},
+							{SourceName: "IntegerField", ColumnName: "integer_field", Type: "integer"},
+							{SourceName: "BigIntField", ColumnName: "bigint_field", Type: "bigint"},
+							{SourceName: "UTinyIntField", ColumnName: "utinyint_field", Type: "utinyint"},
+							{SourceName: "USmallIntField", ColumnName: "usmallint_field", Type: "usmallint"},
+							{SourceName: "UIntegerField", ColumnName: "uinteger_field", Type: "uinteger"},
+							{SourceName: "UBigIntField", ColumnName: "ubigint_field", Type: "ubigint"},
+							{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
+							{SourceName: "DoubleField", ColumnName: "double_field", Type: "double"},
+							{SourceName: "VarcharField", ColumnName: "varchar_field", Type: "varchar"},
+							{SourceName: "TimestampField", ColumnName: "timestamp_field", Type: "timestamp"},
+						},
 					},
 				},
 				json:      `{}`,
@@ -673,21 +698,23 @@ from
 		{
 			name: "array types",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{SourceName: "BooleanArrayField", ColumnName: "boolean_array_field", Type: "boolean[]"},
-						{SourceName: "TinyIntArrayField", ColumnName: "tinyint_array_field", Type: "tinyint[]"},
-						{SourceName: "SmallIntArrayField", ColumnName: "smallint_array_field", Type: "smallint[]"},
-						{SourceName: "IntegerArrayField", ColumnName: "integer_array_field", Type: "integer[]"},
-						{SourceName: "BigIntArrayField", ColumnName: "bigint_array_field", Type: "bigint[]"},
-						{SourceName: "UTinyIntArrayField", ColumnName: "utinyint_array_field", Type: "utinyint[]"},
-						{SourceName: "USmallIntArrayField", ColumnName: "usmallint_array_field", Type: "usmallint[]"},
-						{SourceName: "UIntegerArrayField", ColumnName: "uinteger_array_field", Type: "uinteger[]"},
-						{SourceName: "UBigIntArrayField", ColumnName: "ubigint_array_field", Type: "ubigint[]"},
-						{SourceName: "FloatArrayField", ColumnName: "float_array_field", Type: "float[]"},
-						{SourceName: "DoubleArrayField", ColumnName: "double_array_field", Type: "double[]"},
-						{SourceName: "VarcharArrayField", ColumnName: "varchar_array_field", Type: "varchar[]"},
-						{SourceName: "TimestampArrayField", ColumnName: "timestamp_array_field", Type: "timestamp[]"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{SourceName: "BooleanArrayField", ColumnName: "boolean_array_field", Type: "boolean[]"},
+							{SourceName: "TinyIntArrayField", ColumnName: "tinyint_array_field", Type: "tinyint[]"},
+							{SourceName: "SmallIntArrayField", ColumnName: "smallint_array_field", Type: "smallint[]"},
+							{SourceName: "IntegerArrayField", ColumnName: "integer_array_field", Type: "integer[]"},
+							{SourceName: "BigIntArrayField", ColumnName: "bigint_array_field", Type: "bigint[]"},
+							{SourceName: "UTinyIntArrayField", ColumnName: "utinyint_array_field", Type: "utinyint[]"},
+							{SourceName: "USmallIntArrayField", ColumnName: "usmallint_array_field", Type: "usmallint[]"},
+							{SourceName: "UIntegerArrayField", ColumnName: "uinteger_array_field", Type: "uinteger[]"},
+							{SourceName: "UBigIntArrayField", ColumnName: "ubigint_array_field", Type: "ubigint[]"},
+							{SourceName: "FloatArrayField", ColumnName: "float_array_field", Type: "float[]"},
+							{SourceName: "DoubleArrayField", ColumnName: "double_array_field", Type: "double[]"},
+							{SourceName: "VarcharArrayField", ColumnName: "varchar_array_field", Type: "varchar[]"},
+							{SourceName: "TimestampArrayField", ColumnName: "timestamp_array_field", Type: "timestamp[]"},
+						},
 					},
 				},
 				json:      `{"BooleanArrayField": [true, false], "TinyIntArrayField": [1, 2], "SmallIntArrayField": [2, 3], "IntegerArrayField": [3, 4], "BigIntArrayField": [4, 5], "UTinyIntArrayField": [5, 6], "USmallIntArrayField": [6, 7], "UIntegerArrayField": [7, 8], "UBigIntArrayField": [8, 9], "FloatArrayField": [1.23, 2.34], "DoubleArrayField": [4.56, 5.67], "VarcharArrayField": ["StringValue1", "StringValue2"], "TimestampArrayField": ["2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"]}`,
@@ -731,15 +758,17 @@ from
 		{
 			name: "array of simple structs",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructArrayField",
-							ColumnName: "struct_array_field",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructArrayField",
+								ColumnName: "struct_array_field",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+								},
 							},
 						},
 					},
@@ -780,37 +809,37 @@ from
 		)) as struct_array_field	
 	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
 select
 	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field
 from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{"StringValue1"},
 		},
 
 		// TODO struct arrays are not supported yet
 		// in fact one level of struct array field does work, but not nested struct arrays so for
-		// now all struct arrays are treated as JSON
+		// now all struct arrays are treated as json
 		//		{
 		//			name: "struct with struct array field",
 		//			args: args{
-		//				schema: &schema.TableSchema{
-		//					Columns: []*schema.ColumnSchema{
+		//				conversionSchema: &conversionSchema.TableSchema{
+		//					Columns: []*conversionSchema.ColumnSchema{
 		//						{
 		//							SourceName: "StructWithArrayField",
 		//							ColumnName: "struct_with_array_field",
 		//							Type:       "struct",
-		//							StructFields: []*schema.ColumnSchema{
+		//							StructFields: []*conversionSchema.ColumnSchema{
 		//								{SourceName: "StructArrayField",
 		//									ColumnName: "struct_array_field",
 		//									Type:       "struct[]",
-		//									StructFields: []*schema.ColumnSchema{
-		//										{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-		//										{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+		//									StructFields: []*conversionSchema.ColumnSchema{
+		//										{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "VARCHAR"},
+		//										{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "INTEGER"},
 		//									},},
 		//							},
 		//						},
@@ -819,47 +848,47 @@ LEFT JOIN
 		//				json:      `{"StructWithArrayField": {"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}}`,
 		//				sqlColumn: "struct_with_array_field.struct_array_field[1].struct_string_field",
 		//			},
-		//			wantQuery: `with raw AS (
-		//	select
+		//			wantQuery: `WITH raw AS (
+		//	SELECT
 		//		row_number() OVER () AS rowid,
 		//		"StructArrayField" AS "struct_array_field"
-		//	from
+		//	FROM
 		//		read_ndjson(
 		//			'%s',
 		//			columns = {
-		//				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]'
+		//				"StructArrayField": 'struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[]'
 		//			}
 		//		)
 		//), unnest_struct_array_field AS (
-		//    select
+		//    SELECT
 		//        rowid,
-		//		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
-		//	from
+		//		UNNEST(COALESCE("struct_array_field", ARRAY[]::struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
+		//	FROM
 		//		raw
 		//), rebuild_unnest_struct_array_field AS (
-		//	select
+		//	SELECT
 		//		rowid,
-		//		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
-		//		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
-		//	from
+		//		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
+		//		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
+		//	FROM
 		//		unnest_struct_array_field
 		//), grouped_unnest_struct_array_field AS (
-		//	select
+		//	SELECT
 		//		rowid,
 		//		array_agg(struct_pack(
-		//				struct_string_field := StructArrayField_StructStringField::varchar,
-		//				struct_int_field := StructArrayField_StructIntField::integer
-		//		)) as struct_array_field
-		//	from
+		//				struct_string_field := StructArrayField_StructStringField::VARCHAR,
+		//				struct_int_field := StructArrayField_StructIntField::INTEGER
+		//		)) AS struct_array_field
+		//	FROM
 		//		rebuild_unnest_struct_array_field
-		//	GROUP BY
+		//	group by
 		//		rowid
 		//)
-		//select
+		//SELECT
 		//	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
-		//from
+		//FROM
 		//	raw
-		//LEFT JOIN
+		//left join
 		//	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
 		//			wantData: []any{"StringValue1"},
 		//		},
@@ -867,40 +896,42 @@ LEFT JOIN
 		{
 			name: "array of simple structs plus other fields",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructArrayField",
-							ColumnName: "struct_array_field",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructArrayField",
+								ColumnName: "struct_array_field",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+								},
 							},
-						},
-						{SourceName: "IntField", ColumnName: "int_field", Type: "integer"},
-						{SourceName: "StringField", ColumnName: "string_field", Type: "varchar"},
-						{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
-						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
-						{
-							SourceName: "IntArrayField",
-							ColumnName: "int_array_field",
-							Type:       "integer[]",
-						},
-						{
-							SourceName: "StringArrayField",
-							ColumnName: "string_array_field",
-							Type:       "varchar[]",
-						},
-						{
-							SourceName: "FloatArrayField",
-							ColumnName: "float_array_field",
-							Type:       "float[]",
-						},
-						{
-							SourceName: "BooleanArrayField",
-							ColumnName: "boolean_array_field",
-							Type:       "boolean[]",
+							{SourceName: "IntField", ColumnName: "int_field", Type: "integer"},
+							{SourceName: "StringField", ColumnName: "string_field", Type: "varchar"},
+							{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
+							{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
+							{
+								SourceName: "IntArrayField",
+								ColumnName: "int_array_field",
+								Type:       "integer[]",
+							},
+							{
+								SourceName: "StringArrayField",
+								ColumnName: "string_array_field",
+								Type:       "varchar[]",
+							},
+							{
+								SourceName: "FloatArrayField",
+								ColumnName: "float_array_field",
+								Type:       "float[]",
+							},
+							{
+								SourceName: "BooleanArrayField",
+								ColumnName: "boolean_array_field",
+								Type:       "boolean[]",
+							},
 						},
 					},
 				},
@@ -958,7 +989,7 @@ LEFT JOIN
 		)) as struct_array_field	
 	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
 select
@@ -973,47 +1004,49 @@ select
 	raw.boolean_array_field
 from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{"StringValue1"},
 		},
 		{
 			name: "null array of simple structs plus other fields",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructArrayField",
-							ColumnName: "struct_array_field",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructArrayField",
+								ColumnName: "struct_array_field",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+								},
 							},
-						},
-						{SourceName: "IntField", ColumnName: "int_field", Type: "integer"},
-						{SourceName: "StringField", ColumnName: "string_field", Type: "varchar"},
-						{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
-						{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
-						{
-							SourceName: "IntArrayField",
-							ColumnName: "int_array_field",
-							Type:       "integer[]",
-						},
-						{
-							SourceName: "StringArrayField",
-							ColumnName: "string_array_field",
-							Type:       "varchar[]",
-						},
-						{
-							SourceName: "FloatArrayField",
-							ColumnName: "float_array_field",
-							Type:       "float[]",
-						},
-						{
-							SourceName: "BooleanArrayField",
-							ColumnName: "boolean_array_field",
-							Type:       "boolean[]",
+							{SourceName: "IntField", ColumnName: "int_field", Type: "integer"},
+							{SourceName: "StringField", ColumnName: "string_field", Type: "varchar"},
+							{SourceName: "FloatField", ColumnName: "float_field", Type: "float"},
+							{SourceName: "BooleanField", ColumnName: "boolean_field", Type: "boolean"},
+							{
+								SourceName: "IntArrayField",
+								ColumnName: "int_array_field",
+								Type:       "integer[]",
+							},
+							{
+								SourceName: "StringArrayField",
+								ColumnName: "string_array_field",
+								Type:       "varchar[]",
+							},
+							{
+								SourceName: "FloatArrayField",
+								ColumnName: "float_array_field",
+								Type:       "float[]",
+							},
+							{
+								SourceName: "BooleanArrayField",
+								ColumnName: "boolean_array_field",
+								Type:       "boolean[]",
+							},
 						},
 					},
 				},
@@ -1070,7 +1103,7 @@ LEFT JOIN
 		)) as struct_array_field	
 	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
 select
@@ -1085,22 +1118,24 @@ select
 	raw.boolean_array_field
 from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{int32(10)},
 		},
 		{
 			name: "array of simple structs with null value",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructArrayField",
-							ColumnName: "struct_array_field",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructArrayField",
+								ColumnName: "struct_array_field",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+								},
 							},
 						},
 					},
@@ -1141,29 +1176,31 @@ LEFT JOIN
 		)) as struct_array_field	
 	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
 select
 	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field
 from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{nil},
 		},
 		{
 			name: "array of simple structs with null value and non null value",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructArrayField",
-							ColumnName: "struct_array_field",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructArrayField",
+								ColumnName: "struct_array_field",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+								},
 							},
 						},
 					},
@@ -1205,15 +1242,15 @@ LEFT JOIN
 		)) as struct_array_field	
 	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
 select
 	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field
 from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			//wantData: []any{nil, "StringValue1"},
 			// NOTE: ordering is not guaranteed
 			wantData: []any{"StringValue1", nil},
@@ -1221,24 +1258,26 @@ LEFT JOIN
 		{
 			name: "2 arrays of simple structs",
 			args: args{
-				schema: &schema.TableSchema{
-					Columns: []*schema.ColumnSchema{
-						{
-							SourceName: "StructArrayField",
-							ColumnName: "struct_array_field",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
-								{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+				schema: &schema.ConversionSchema{
+					TableSchema: schema.TableSchema{
+						Columns: []*schema.ColumnSchema{
+							{
+								SourceName: "StructArrayField",
+								ColumnName: "struct_array_field",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField", ColumnName: "struct_string_field", Type: "varchar"},
+									{SourceName: "StructIntField", ColumnName: "struct_int_field", Type: "integer"},
+								},
 							},
-						},
-						{
-							SourceName: "StructArrayField2",
-							ColumnName: "struct_array_field2",
-							Type:       "struct[]",
-							StructFields: []*schema.ColumnSchema{
-								{SourceName: "StructStringField2", ColumnName: "struct_string_field2", Type: "varchar"},
-								{SourceName: "StructIntField2", ColumnName: "struct_int_field2", Type: "integer"},
+							{
+								SourceName: "StructArrayField2",
+								ColumnName: "struct_array_field2",
+								Type:       "struct[]",
+								StructFields: []*schema.ColumnSchema{
+									{SourceName: "StructStringField2", ColumnName: "struct_string_field2", Type: "varchar"},
+									{SourceName: "StructIntField2", ColumnName: "struct_int_field2", Type: "integer"},
+								},
 							},
 						},
 					},
@@ -1281,7 +1320,7 @@ LEFT JOIN
 		)) as struct_array_field	
 	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 ), unnest_struct_array_field2 as (
     select
@@ -1305,7 +1344,7 @@ LEFT JOIN
 		)) as struct_array_field2	
 	from
 		rebuild_unnest_struct_array_field2	
-	GROUP BY
+	group by
 		rowid	
 )
 select
@@ -1313,18 +1352,18 @@ select
 	coalesce(joined_struct_array_field2.struct_array_field2, null) as struct_array_field2
 from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid
-LEFT JOIN
-	grouped_unnest_struct_array_field2 joined_struct_array_field2 ON raw.rowid = joined_struct_array_field2.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid
+left join
+	grouped_unnest_struct_array_field2 joined_struct_array_field2 on raw.rowid = joined_struct_array_field2.rowid`,
 			wantData: []any{"StringValue100"},
 		},
 		// TODO #parquet https://github.com/turbot/tailpipe/issues/new
 		//		{
 		//			name: "map types",
 		//			args: args{
-		//				schema: &schema.TableSchema{
-		//					Columns: []*schema.ColumnSchema{
+		//				conversionSchema: &conversionSchema.TableSchema{
+		//					Columns: []*conversionSchema.ColumnSchema{
 		//						{SourceName: "BooleanMapField", ColumnName: "boolean_map_field", Type: "map<varchar, boolean>"},
 		//						{SourceName: "TinyIntMapField", ColumnName: "tinyint_map_field", Type: "map<varchar, tinyint>"},
 		//						{SourceName: "SmallIntMapField", ColumnName: "smallint_map_field", Type: "map<varchar, smallint>"},
@@ -1340,15 +1379,15 @@ LEFT JOIN
 		//				sqlColumn: "boolean_map_field",
 		//			},
 		//			wantQuery: `select
-		//	json_extract(json, '$.BooleanMapField')::map(varchar, boolean> AS boolean_map_field,
-		//	json_extract(json, '$.TinyIntMapField')::map(varchar, tinyint> AS tinyint_map_field,
-		//	json_extract(json, '$.SmallIntMapField')::map(varchar, smallint) AS smallint_map_field,
-		//	json_extract(json, '$.IntegerMapField')::map(varchar, integer) AS integer_map_field,
-		//	json_extract(json, '$.BigIntMapField')::map(varchar, bigint) AS bigint_map_field,
-		//	json_extract(json, '$.FloatMapField')::map(varchar, float) AS float_map_field,
-		//	json_extract(json, '$.DoubleMapField')::map(varchar, double) AS double_map_field,
-		//	json_extract(json, '$.VarcharMapField')::map(varchar, varchar) AS varchar_map_field,
-		//	json_extract(json, '$.TimestampMapField')::map(varchar, timestamp) AS timestamp_map_field
+		//	json_extract(json, '$.BooleanMapField')::map(varchar, boolean> as boolean_map_field,
+		//	json_extract(json, '$.TinyIntMapField')::map(varchar, tinyint> as tinyint_map_field,
+		//	json_extract(json, '$.SmallIntMapField')::map(varchar, smallint) as smallint_map_field,
+		//	json_extract(json, '$.IntegerMapField')::map(varchar, integer) as integer_map_field,
+		//	json_extract(json, '$.BigIntMapField')::map(varchar, bigint) as bigint_map_field,
+		//	json_extract(json, '$.FloatMapField')::map(varchar, float) as float_map_field,
+		//	json_extract(json, '$.DoubleMapField')::map(varchar, double) as double_map_field,
+		//	json_extract(json, '$.VarcharMapField')::map(varchar, varchar) as varchar_map_field,
+		//	json_extract(json, '$.TimestampMapField')::map(varchar, timestamp) as timestamp_map_field
 		//from read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
 		//			wantData: map[string]bool{"key1": true, "key2": false},
 		//		},
@@ -1358,7 +1397,8 @@ LEFT JOIN
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := buildViewQuery(tt.args.schema)
+			conversionSchema := schema.NewConversionSchema(&tt.args.schema.TableSchema)
+			query := buildViewQuery(conversionSchema)
 
 			// first check the quey is as expected
 			if query != tt.wantQuery {
@@ -1376,6 +1416,7 @@ LEFT JOIN
 }
 
 func executeQuery(t *testing.T, queryFormat, json, sqlColumn string) (any, error) {
+
 	// now verify the query runs
 	// copy json to a jsonl file
 	err := createJSONLFile(json)

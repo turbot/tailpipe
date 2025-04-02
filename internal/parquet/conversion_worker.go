@@ -19,7 +19,7 @@ import (
 )
 
 type parquetJob struct {
-	chunkNumber int64
+	chunkNumber int32
 }
 
 // conversionWorker is an implementation of worker that converts JSONL files to Parquet
@@ -77,7 +77,7 @@ func (w *conversionWorker) start(ctx context.Context) {
 				// we are done
 				return
 			}
-			if err := w.doJSONToParquetConversion(int(job.chunkNumber)); err != nil {
+			if err := w.doJSONToParquetConversion(job.chunkNumber); err != nil {
 				// send the error to the converter
 				w.converter.addJobErrors(err)
 				continue
@@ -93,13 +93,13 @@ func (w *conversionWorker) close() {
 	_ = w.db.Close()
 }
 
-func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int) error {
+func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 	// ensure we signal the converter when we are done
 	defer w.converter.wg.Done()
 	startTime := time.Now()
 
 	// build the source filename
-	jsonFileName := table.ExecutionIdToFileName(w.converter.id, chunkNumber)
+	jsonFileName := table.ExecutionIdToJsonlFileName(w.converter.id, chunkNumber)
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// process the ParquetJobPool

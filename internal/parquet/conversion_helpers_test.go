@@ -231,7 +231,7 @@ import (
 //	for _, tt := range tests {
 //		t.Run(tt.name, func(t *testing.T) {
 //			// Test SQL generation
-//			column := &schema.ColumnSchema{
+//			column := &conversionSchema.ColumnSchema{
 //				Type:       tt.columnType,
 //				SourceName: tt.sourceName,
 //				ColumnName: tt.columnName,
@@ -433,7 +433,7 @@ import (
 //	for _, tt := range tests {
 //		t.Run(tt.name, func(t *testing.T) {
 //			// Test SQL generation
-//			column := &schema.ColumnSchema{
+//			column := &conversionSchema.ColumnSchema{
 //				Type:       tt.columnType,
 //				SourceName: tt.sourceName,
 //				ColumnName: tt.columnName,
@@ -565,8 +565,8 @@ import (
 //
 //	for _, tt := range tests {
 //		t.Run(tt.name, func(t *testing.T) {
-//			// Create column schema
-//			column := &schema.ColumnSchema{
+//			// Create column conversionSchema
+//			column := &conversionSchema.ColumnSchema{
 //				Type:       tt.columnType,
 //				SourceName: tt.sourceName,
 //				ColumnName: tt.columnName,

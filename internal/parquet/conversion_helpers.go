@@ -9,13 +9,13 @@ import (
 )
 
 // TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
-func buildViewQuery(tableSchema *schema.TableSchema) string {
+func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// ensure the schema types are normalised
 	tableSchema.NormaliseColumnTypes()
 
 	var structSliceColumns []*schema.ColumnSchema
 
-	// first build the columns to select from the jsonl file
+	// first build the select clauses - use the table def columns
 	var columnStrings strings.Builder
 	for i, column := range tableSchema.Columns {
 		if i > 0 {
@@ -26,17 +26,11 @@ func buildViewQuery(tableSchema *schema.TableSchema) string {
 		if column.Type == "struct[]" {
 			structSliceColumns = append(structSliceColumns, column)
 		}
-		// TODO take nested struct arays into account
-		//for _, nestedColumn := range column.StructFields {
-		//	if nestedColumn.Type == "struct[]" {
-		//		structSliceColumns = append(structSliceColumns, nestedColumn)
-		//	}
-		//
-		//}
+		// TODO take nested struct arrays into account
 	}
 
-	// build column definitions
-	columnDefinitions := getReadJSONColumnDefinitions(tableSchema)
+	// build column definitions - these will be passed to the read_json function
+	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
 
 	columnStrings.WriteString(fmt.Sprintf(`
 from
@@ -66,23 +60,23 @@ from
 
 }
 
-// return the column definitions for the row schema, in the format required for the duck db read_json_auto function
-func getReadJSONColumnDefinitions(rowSchema *schema.TableSchema) string {
-	// columns = {BooleanField: 'boolean', BooleanField2: 'boolean', BooleanField3: 'boolean'})
+// return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
+func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string {
+	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
 	var str strings.Builder
 	str.WriteString("columns = {")
-	for i, column := range rowSchema.Columns {
+	for i, column := range sourceColumns {
 		if i > 0 {
 			str.WriteString(", ")
 		}
 		str.WriteString(fmt.Sprintf(`
-	"%s": '%s'`, column.SourceName, column.FullType()))
+	"%s": '%s'`, column.Name, column.Type))
 	}
 	str.WriteString("\n}")
 	return str.String()
 }
 
-func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, structSliceColumns []*schema.ColumnSchema) string {
+func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, structSliceColumns []*schema.ColumnSchema) string {
 	var str strings.Builder
 
 	/* this is the what we want
@@ -136,7 +130,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	        )) as struct_array_field
 	    from
 	        rebuild_unnest_struct_array_field
-	    GROUP BY
+	    group by
 	        rowid
 	)
 	select
@@ -151,8 +145,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	    raw.boolean_array_field
 	from
 	    raw
-	LEFT JOIN
-	    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
+	left join
+	    grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid;
 	*/
 
 	/* 	with raw as (
@@ -235,7 +229,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 		      	        )) as struct_array_field
 		      	    from
 		      	        rebuild_unnest_struct_array_field
-		      	    GROUP BY
+		      	    group by
 		      	        rowid
 		      	)
 
@@ -258,7 +252,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 		)) as %s	
 	from
 		%s	
-	GROUP BY
+	group by
 		rowid	
 )`, structSliceCol.ColumnName, rebuildName))
 
@@ -277,8 +271,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 			    raw.boolean_array_field
 			from
 			    raw
-			LEFT JOIN
-			    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
+			left join
+			    grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid;
 	*/
 	// build list of coalesce fields and join fields
 	var coalesceFields strings.Builder
@@ -292,8 +286,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 		groupedName := fmt.Sprintf(`grouped_unnest_%s`, column.ColumnName)
 
 		coalesceFields.WriteString(fmt.Sprintf(`	coalesce(%s.%s, null) as %s`, joinedName, column.ColumnName, column.ColumnName))
-		leftJoins.WriteString(fmt.Sprintf(`LEFT JOIN
-	%s %s ON raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
+		leftJoins.WriteString(fmt.Sprintf(`left join
+	%s %s on raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
 
 	}
 
@@ -321,8 +315,13 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	// Calculate the tab spacing
 	tab := strings.Repeat("\t", tabs)
 
+	if column.Transform != "" {
+		return fmt.Sprintf("%s%s AS \"%s\"", tab, column.Transform, column.ColumnName)
+	}
+
 	// NOTE: we will have normalised column types to lower case
 	switch column.Type {
+	// TODO:  NOTE we DO NOT support functions on struct fields (perhaps we just omit the casting???
 	case "struct":
 		var str strings.Builder
 
