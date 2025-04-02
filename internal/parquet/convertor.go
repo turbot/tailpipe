@@ -45,9 +45,6 @@ type Converter struct {
 	rowCount int64
 	// the number of rows which were NOT converted due to conversion errors encountered
 	failedRowCount int64
-	// error which occurred during execution
-	errors     []error
-	errorsLock sync.RWMutex
 
 	// the source file location
 	sourceDir string
