@@ -16,11 +16,13 @@ import (
 
 type FormatResource struct {
 	sdktypes.FormatDescription
+	Source string
 }
 
-func NewFormatResource(format *sdktypes.FormatDescription) *FormatResource {
+func NewFormatResource(src string, format *sdktypes.FormatDescription) *FormatResource {
 	return &FormatResource{
 		FormatDescription: *format,
+		Source:            src,
 	}
 }
 
@@ -29,6 +31,7 @@ func (r *FormatResource) GetListData() *printers.RowData {
 	res := printers.NewRowData(
 		printers.NewFieldValue("TYPE", r.Type),
 		printers.NewFieldValue("NAME", r.Name),
+		printers.NewFieldValue("SOURCE", r.Source),
 		printers.NewFieldValue("DESCRIPTION", r.Description),
 	)
 	return res
@@ -41,6 +44,7 @@ func (r *FormatResource) GetShowData() *printers.RowData {
 	fields = append(fields,
 		printers.NewFieldValue("Type", r.Type),
 		printers.NewFieldValue("Name", r.Name),
+		printers.NewFieldValue("Source", r.Source),
 		printers.NewFieldValue("Description", r.Description),
 		printers.NewFieldValue("Regex", r.Regex),
 	)
@@ -70,19 +74,19 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 			// populate types
 			for _, t := range desc.FormatTypes {
 				// types do not have an instance name or description
-				formatMap[t] = NewFormatResource(&sdktypes.FormatDescription{Type: t})
+				formatMap[t] = NewFormatResource(pluginVersion.Name, &sdktypes.FormatDescription{Type: t})
 			}
 
 			// populate presets
 			for k, f := range desc.FormatPresets {
-				formatMap[k] = NewFormatResource(f)
+				formatMap[k] = NewFormatResource(pluginVersion.Name, f)
 			}
 		}
 	}
 
 	// add custom formats
 	for _, f := range config.GlobalConfig.Formats {
-		formatMap[f.GetUnqualifiedName()] = NewFormatResource(&sdktypes.FormatDescription{
+		formatMap[f.GetUnqualifiedName()] = NewFormatResource("config", &sdktypes.FormatDescription{
 			Name:        f.ShortName,
 			Type:        f.Type,
 			Description: types.SafeString(f.Description),
@@ -123,14 +127,13 @@ func GetFormatResource(ctx context.Context, name string) (*FormatResource, error
 
 func getFormatType(_ context.Context, formatType string) (*FormatResource, error) {
 	// Check this is a valid type exported by a plugin
-	_, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions)
+	pluginName, ok := config.GetPluginForFormatType(formatType, config.GlobalConfig.PluginVersions)
 	if !ok {
 		// if not found, return error
 		return nil, fmt.Errorf("no plugin found for type '%s'", formatType)
 	}
 
-	// TODO: #graza once we add source of format add plugin name here https://github.com/turbot/tailpipe/issues/283
-	return NewFormatResource(&sdktypes.FormatDescription{Type: formatType}), nil
+	return NewFormatResource(pluginName, &sdktypes.FormatDescription{Type: formatType}), nil
 
 }
 
@@ -160,12 +163,13 @@ func getFormatInstance(ctx context.Context, name string) (*FormatResource, error
 
 	// prefer custom format (order of precedence)
 	if format, isCustom := desc.CustomFormats[name]; isCustom {
-		return NewFormatResource(format), nil
+		// instance that is custom is defied in the config. so return the 'config' as source
+		return NewFormatResource("config", format), nil
 	}
 
 	// if format is a preset
 	if format, isPreset := desc.FormatPresets[name]; isPreset {
-		return NewFormatResource(format), nil
+		return NewFormatResource(pluginName, format), nil
 	}
 
 	return nil, fmt.Errorf("format '%s' not found", name)
