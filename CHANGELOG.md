@@ -1,3 +1,12 @@
+## v0.2.0 [2025-04-02]
+_What's new_
+* Add support for plugins with custom formats ([#264](https://github.com/turbot/tailpipe/issues/264)): 
+  A `format` block can be defined in config and plugins can provide formats `types` and `presets` . Format are supported by the new Nginx and Apache plugins.
+* Add `format list` and `format show` commands. ([#235](https://github.com/turbot/tailpipe/issues/235))
+* Update the `plugin show` command to add exported formats and correctly display partitions, etc. ([#257](https://github.com/turbot/tailpipe/issues/257))
+* Improve the error reporting in the collection UI ([#247](https://github.com/turbot/tailpipe/issues/247)).
+* Update all SQL in code and messaging to be lower case.
+
 ## v0.1.3 [2025-03-17]
 _What's new_
 - Parquet creation is now transactional - write to temp file first then rename. ([#41](https://github.com/turbot/tailpipe/issues/41))
