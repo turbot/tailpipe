@@ -7,6 +7,7 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
+
 // TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
 func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// ensure the schema types are normalised
@@ -28,7 +29,7 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 		// TODO take nested struct arrays into account
 	}
 
-	// build column definitions
+	// build column definitions - these will be passed to the read_json function
 	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
 
 	columnStrings.WriteString(fmt.Sprintf(`

@@ -41,6 +41,7 @@ func setup() error {
 	// Initialize workspace profile with parse options
 	parseOpts := []parse.ParseHclOpt{
 		parse.WithEscapeBackticks(true),
+		parse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
 	}
 	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
@@ -99,24 +100,24 @@ func Test_buildViewQuery(t *testing.T) {
 		wantData  any
 	}{
 		/*
-		       c.Type = "BOOLEAN"
-		       c.Type = "TINYINT"
-		       c.Type = "SMALLINT"
-		       c.Type = "INTEGER"
-		       c.Type = "BIGINT"
-		       c.Type = "UTINYINT"
-		       c.Type = "USMALLINT"
-		       c.Type = "UINTEGER"
-		       c.Type = "UBIGINT"
-		       c.Type = "FLOAT"
-		       c.Type = "DOUBLE"
-		       c.Type = "VARCHAR"
-		           c.Type = "TIMESTAMP"
+		       c.Type = "boolean"
+		       c.Type = "tinyint"
+		       c.Type = "smallint"
+		       c.Type = "integer"
+		       c.Type = "bigint"
+		       c.Type = "utinyint"
+		       c.Type = "usmallint"
+		       c.Type = "uinteger"
+		       c.Type = "ubigint"
+		       c.Type = "float"
+		       c.Type = "double"
+		       c.Type = "varchar"
+		           c.Type = "timestamp"
 
-		   c.Type = "BLOB"
-		       c.Type = "ARRAY"
-		       c.Type = "STRUCT"
-		       c.Type = "MAP"
+		   c.Type = "blob"
+		       c.Type = "array"
+		       c.Type = "struct"
+		       c.Type = "map"
 		*/
 		{
 			name: "struct",
@@ -146,12 +147,12 @@ func Test_buildViewQuery(t *testing.T) {
 			"struct_string_field" := "StructField"."StructStringField"::varchar,
 			"struct_int_field" := "StructField"."StructIntField"::bigint
 		)
-	END AS "struct_field"
-FROM
+	end as "struct_field"
+from
 	read_ndjson(
 		'%s',
 		columns = {
-			"StructField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" BIGINT)'
+			"StructField": 'struct("StructStringField" varchar, "StructIntField" bigint)'
 		}
 	))`,
 			wantData: []any{"StructStringVal"},
@@ -179,7 +180,7 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"JsonField": 'JSON'
+			"JsonField": 'json'
 		}
 	))`,
 			wantData: []any{`JsonStringVal`},
@@ -210,12 +211,12 @@ from
 		else struct_pack(
 			"any" := "end"."any"::varchar
 		)
-	END AS "end"
-FROM
+	end as "end"
+from
 	read_ndjson(
 		'%s',
 		columns = {
-			"end": 'STRUCT("any" VARCHAR)'
+			"end": 'struct("any" varchar)'
 		}
 	))`,
 			wantData: []any{"StructStringVal"},
@@ -246,12 +247,12 @@ FROM
 		else struct_pack(
 			"any" := "end"."any"::varchar
 		)
-	END AS "end"
-FROM
+	end as "end"
+from
 	read_ndjson(
 		'%s',
 		columns = {
-			"end": 'STRUCT("any" VARCHAR)'
+			"end": 'struct("any" varchar)'
 		}
 	))`,
 			wantData: []any{nil},
@@ -301,15 +302,15 @@ FROM
 				else struct_pack(
 					"nested_struct_string_field" := "StructField"."NestedStruct"."NestedStructStringField"::varchar
 				)
-			END,
-			"struct_string_field" := "StructField"."StructStringField"::VARCHAR
+			end,
+			"struct_string_field" := "StructField"."StructStringField"::varchar
 		)
-	END AS "struct_field"
-FROM
+	end as "struct_field"
+from
 	read_ndjson(
 		'%s',
 		columns = {
-			"StructField": 'STRUCT("NestedStruct" STRUCT("NestedStructStringField" VARCHAR), "StructStringField" VARCHAR)'
+			"StructField": 'struct("NestedStruct" struct("NestedStructStringField" varchar), "StructStringField" varchar)'
 		}
 	))`,
 			wantData: []any{"NestedStructStringVal"},
@@ -360,15 +361,15 @@ FROM
 				else struct_pack(
 					"nested_struct_string_field" := "StructField"."NestedStruct"."NestedStructStringField"::varchar
 				)
-			END,
-			"struct_string_field" := "StructField"."StructStringField"::VARCHAR
+			end,
+			"struct_string_field" := "StructField"."StructStringField"::varchar
 		)
-	END AS "struct_field"
-FROM
+	end as "struct_field"
+from
 	read_ndjson(
 		'%s',
 		columns = {
-			"StructField": 'STRUCT("NestedStruct" STRUCT("NestedStructStringField" VARCHAR), "StructStringField" VARCHAR)'
+			"StructField": 'struct("NestedStruct" struct("NestedStructStringField" varchar), "StructStringField" varchar)'
 		}
 	))`,
 			wantData: []any{"NestedStructStringVal", nil},
@@ -413,14 +414,14 @@ FROM
 				else struct_pack(
 					"for" := "end"."any"."for"::varchar
 				)
-			END
+			end
 		)
-	END AS "end"
-FROM
+	end as "end"
+from
 	read_ndjson(
 		'%s',
 		columns = {
-			"end": 'STRUCT("any" STRUCT("for" VARCHAR))'
+			"end": 'struct("any" struct("for" varchar))'
 		}
 	))`,
 			wantData: []any{"NestedStructStringVal"},
@@ -468,19 +469,19 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"BooleanField": 'BOOLEAN', 
-			"TinyIntField": 'TINYINT', 
-			"SmallIntField": 'SMALLINT', 
-			"IntegerField": 'INTEGER', 
-			"BigIntField": 'BIGINT', 
-			"UTinyIntField": 'UTINYINT', 
-			"USmallIntField": 'USMALLINT', 
-			"UIntegerField": 'UINTEGER', 
-			"UBigIntField": 'UBIGINT', 
-			"FloatField": 'FLOAT', 
-			"DoubleField": 'DOUBLE', 
-			"VarcharField": 'VARCHAR', 
-			"TimestampField": 'TIMESTAMP'
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
 		}
 	))`,
 			wantData: []any{"StringValue"},
@@ -506,8 +507,8 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"end": 'BOOLEAN', 
-			"for": 'TINYINT'
+			"end": 'boolean', 
+			"for": 'tinyint'
 		}
 	))`,
 			wantData: []any{true},
@@ -555,19 +556,19 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"BooleanField": 'BOOLEAN', 
-			"TinyIntField": 'TINYINT', 
-			"SmallIntField": 'SMALLINT', 
-			"IntegerField": 'INTEGER', 
-			"BigIntField": 'BIGINT', 
-			"UTinyIntField": 'UTINYINT', 
-			"USmallIntField": 'USMALLINT', 
-			"UIntegerField": 'UINTEGER', 
-			"UBigIntField": 'UBIGINT', 
-			"FloatField": 'FLOAT', 
-			"DoubleField": 'DOUBLE', 
-			"VarcharField": 'VARCHAR', 
-			"TimestampField": 'TIMESTAMP'
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
 		}
 	))`,
 			wantData: []any{true},
@@ -617,19 +618,19 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"BooleanField": 'BOOLEAN', 
-			"TinyIntField": 'TINYINT', 
-			"SmallIntField": 'SMALLINT', 
-			"IntegerField": 'INTEGER', 
-			"BigIntField": 'BIGINT', 
-			"UTinyIntField": 'UTINYINT', 
-			"USmallIntField": 'USMALLINT', 
-			"UIntegerField": 'UINTEGER', 
-			"UBigIntField": 'UBIGINT', 
-			"FloatField": 'FLOAT', 
-			"DoubleField": 'DOUBLE', 
-			"VarcharField": 'VARCHAR', 
-			"TimestampField": 'TIMESTAMP'
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
 		}
 	))`,
 			wantData: []any{true, nil, true},
@@ -677,19 +678,19 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"BooleanField": 'BOOLEAN', 
-			"TinyIntField": 'TINYINT', 
-			"SmallIntField": 'SMALLINT', 
-			"IntegerField": 'INTEGER', 
-			"BigIntField": 'BIGINT', 
-			"UTinyIntField": 'UTINYINT', 
-			"USmallIntField": 'USMALLINT', 
-			"UIntegerField": 'UINTEGER', 
-			"UBigIntField": 'UBIGINT', 
-			"FloatField": 'FLOAT', 
-			"DoubleField": 'DOUBLE', 
-			"VarcharField": 'VARCHAR', 
-			"TimestampField": 'TIMESTAMP'
+			"BooleanField": 'boolean', 
+			"TinyIntField": 'tinyint', 
+			"SmallIntField": 'smallint', 
+			"IntegerField": 'integer', 
+			"BigIntField": 'bigint', 
+			"UTinyIntField": 'utinyint', 
+			"USmallIntField": 'usmallint', 
+			"UIntegerField": 'uinteger', 
+			"UBigIntField": 'ubigint', 
+			"FloatField": 'float', 
+			"DoubleField": 'double', 
+			"VarcharField": 'varchar', 
+			"TimestampField": 'timestamp'
 		}
 	))`,
 			wantData: []any{nil},
@@ -737,19 +738,19 @@ from
 	read_ndjson(
 		'%s',
 		columns = {
-			"BooleanArrayField": 'BOOLEAN[]', 
-			"TinyIntArrayField": 'TINYINT[]', 
-			"SmallIntArrayField": 'SMALLINT[]', 
-			"IntegerArrayField": 'INTEGER[]', 
-			"BigIntArrayField": 'BIGINT[]', 
-			"UTinyIntArrayField": 'UTINYINT[]', 
-			"USmallIntArrayField": 'USMALLINT[]', 
-			"UIntegerArrayField": 'UINTEGER[]', 
-			"UBigIntArrayField": 'UBIGINT[]', 
-			"FloatArrayField": 'FLOAT[]', 
-			"DoubleArrayField": 'DOUBLE[]', 
-			"VarcharArrayField": 'VARCHAR[]', 
-			"TimestampArrayField": 'TIMESTAMP[]'
+			"BooleanArrayField": 'boolean[]', 
+			"TinyIntArrayField": 'tinyint[]', 
+			"SmallIntArrayField": 'smallint[]', 
+			"IntegerArrayField": 'integer[]', 
+			"BigIntArrayField": 'bigint[]', 
+			"UTinyIntArrayField": 'utinyint[]', 
+			"USmallIntArrayField": 'usmallint[]', 
+			"UIntegerArrayField": 'uinteger[]', 
+			"UBigIntArrayField": 'ubigint[]', 
+			"FloatArrayField": 'float[]', 
+			"DoubleArrayField": 'double[]', 
+			"VarcharArrayField": 'varchar[]', 
+			"TimestampArrayField": 'timestamp[]'
 		}
 	))`,
 			wantData: []any{[]any{true, false}},
@@ -783,40 +784,40 @@ from
 		read_ndjson(
 			'%s',
 			columns = {
-				"StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]'
+				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]'
 			}
 		))
 ), unnest_struct_array_field as (
     select
         rowid,
-		UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	FROM
+		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	from
 		raw
-), rebuild_unnest_struct_array_field AS (
-	SELECT
+), rebuild_unnest_struct_array_field as (
+	select
 		rowid,
-		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	FROM
+		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	from
 		unnest_struct_array_field
-), grouped_unnest_struct_array_field AS (
-	SELECT
+), grouped_unnest_struct_array_field as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field	
-	FROM
+				struct_string_field := StructArrayField_StructStringField::varchar,
+				struct_int_field := StructArrayField_StructIntField::integer
+		)) as struct_array_field	
+	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
-SELECT
-	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
-FROM
+select
+	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field
+from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{"StringValue1"},
 		},
 
@@ -955,44 +956,44 @@ LEFT JOIN
 		read_ndjson(
 			'%s',
 			columns = {
-				"StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]', 
-				"IntField": 'INTEGER', 
-				"StringField": 'VARCHAR', 
-				"FloatField": 'FLOAT', 
-				"BooleanField": 'BOOLEAN', 
-				"IntArrayField": 'INTEGER[]', 
-				"StringArrayField": 'VARCHAR[]', 
-				"FloatArrayField": 'FLOAT[]', 
-				"BooleanArrayField": 'BOOLEAN[]'
+				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]', 
+				"IntField": 'integer', 
+				"StringField": 'varchar', 
+				"FloatField": 'float', 
+				"BooleanField": 'boolean', 
+				"IntArrayField": 'integer[]', 
+				"StringArrayField": 'varchar[]', 
+				"FloatArrayField": 'float[]', 
+				"BooleanArrayField": 'boolean[]'
 			}
 		))
 ), unnest_struct_array_field as (
     select
         rowid,
-		UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	FROM
+		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	from
 		raw
-), rebuild_unnest_struct_array_field AS (
-	SELECT
+), rebuild_unnest_struct_array_field as (
+	select
 		rowid,
-		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	FROM
+		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	from
 		unnest_struct_array_field
-), grouped_unnest_struct_array_field AS (
-	SELECT
+), grouped_unnest_struct_array_field as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field	
-	FROM
+				struct_string_field := StructArrayField_StructStringField::varchar,
+				struct_int_field := StructArrayField_StructIntField::integer
+		)) as struct_array_field	
+	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
-SELECT
-	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+select
+	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field,
 	raw.int_field,
 	raw.string_field,
 	raw.float_field,
@@ -1001,10 +1002,10 @@ SELECT
 	raw.string_array_field,
 	raw.float_array_field,
 	raw.boolean_array_field
-FROM
+from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{"StringValue1"},
 		},
 		{
@@ -1069,44 +1070,44 @@ LEFT JOIN
 		read_ndjson(
 			'%s',
 			columns = {
-				"StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]', 
-				"IntField": 'INTEGER', 
-				"StringField": 'VARCHAR', 
-				"FloatField": 'FLOAT', 
-				"BooleanField": 'BOOLEAN', 
-				"IntArrayField": 'INTEGER[]', 
-				"StringArrayField": 'VARCHAR[]', 
-				"FloatArrayField": 'FLOAT[]', 
-				"BooleanArrayField": 'BOOLEAN[]'
+				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]', 
+				"IntField": 'integer', 
+				"StringField": 'varchar', 
+				"FloatField": 'float', 
+				"BooleanField": 'boolean', 
+				"IntArrayField": 'integer[]', 
+				"StringArrayField": 'varchar[]', 
+				"FloatArrayField": 'float[]', 
+				"BooleanArrayField": 'boolean[]'
 			}
 		))
 ), unnest_struct_array_field as (
     select
         rowid,
-		UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	FROM
+		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	from
 		raw
-), rebuild_unnest_struct_array_field AS (
-	SELECT
+), rebuild_unnest_struct_array_field as (
+	select
 		rowid,
-		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	FROM
+		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	from
 		unnest_struct_array_field
-), grouped_unnest_struct_array_field AS (
-	SELECT
+), grouped_unnest_struct_array_field as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field	
-	FROM
+				struct_string_field := StructArrayField_StructStringField::varchar,
+				struct_int_field := StructArrayField_StructIntField::integer
+		)) as struct_array_field	
+	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
-SELECT
-	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+select
+	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field,
 	raw.int_field,
 	raw.string_field,
 	raw.float_field,
@@ -1115,10 +1116,10 @@ SELECT
 	raw.string_array_field,
 	raw.float_array_field,
 	raw.boolean_array_field
-FROM
+from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{int32(10)},
 		},
 		{
@@ -1150,40 +1151,40 @@ LEFT JOIN
 		read_ndjson(
 			'%s',
 			columns = {
-				"StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]'
+				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]'
 			}
 		))
 ), unnest_struct_array_field as (
     select
         rowid,
-		UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	FROM
+		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	from
 		raw
-), rebuild_unnest_struct_array_field AS (
-	SELECT
+), rebuild_unnest_struct_array_field as (
+	select
 		rowid,
-		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	FROM
+		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	from
 		unnest_struct_array_field
-), grouped_unnest_struct_array_field AS (
-	SELECT
+), grouped_unnest_struct_array_field as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field	
-	FROM
+				struct_string_field := StructArrayField_StructStringField::varchar,
+				struct_int_field := StructArrayField_StructIntField::integer
+		)) as struct_array_field	
+	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
-SELECT
-	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
-FROM
+select
+	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field
+from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{nil},
 		},
 		{
@@ -1216,40 +1217,40 @@ LEFT JOIN
 		read_ndjson(
 			'%s',
 			columns = {
-				"StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]'
+				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]'
 			}
 		))
 ), unnest_struct_array_field as (
     select
         rowid,
-		UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	FROM
+		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	from
 		raw
-), rebuild_unnest_struct_array_field AS (
-	SELECT
+), rebuild_unnest_struct_array_field as (
+	select
 		rowid,
-		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	FROM
+		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	from
 		unnest_struct_array_field
-), grouped_unnest_struct_array_field AS (
-	SELECT
+), grouped_unnest_struct_array_field as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field	
-	FROM
+				struct_string_field := StructArrayField_StructStringField::varchar,
+				struct_int_field := StructArrayField_StructIntField::integer
+		)) as struct_array_field	
+	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
 )
-SELECT
-	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
-FROM
+select
+	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field
+from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			//wantData: []any{nil, "StringValue1"},
 			// NOTE: ordering is not guaranteed
 			wantData: []any{"StringValue1", nil},
@@ -1293,68 +1294,68 @@ LEFT JOIN
 		read_ndjson(
 			'%s',
 			columns = {
-				"StructArrayField": 'STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]', 
-				"StructArrayField2": 'STRUCT("StructStringField2" VARCHAR, "StructIntField2" INTEGER)[]'
+				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]', 
+				"StructArrayField2": 'struct("StructStringField2" varchar, "StructIntField2" integer)[]'
 			}
 		))
 ), unnest_struct_array_field as (
     select
         rowid,
-		UNNEST(COALESCE("struct_array_field", ARRAY[]::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::STRUCT("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
-	FROM
+		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
+	from
 		raw
-), rebuild_unnest_struct_array_field AS (
-	SELECT
+), rebuild_unnest_struct_array_field as (
+	select
 		rowid,
-		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
-	FROM
+		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
+	from
 		unnest_struct_array_field
-), grouped_unnest_struct_array_field AS (
-	SELECT
+), grouped_unnest_struct_array_field as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field := StructArrayField_StructStringField::VARCHAR,
-				struct_int_field := StructArrayField_StructIntField::INTEGER
-		)) AS struct_array_field	
-	FROM
+				struct_string_field := StructArrayField_StructStringField::varchar,
+				struct_int_field := StructArrayField_StructIntField::integer
+		)) as struct_array_field	
+	from
 		rebuild_unnest_struct_array_field	
-	GROUP BY
+	group by
 		rowid	
-), unnest_struct_array_field2 AS (
-    SELECT
+), unnest_struct_array_field2 as (
+    select
         rowid,
-		UNNEST(COALESCE("struct_array_field2", ARRAY[]::STRUCT("StructStringField2" VARCHAR, "StructIntField2" INTEGER)[])::STRUCT("StructStringField2" VARCHAR, "StructIntField2" INTEGER)[]) AS struct_array_field2
-	FROM
+		unnest(coalesce("struct_array_field2", array[]::struct("StructStringField2" varchar, "StructIntField2" integer)[])::struct("StructStringField2" varchar, "StructIntField2" integer)[]) as struct_array_field2
+	from
 		raw
-), rebuild_unnest_struct_array_field2 AS (
-	SELECT
+), rebuild_unnest_struct_array_field2 as (
+	select
 		rowid,
-		struct_array_field2->>'StructStringField2' AS StructArrayField2_StructStringField2,
-		struct_array_field2->>'StructIntField2' AS StructArrayField2_StructIntField2
-	FROM
+		struct_array_field2->>'StructStringField2' as StructArrayField2_StructStringField2,
+		struct_array_field2->>'StructIntField2' as StructArrayField2_StructIntField2
+	from
 		unnest_struct_array_field2
-), grouped_unnest_struct_array_field2 AS (
-	SELECT
+), grouped_unnest_struct_array_field2 as (
+	select
 		rowid,	
 		array_agg(struct_pack(
-				struct_string_field2 := StructArrayField2_StructStringField2::VARCHAR,
-				struct_int_field2 := StructArrayField2_StructIntField2::INTEGER
-		)) AS struct_array_field2	
-	FROM
+				struct_string_field2 := StructArrayField2_StructStringField2::varchar,
+				struct_int_field2 := StructArrayField2_StructIntField2::integer
+		)) as struct_array_field2	
+	from
 		rebuild_unnest_struct_array_field2	
-	GROUP BY
+	group by
 		rowid	
 )
-SELECT
-	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
-	COALESCE(joined_struct_array_field2.struct_array_field2, NULL) AS struct_array_field2
-FROM
+select
+	coalesce(joined_struct_array_field.struct_array_field, null) as struct_array_field,
+	coalesce(joined_struct_array_field2.struct_array_field2, null) as struct_array_field2
+from
 	raw	
-LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid
-LEFT JOIN
-	grouped_unnest_struct_array_field2 joined_struct_array_field2 ON raw.rowid = joined_struct_array_field2.rowid`,
+left join
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid
+left join
+	grouped_unnest_struct_array_field2 joined_struct_array_field2 on raw.rowid = joined_struct_array_field2.rowid`,
 			wantData: []any{"StringValue100"},
 		},
 		// TODO #parquet https://github.com/turbot/tailpipe/issues/new
@@ -1396,7 +1397,8 @@ LEFT JOIN
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			query := buildViewQuery(tt.args.schema)
+			conversionSchema := schema.NewConversionSchema(&tt.args.schema.TableSchema)
+			query := buildViewQuery(conversionSchema)
 
 			// first check the quey is as expected
 			if query != tt.wantQuery {
