@@ -881,14 +881,14 @@ left join
 		//		)) AS struct_array_field
 		//	FROM
 		//		rebuild_unnest_struct_array_field
-		//	GROUP BY
+		//	group by
 		//		rowid
 		//)
 		//SELECT
 		//	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
 		//FROM
 		//	raw
-		//LEFT JOIN
+		//left join
 		//	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
 		//			wantData: []any{"StringValue1"},
 		//		},

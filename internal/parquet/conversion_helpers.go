@@ -130,7 +130,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 	        )) as struct_array_field
 	    from
 	        rebuild_unnest_struct_array_field
-	    GROUP BY
+	    group by
 	        rowid
 	)
 	select
@@ -145,8 +145,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 	    raw.boolean_array_field
 	from
 	    raw
-	LEFT JOIN
-	    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
+	left join
+	    grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid;
 	*/
 
 	/* 	with raw as (
@@ -229,7 +229,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 		      	        )) as struct_array_field
 		      	    from
 		      	        rebuild_unnest_struct_array_field
-		      	    GROUP BY
+		      	    group by
 		      	        rowid
 		      	)
 
@@ -252,7 +252,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 		)) as %s	
 	from
 		%s	
-	GROUP BY
+	group by
 		rowid	
 )`, structSliceCol.ColumnName, rebuildName))
 
@@ -271,8 +271,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 			    raw.boolean_array_field
 			from
 			    raw
-			LEFT JOIN
-			    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
+			left join
+			    grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid;
 	*/
 	// build list of coalesce fields and join fields
 	var coalesceFields strings.Builder
@@ -286,8 +286,8 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 		groupedName := fmt.Sprintf(`grouped_unnest_%s`, column.ColumnName)
 
 		coalesceFields.WriteString(fmt.Sprintf(`	coalesce(%s.%s, null) as %s`, joinedName, column.ColumnName, column.ColumnName))
-		leftJoins.WriteString(fmt.Sprintf(`LEFT JOIN
-	%s %s ON raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
+		leftJoins.WriteString(fmt.Sprintf(`left join
+	%s %s on raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
 
 	}
 
