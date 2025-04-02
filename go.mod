@@ -6,9 +6,9 @@ toolchain go1.24.0
 
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
-//github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
-//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-//github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+	github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
@@ -19,8 +19,8 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.2.0
-	github.com/turbot/pipe-fittings/v2 v2.3.0-rc.3
-	github.com/turbot/tailpipe-plugin-sdk v0.2.0-rc.3
+	github.com/turbot/pipe-fittings/v2 v2.3.0
+	github.com/turbot/tailpipe-plugin-sdk v0.2.0
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
@@ -41,7 +41,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb/v2 v2.0.3
 	github.com/thediveo/enumflag/v2 v2.0.5
-	github.com/turbot/tailpipe-plugin-core v0.1.5
+	github.com/turbot/tailpipe-plugin-core v0.1.6
 	golang.org/x/sync v0.11.0
 	golang.org/x/text v0.22.0
 	google.golang.org/protobuf v1.36.1
