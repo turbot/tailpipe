@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/hashicorp/hcl/v2"
 	"github.com/spf13/viper"
 	filehelpers "github.com/turbot/go-kit/files"
 	"github.com/turbot/go-kit/helpers"
@@ -78,6 +79,7 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 		}
 	}()
 
+	var diags hcl.Diagnostics
 	var res = config.NewTailpipeConfig()
 
 	// find files in target folder only (non-recursive)
@@ -93,12 +95,15 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 	}
 
 	// load the file data
-	fileData, diags := parse.LoadFileData(configPaths...)
-	if diags != nil && diags.HasErrors() {
+	fileData, moreDiags := parse.LoadFileData(configPaths...)
+	diags = append(diags, moreDiags...)
+	if diags.HasErrors() {
 		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
 
-	// parse the files
+	// first apply escaping - if properties have values surrounded in backticks, we need to escape them
+	// we also respected the legacy auto-escaping mechanism for specific properties
+
 	// define parse opts to disable hcl template parsing for properties which will have a grok pattern
 	parseOpts := []parse.ParseHclOpt{
 		// legacy auto-escaping of 'file_layout' property
@@ -106,10 +111,17 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 		// escape properties within backticks
 		parse.WithEscapeBackticks(true),
 	}
+	fileData, moreDiags = parse.ApplyPropertyEscaping(fileData, parseOpts...)
+	diags = append(diags, moreDiags...)
+	if diags.HasErrors() {
+		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
+	}
 
-	//
-	body, diags := parse.ParseHclFiles(fileData, parseOpts...)
-	if diags != nil && diags.HasErrors() {
+	// now parse teh file data
+	body, moreDiags := parse.ParseHclFiles(fileData)
+	diags = append(diags, moreDiags...)
+
+	if diags.HasErrors() {
 		return nil, error_helpers.DiagsToErrorsAndWarnings("Failed to parse config", diags)
 	}
 	content, moreDiags := body.Content(parse.TailpipeConfigBlockSchema)
@@ -134,8 +146,9 @@ func parseTailpipeConfig(configPath string) (_ *config.TailpipeConfig, ew error_
 	prevUnresolvedBlocks := 0
 
 	for attempts := 0; ; attempts++ {
-		diags = decodeTailpipeConfig(parseCtx)
-		if diags != nil && diags.HasErrors() {
+		moreDiags = decodeTailpipeConfig(parseCtx)
+		diags = append(diags, moreDiags...)
+		if diags.HasErrors() {
 			ew.Error = error_helpers.HclDiagsToError("Failed to decode all config files", diags)
 			return nil, ew
 		}

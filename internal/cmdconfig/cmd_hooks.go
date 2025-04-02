@@ -2,7 +2,6 @@ package cmdconfig
 
 import (
 	"context"
-	"github.com/turbot/tailpipe/internal/constants"
 	"os"
 	"runtime/debug"
 	"time"
@@ -19,6 +18,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"

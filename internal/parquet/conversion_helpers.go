@@ -8,6 +8,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
+// TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
 func buildViewQuery(tableSchema *schema.TableSchema) string {
 	// ensure the schema types are normalised
 	tableSchema.NormaliseColumnTypes()
@@ -42,18 +43,21 @@ from
 	read_ndjson(
 		'%%s',
 %s
-	)`, helpers.Tabify(columnDefinitions, "\t\t")))
+	))`, helpers.Tabify(columnDefinitions, "\t\t")))
 
 	// if there are no struct[] fields, we are done - just add the select at the start
 	if len(structSliceColumns) == 0 {
-		return fmt.Sprintf("select\n%s", columnStrings.String())
+		// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
+		return fmt.Sprintf("select * from(select\n%s", columnStrings.String())
 	}
 
+	// TODO: Currently we don't support []struct so this code never gets hit. https://github.com/turbot/tailpipe-plugin-sdk/issues/55
 	// if there are struct[] fields, we need to build a more complex query
 
 	// add row number in case of potential grouping
 	var str strings.Builder
-	str.WriteString("select\n")
+	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
+	str.WriteString("select * from(select\n")
 	str.WriteString("\trow_number() over () as rowid,\n")
 	str.WriteString(columnStrings.String())
 
