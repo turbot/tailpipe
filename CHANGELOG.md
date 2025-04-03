@@ -1,6 +1,11 @@
+## v0.2.1 [2025-04-02]
+_Bug fixes_
+  Table introspection in json now displays descriptions correctly. ([#323](https://github.com/turbot/tailpipe/issues/323)):
+* Fix resolution of the format before calling Collect when the format plugin is different from the table plugin.([#319](https://github.com/turbot/tailpipe/issues/319)):
+
 ## v0.2.0 [2025-04-02]
 _What's new_
-* Add support for plugins with custom formats ([#264](https://github.com/turbot/tailpipe/issues/264)): 
+* Add support for plugins with custom formats  
   A `format` block can be defined in config and plugins can provide formats `types` and `presets` . Format are supported by the new Nginx and Apache plugins.
 * Add `format list` and `format show` commands. ([#235](https://github.com/turbot/tailpipe/issues/235))
 * Update the `plugin show` command to add exported formats and correctly display partitions, etc. ([#257](https://github.com/turbot/tailpipe/issues/257))
