@@ -1,6 +1,6 @@
 ## v0.2.1 [2025-04-02]
 _Bug fixes_
-  Table introspection in json now displays descriptions correctly. ([#323](https://github.com/turbot/tailpipe/issues/323)):
+* Table introspection in json now displays descriptions correctly. ([#323](https://github.com/turbot/tailpipe/issues/323)):
 * Fix resolution of the format before calling Collect when the format plugin is different from the table plugin.([#319](https://github.com/turbot/tailpipe/issues/319)):
 
 ## v0.2.0 [2025-04-02]
