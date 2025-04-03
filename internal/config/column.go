@@ -10,7 +10,7 @@ type Column struct {
 	Name string `hcl:"name,label" cty:"name"`
 	// The DuckDB name of the column in the source.
 	Type *string `hcl:"type" cty:"type"`
-	// The source name of the column. This is the columns name in the intermediate JSONL.
+	// The source name of the column. This is the field name in the source data
 	Source *string `hcl:"source" cty:"source"`
 	// An optional description of the column.
 	Description *string `hcl:"description" cty:"description"`

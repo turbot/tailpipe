@@ -176,7 +176,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 		return 0, handleConversionError(err, jsonlFilePath)
 
 	}
-	slog.Debug("created parquet files", "count", len(files), "files", files)
+	slog.Debug("created parquet files", "count", len(files))
 
 	// now rename the parquet files
 	err = w.renameTempParquetFiles(files)
