@@ -84,7 +84,7 @@ func tableResourceFromSchemaTable(tableName string, pluginName string, schemaTab
 
 // TableColumnResource represents a table column for display purposes
 type TableColumnResource struct {
-	ColumnName  string `json:"column_name"`
+	ColumnName  string `json:"name"`
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
 }
