@@ -848,10 +848,10 @@ left join
 		//				json:      `{"StructWithArrayField": {"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}}`,
 		//				sqlColumn: "struct_with_array_field.struct_array_field[1].struct_string_field",
 		//			},
-		//			wantQuery: `WITH raw AS (
+		//			wantQuery: `WITH raw as (
 		//	SELECT
-		//		row_number() OVER () AS rowid,
-		//		"StructArrayField" AS "struct_array_field"
+		//		row_number() OVER () as rowid,
+		//		"StructArrayField" as "struct_array_field"
 		//	FROM
 		//		read_ndjson(
 		//			'%s',
@@ -859,37 +859,37 @@ left join
 		//				"StructArrayField": 'struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[]'
 		//			}
 		//		)
-		//), unnest_struct_array_field AS (
+		//), unnest_struct_array_field as (
 		//    SELECT
 		//        rowid,
-		//		UNNEST(COALESCE("struct_array_field", ARRAY[]::struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) AS struct_array_field
+		//		UNNEST(COALESCE("struct_array_field", ARRAY[]::struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[])::struct("StructStringField" VARCHAR, "StructIntField" INTEGER)[]) as struct_array_field
 		//	FROM
 		//		raw
-		//), rebuild_unnest_struct_array_field AS (
+		//), rebuild_unnest_struct_array_field as (
 		//	SELECT
 		//		rowid,
-		//		struct_array_field->>'StructStringField' AS StructArrayField_StructStringField,
-		//		struct_array_field->>'StructIntField' AS StructArrayField_StructIntField
+		//		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
+		//		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
 		//	FROM
 		//		unnest_struct_array_field
-		//), grouped_unnest_struct_array_field AS (
+		//), grouped_unnest_struct_array_field as (
 		//	SELECT
 		//		rowid,
 		//		array_agg(struct_pack(
 		//				struct_string_field := StructArrayField_StructStringField::VARCHAR,
 		//				struct_int_field := StructArrayField_StructIntField::INTEGER
-		//		)) AS struct_array_field
+		//		)) as struct_array_field
 		//	FROM
 		//		rebuild_unnest_struct_array_field
 		//	group by
 		//		rowid
 		//)
 		//SELECT
-		//	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
+		//	COALESCE(joined_struct_array_field.struct_array_field, NULL) as struct_array_field
 		//FROM
 		//	raw
 		//left join
-		//	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+		//	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 		//			wantData: []any{"StringValue1"},
 		//		},
 
