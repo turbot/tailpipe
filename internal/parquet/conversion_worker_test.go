@@ -41,6 +41,7 @@ func setup() error {
 	// Initialize workspace profile with parse options
 	parseOpts := []parse.ParseHclOpt{
 		parse.WithEscapeBackticks(true),
+		parse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
 	}
 	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
