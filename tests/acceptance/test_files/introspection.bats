@@ -87,7 +87,3 @@ EOF
   # Verify the JSON structure using jq
   assert_equal "$(echo "$output" | jq -r '.[0].name')" "chaos_all_columns"
 }
-
-function teardown() {
-  rm -rf $TAILPIPE_INSTALL_DIR/data
-}
