@@ -788,7 +788,7 @@ select
 from
 	raw	
 LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{"StringValue1"},
 		},
 
@@ -819,10 +819,10 @@ LEFT JOIN
 		//				json:      `{"StructWithArrayField": {"StructArrayField": [{"StructStringField": "StringValue1", "StructIntField": 1}, {"StructStringField": "StringValue2", "StructIntField": 2}]}}`,
 		//				sqlColumn: "struct_with_array_field.struct_array_field[1].struct_string_field",
 		//			},
-		//			wantQuery: `with raw AS (
+		//			wantQuery: `with raw as (
 		//	select
-		//		row_number() OVER () AS rowid,
-		//		"StructArrayField" AS "struct_array_field"
+		//		row_number() OVER () as rowid,
+		//		"StructArrayField" as "struct_array_field"
 		//	from
 		//		read_ndjson(
 		//			'%s',
@@ -830,20 +830,20 @@ LEFT JOIN
 		//				"StructArrayField": 'struct("StructStringField" varchar, "StructIntField" integer)[]'
 		//			}
 		//		)
-		//), unnest_struct_array_field AS (
+		//), unnest_struct_array_field as (
 		//    select
 		//        rowid,
 		//		unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
 		//	from
 		//		raw
-		//), rebuild_unnest_struct_array_field AS (
+		//), rebuild_unnest_struct_array_field as (
 		//	select
 		//		rowid,
 		//		struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
 		//		struct_array_field->>'StructIntField' as StructArrayField_StructIntField
 		//	from
 		//		unnest_struct_array_field
-		//), grouped_unnest_struct_array_field AS (
+		//), grouped_unnest_struct_array_field as (
 		//	select
 		//		rowid,
 		//		array_agg(struct_pack(
@@ -856,11 +856,11 @@ LEFT JOIN
 		//		rowid
 		//)
 		//select
-		//	COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field
+		//	COALESCE(joined_struct_array_field.struct_array_field, NULL) as struct_array_field
 		//from
 		//	raw
 		//LEFT JOIN
-		//	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+		//	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 		//			wantData: []any{"StringValue1"},
 		//		},
 
@@ -974,7 +974,7 @@ select
 from
 	raw	
 LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{"StringValue1"},
 		},
 		{
@@ -1086,7 +1086,7 @@ select
 from
 	raw	
 LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{int32(10)},
 		},
 		{
@@ -1149,7 +1149,7 @@ select
 from
 	raw	
 LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			wantData: []any{nil},
 		},
 		{
@@ -1213,7 +1213,7 @@ select
 from
 	raw	
 LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid`,
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid`,
 			//wantData: []any{nil, "StringValue1"},
 			// NOTE: ordering is not guaranteed
 			wantData: []any{"StringValue1", nil},
@@ -1314,9 +1314,9 @@ select
 from
 	raw	
 LEFT JOIN
-	grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid
+	grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid
 LEFT JOIN
-	grouped_unnest_struct_array_field2 joined_struct_array_field2 ON raw.rowid = joined_struct_array_field2.rowid`,
+	grouped_unnest_struct_array_field2 joined_struct_array_field2 on raw.rowid = joined_struct_array_field2.rowid`,
 			wantData: []any{"StringValue100"},
 		},
 		// TODO #parquet https://github.com/turbot/tailpipe/issues/new
@@ -1340,15 +1340,15 @@ LEFT JOIN
 		//				sqlColumn: "boolean_map_field",
 		//			},
 		//			wantQuery: `select
-		//	json_extract(json, '$.BooleanMapField')::map(varchar, boolean> AS boolean_map_field,
-		//	json_extract(json, '$.TinyIntMapField')::map(varchar, tinyint> AS tinyint_map_field,
-		//	json_extract(json, '$.SmallIntMapField')::map(varchar, smallint) AS smallint_map_field,
-		//	json_extract(json, '$.IntegerMapField')::map(varchar, integer) AS integer_map_field,
-		//	json_extract(json, '$.BigIntMapField')::map(varchar, bigint) AS bigint_map_field,
-		//	json_extract(json, '$.FloatMapField')::map(varchar, float) AS float_map_field,
-		//	json_extract(json, '$.DoubleMapField')::map(varchar, double) AS double_map_field,
-		//	json_extract(json, '$.VarcharMapField')::map(varchar, varchar) AS varchar_map_field,
-		//	json_extract(json, '$.TimestampMapField')::map(varchar, timestamp) AS timestamp_map_field
+		//	json_extract(json, '$.BooleanMapField')::map(varchar, boolean> as boolean_map_field,
+		//	json_extract(json, '$.TinyIntMapField')::map(varchar, tinyint> as tinyint_map_field,
+		//	json_extract(json, '$.SmallIntMapField')::map(varchar, smallint) as smallint_map_field,
+		//	json_extract(json, '$.IntegerMapField')::map(varchar, integer) as integer_map_field,
+		//	json_extract(json, '$.BigIntMapField')::map(varchar, bigint) as bigint_map_field,
+		//	json_extract(json, '$.FloatMapField')::map(varchar, float) as float_map_field,
+		//	json_extract(json, '$.DoubleMapField')::map(varchar, double) as double_map_field,
+		//	json_extract(json, '$.VarcharMapField')::map(varchar, varchar) as varchar_map_field,
+		//	json_extract(json, '$.TimestampMapField')::map(varchar, timestamp) as timestamp_map_field
 		//from read_json_auto('%s', format='newline_delimited')`, jsonlFilePath),
 		//			wantData: map[string]bool{"key1": true, "key2": false},
 		//		},

@@ -186,9 +186,10 @@ func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format
 		}
 	} else {
 		// we expect the custom format to be the one we asked for
-		desc, ok = describeResponse.CustomFormats[format.FullName]
+		// the escriptions are keyed by unqualified name, i.e. type.name
+		desc, ok = describeResponse.CustomFormats[format.UnqualifiedName]
 		if !ok {
-			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.PresetName)
+			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.UnqualifiedName)
 		}
 	}
 
