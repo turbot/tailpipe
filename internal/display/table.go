@@ -33,8 +33,9 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 	cols := make([]TableColumnResource, len(configTable.Columns))
 	for i, c := range configTable.Columns {
 		cols[i] = TableColumnResource{
-			ColumnName: c.Name,
-			Type:       types.SafeString(c.Type),
+			ColumnName:  c.Name,
+			Type:        types.SafeString(c.Type),
+			Description: types.SafeString(c.Description),
 		}
 	}
 
@@ -59,8 +60,9 @@ func tableResourceFromSchemaTable(tableName string, pluginName string, schemaTab
 	cols := make([]TableColumnResource, len(schemaTable.Columns))
 	for i, c := range schemaTable.Columns {
 		cols[i] = TableColumnResource{
-			ColumnName: c.ColumnName,
-			Type:       c.Type,
+			ColumnName:  c.ColumnName,
+			Type:        c.Type,
+			Description: c.Description,
 		}
 	}
 
@@ -82,8 +84,9 @@ func tableResourceFromSchemaTable(tableName string, pluginName string, schemaTab
 
 // TableColumnResource represents a table column for display purposes
 type TableColumnResource struct {
-	ColumnName string `json:"column_name"`
-	Type       string `json:"type"`
+	ColumnName  string `json:"column_name"`
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
 }
 
 // TableResourceFiles represents the file information and a row count for a table resource
