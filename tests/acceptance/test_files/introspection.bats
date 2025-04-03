@@ -87,3 +87,24 @@ EOF
   # Verify the JSON structure using jq
   assert_equal "$(echo "$output" | jq -r '.[0].name')" "chaos_all_columns"
 }
+
+@test "verify plugin show displays correct JSON structure" {
+  # Run plugin show command with JSON output
+  run tailpipe plugin show chaos --output json
+  echo $output
+
+  # Verify the JSON structure using jq
+  assert_equal "$(echo "$output" | jq -r '.[0].name')" "hub.tailpipe.io/plugins/turbot/chaos@latest"
+  # Update the expected values after actually adding a few format presets to the chaos plugin
+  assert_equal "$(echo "$output" | jq -r '.[0].format_presets')" "null"
+  # Update the expected values after actually adding a few format types to the chaos plugin
+  assert_equal "$(echo "$output" | jq -r '.[0].format_types')" "null"
+  
+  # Verify tables array contains expected values
+  # Update this when new tables are added to the chaos plugin
+  assert_equal "$(echo "$output" | jq -r '.[0].tables | sort | join(",")')" "chaos_all_columns,chaos_date_time,chaos_struct_columns"
+  
+  # Verify sources array contains expected values
+  # Update this when new sources are added to the chaos plugin
+  assert_equal "$(echo "$output" | jq -r '.[0].sources | sort | join(",")')" "chaos_all_columns,chaos_date_time,chaos_struct_columns"
+}
