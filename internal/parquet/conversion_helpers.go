@@ -81,18 +81,18 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 
 	/* this is the what we want
 
-	with raw AS (
+	with raw as (
 	    select
-	        row_number() OVER () AS rowid,
-	        "StructArrayField" AS "struct_array_field",
-	        "IntField" AS "int_field",
-	        "StringField" AS "string_field",
-	        "FloatField" AS "float_field",
-	        "BooleanField" AS "boolean_field",
-	        "IntArrayField" AS "int_array_field",
-	        "StringArrayArrayField" AS "string_array_field",
-	        "FloatArrayField" AS "float_array_field",
-	        "BooleanArrayField" AS "boolean_array_field"
+	        row_number() OVER () as rowid,
+	        "StructArrayField" as "struct_array_field",
+	        "IntField" as "int_field",
+	        "StringField" as "string_field",
+	        "FloatField" as "float_field",
+	        "BooleanField" as "boolean_field",
+	        "IntArrayField" as "int_array_field",
+	        "StringArrayArrayField" as "string_array_field",
+	        "FloatArrayField" as "float_array_field",
+	        "BooleanArrayField" as "boolean_array_field"
 	    from
 	        read_ndjson(
 	            '/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/1.jsonl',
@@ -108,20 +108,20 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 	                "BooleanArrayField": 'boolean[]'
 	            }
 	        )
-	), unnest_struct_array_field AS (
+	), unnest_struct_array_field as (
 	    select
 	        rowid,
 	        unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
 	    from
 	        raw
-	), rebuild_unnest_struct_array_field AS (
+	), rebuild_unnest_struct_array_field as (
 	    select
 	        rowid,
 	        struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
 	        struct_array_field->>'StructIntField' as StructArrayField_StructIntField
 	    from
 	        unnest_struct_array_field
-	), grouped_unnest_struct_array_field AS (
+	), grouped_unnest_struct_array_field as (
 	    select
 	        rowid,
 	        array_agg(struct_pack(
@@ -134,7 +134,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 	        rowid
 	)
 	select
-	    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+	    COALESCE(joined_struct_array_field.struct_array_field, NULL) as struct_array_field,
 	    raw.int_field,
 	    raw.string_field,
 	    raw.float_field,
@@ -160,7 +160,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 	for _, structSliceCol := range structSliceColumns {
 
 		/*
-			, unnest_struct_array_field AS (
+			, unnest_struct_array_field as (
 			    select
 			        rowid,
 		*/
@@ -189,7 +189,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 )`)
 
 		/*
-		   , rebuild_unnest_struct_array_field AS (
+		   , rebuild_unnest_struct_array_field as (
 		      select
 		   	   rowid,
 		*/
@@ -220,7 +220,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 )`, unnestName))
 
 		/*
-		      , grouped_unnest_struct_array_field AS (
+		      , grouped_unnest_struct_array_field as (
 		      	    select
 		      	        rowid,
 		      	        array_agg(struct_pack(
@@ -260,7 +260,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.ConversionSchema, s
 	// build the final select
 	/*
 		select
-			    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+			    COALESCE(joined_struct_array_field.struct_array_field, NULL) as struct_array_field,
 			    raw.int_field,
 			    raw.string_field,
 			    raw.float_field,
@@ -316,7 +316,7 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	tab := strings.Repeat("\t", tabs)
 
 	if column.Transform != "" {
-		return fmt.Sprintf("%s%s AS \"%s\"", tab, column.Transform, column.ColumnName)
+		return fmt.Sprintf("%s%s as \"%s\"", tab, column.Transform, column.ColumnName)
 	}
 
 	// NOTE: we will have normalised column types to lower case
