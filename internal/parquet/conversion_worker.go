@@ -49,7 +49,7 @@ func newParquetConversionWorker(converter *Converter) (*conversionWorker, error)
 		converter:        converter,
 	}
 
-	// create a new DuckDB instance
+	// create a new DuckDB instance for each worker
 	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
@@ -123,7 +123,7 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 }
 
 // convert the given jsonl file to parquet
-func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
+func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error) {
 	partition := w.converter.Partition
 
 	// verify the jsonl file has a .jsonl extension
@@ -135,13 +135,39 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 		return 0, NewConversionError("file does not exist", 0, jsonlFilePath)
 	}
 
-	// render query
+	// render the view query
 	selectQuery := fmt.Sprintf(w.converter.viewQueryFormat, jsonlFilePath)
 
 	// if the partition includes a filter, add a where clause
 	if partition.Filter != "" {
 		selectQuery += fmt.Sprintf(" where %s", partition.Filter)
 	}
+
+	// if this is a directly converted artifact, or of any required columns have transforms, we need to validate the data
+	// (NOTE: if we validate we write the data to a temp table then update the select query to read from that temp table)
+	// get list of columns to validate
+	columnsToValidate := w.getColumnsToValidate()
+	if len(columnsToValidate) > 0 {
+		updatedSelectQuery, cleanupQuery, err := w.validateRequiredFields(jsonlFilePath, selectQuery, columnsToValidate)
+		if err != nil {
+			return 0, err
+		}
+		selectQuery = updatedSelectQuery
+		defer func() {
+			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
+			//  or can we rely on the drop if exists?
+			// validateRequiredFields creates the table temp_data - the cleanupQuery drops it
+			_, tempTableError := w.db.Exec(cleanupQuery)
+			if tempTableError != nil {
+				slog.Error("failed to drop temp table", "error", err)
+				// if we do not already have an error return this error
+				if err == nil {
+					err = tempTableError
+				}
+			}
+		}()
+	}
+
 	// Create a query to write to partitioned parquet files
 
 	// get a unique file root
@@ -170,7 +196,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	row := w.db.QueryRow(exportQuery)
 	var rowCount int64
 	var files []interface{}
-	err := row.Scan(&rowCount, &files)
+	err = row.Scan(&rowCount, &files)
 	if err != nil {
 		// try to get the row count of the file we failed to convert
 		return 0, handleConversionError(err, jsonlFilePath)
@@ -182,6 +208,74 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (int64, error) {
 	err = w.renameTempParquetFiles(files)
 
 	return rowCount, err
+}
+
+// getColumnsToValidate returns the list of columns which need to be validated at this staghe
+// normally, required columns are validated in the plugin, however there are a couple of exceptions:
+// 1. if the format is one which supports direct artifcact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
+// 2. if any required columns have transforms, we must validate those columns as the transforms are applied at this stage
+func (w *conversionWorker) getColumnsToValidate() []string {
+	var res []string
+	// if the format is one which requires a direct conversion we must validate all required columns
+	formatSupportsDirectConversion := table.FormatSupportsDirectConversion(w.converter.Partition.Source.Format.Type)
+
+	// otherwise validate required columns which have a transform
+	for _, col := range w.converter.conversionSchema.Columns {
+		if col.Required && (col.Transform != "" || formatSupportsDirectConversion) {
+			res = append(res, col.ColumnName)
+		}
+	}
+	return res
+}
+
+// validateRequiredFields copys the data from the given select query to a temp table and validates required fields are non null
+// the query  count of invalid rows and a list of null fields
+func (w *conversionWorker) validateRequiredFields(jsonlFilePath string, selectQuery string, columnsToValidate []string) (string, string, error) {
+	validationQuery := w.buildValidationQuery(selectQuery, columnsToValidate)
+
+	row := w.db.QueryRow(validationQuery)
+	var totalRows int64
+	var columnsWithNulls *string // Use pointer to string to handle NULL values
+
+	err := row.Scan(&totalRows, &columnsWithNulls)
+	if err != nil {
+		// try to get the row count of the file we failed to convert
+		return "", "", handleConversionError(err, jsonlFilePath)
+	}
+	if totalRows > 0 {
+		// we have a failure - return an error with details about which columns had nulls
+		nullColumns := "unknown"
+		if columnsWithNulls != nil {
+			nullColumns = *columnsWithNulls
+		}
+		return "", "", NewConversionError(fmt.Sprintf("validation failed - found null values in columns: %s", nullColumns), totalRows, jsonlFilePath)
+	}
+	selectQuery = fmt.Sprintf("select * from temp_data")
+	cleanupQuery := fmt.Sprintf("drop table temp_data")
+	return selectQuery, cleanupQuery, nil
+}
+
+func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
+	queryBuilder := strings.Builder{}
+	queryBuilder.WriteString("drop table if exists temp_data;\n")
+	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
+	queryBuilder.WriteString(`select
+    count(*) as total_rows,
+    list(distinct col) as columns_with_nulls
+from (`)
+
+	if len(columnsToValidate) > 0 {
+		queryBuilder.WriteString("\n")
+		for i, col := range columnsToValidate {
+			if i > 0 {
+				queryBuilder.WriteString("\n    union all\n")
+			}
+			queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s is null", col, col))
+		}
+	}
+	queryBuilder.WriteString("\n)\n")
+	validationQuery := queryBuilder.String()
+	return validationQuery
 }
 
 // renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
