@@ -10,9 +10,6 @@ import (
 
 // TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
 func buildViewQuery(tableSchema *schema.ConversionSchema) string {
-	// ensure the schema types are normalised
-	tableSchema.NormaliseColumnTypes()
-
 	var structSliceColumns []*schema.ColumnSchema
 
 	// first build the select clauses - use the table def columns
