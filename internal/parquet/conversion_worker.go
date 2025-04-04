@@ -250,8 +250,8 @@ func (w *conversionWorker) validateRequiredFields(jsonlFilePath string, selectQu
 		}
 		return "", "", NewConversionError(fmt.Sprintf("validation failed - found null values in columns: %s", nullColumns), totalRows, jsonlFilePath)
 	}
-	selectQuery = fmt.Sprintf("select * from temp_data")
-	cleanupQuery := fmt.Sprintf("drop table temp_data")
+	selectQuery = "select * from temp_data"
+	cleanupQuery := "drop table temp_data"
 	return selectQuery, cleanupQuery, nil
 }
 

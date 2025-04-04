@@ -86,7 +86,7 @@ func (t *Table) Validate() hcl.Diagnostics {
 		}
 
 		if !typehelpers.BoolValue(col.Required) && col.Type == nil {
-			validationErrors = append(validationErrors, fmt.Sprintf("column '%': type must be specified if column is optional ", col.Name))
+			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': type must be specified if column is optional ", col.Name))
 		}
 
 		// check the type is valid
