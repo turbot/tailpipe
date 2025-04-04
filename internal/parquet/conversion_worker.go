@@ -217,7 +217,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 func (w *conversionWorker) getColumnsToValidate() []string {
 	var res []string
 	// if the format is one which requires a direct conversion we must validate all required columns
-	formatSupportsDirectConversion := table.FormatSupportsDirectConversion(w.converter.Partition.Source.Format.Type)
+	formatSupportsDirectConversion := w.converter.Partition.FormatSupportsDirectConversion()
 
 	// otherwise validate required columns which have a transform
 	for _, col := range w.converter.conversionSchema.Columns {

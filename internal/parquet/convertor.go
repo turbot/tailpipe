@@ -253,14 +253,14 @@ func (w *Converter) inferConversionSchema(executionId string, chunkNumber int32)
 	jsonFileName := table.ExecutionIdToJsonlFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
 	// TODO figure out why we need this hack - trying 2 different methods
-	tableSchema, err := w.inferSchemaForJSONLFile(filePath)
+	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(filePath)
 	if err != nil {
-		tableSchema, err = w.inferSchemaForJSONLFileWithDescribe(filePath)
+		inferredSchema, err = w.inferSchemaForJSONLFile(filePath)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer conversionSchema from JSON file: %w", err)
 	}
-	return schema.NewConversionSchemaWithInferredSchema(w.tableSchema, tableSchema), nil
+	return schema.NewConversionSchemaWithInferredSchema(w.tableSchema, inferredSchema), nil
 }
 
 // inferSchemaForJSONLFile infers the schema of a JSONL file using DuckDB

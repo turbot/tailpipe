@@ -24,7 +24,7 @@ type Table struct {
 	Columns []Column `hcl:"column,block" cty:"columns"`
 
 	// should we include ALL source fields in addition to any defined columns, or ONLY include the columns defined
-	Select string `hcl:"select,optional" cty:"select"`
+	MapFields []string `hcl:"map_fields,optional" cty:"map_fields"`
 	// the default null value for the table (may be overridden for specific columns)
 	NullIf string `hcl:"null_if,optional" cty:"null_if"`
 }
@@ -40,7 +40,7 @@ func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Dia
 	c := &Table{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
 		// default to automap source fields
-		Select: "*",
+		MapFields: []string{"*"},
 	}
 
 	// NOTE: as tailpipe does not have the concept of mods, the full name is table.<name> and
@@ -55,7 +55,7 @@ func (t *Table) ToProto() *proto.Schema {
 		Description: typehelpers.SafeString(t.Description),
 		NullValue:   typehelpers.SafeString(t.NullIf),
 		Name:        t.ShortName,
-		Select:      t.Select,
+		MapFields:   t.MapFields,
 	}
 	for _, col := range t.Columns {
 		res.Columns = append(res.Columns, col.ToProto())
@@ -90,7 +90,7 @@ func (t *Table) Validate() hcl.Diagnostics {
 		}
 
 		// check the type is valid
-		if !schema.IsValidColumnType(typehelpers.SafeString(col.Type)) {
+		if col.Type != nil && !schema.IsValidColumnType(typehelpers.SafeString(col.Type)) {
 			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': type '%s' is not a valid type", col.Name, typehelpers.SafeString(col.Type)))
 		}
 		if col.Source != nil && col.Transform != nil {

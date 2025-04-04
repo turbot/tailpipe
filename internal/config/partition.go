@@ -12,6 +12,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/schema"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -167,4 +168,12 @@ func (c *Partition) GetFormat() *Format {
 		format = c.CustomTable.DefaultSourceFormat
 	}
 	return format
+}
+
+func (c *Partition) FormatSupportsDirectConversion() bool {
+	format := c.GetFormat()
+	if format == nil {
+		return false
+	}
+	return table.FormatSupportsDirectConversion(format.Type)
 }
