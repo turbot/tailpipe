@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/marcboeker/go-duckdb/v2"
 	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 	pcmdconfig "github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
@@ -77,7 +78,7 @@ func teardown() {
 	}
 }
 
-func Test_buildViewQuery(t *testing.T) {
+func TestBuildViewQuery(t *testing.T) {
 	// set the version explicitly here since version is set during build time
 	// then set the app specific constants needed for the tests
 	viper.Set("main.version", "0.0.1")
@@ -1469,4 +1470,67 @@ func createJSONLFile(json string) error {
 		return fmt.Errorf("error closing jsonl file: %w", err)
 	}
 	return err
+}
+
+func TestBuildValidationQuery(t *testing.T) {
+	testCases := []struct {
+		name              string
+		selectQuery       string
+		columnsToValidate []string
+		expectedQuery     string
+	}{
+		{
+			name:              "single column",
+			selectQuery:       "select * from source",
+			columnsToValidate: []string{"name"},
+			expectedQuery: `drop table if exists temp_data;
+create temp table temp_data as select * from source;
+select
+    count(*) as total_rows,
+    list(distinct col) as columns_with_nulls
+from (
+    select 'name' as col from temp_data where name is null
+)
+`,
+		},
+		{
+			name:              "multiple columns",
+			selectQuery:       "select * from source",
+			columnsToValidate: []string{"name", "email", "age"},
+			expectedQuery: `drop table if exists temp_data;
+create temp table temp_data as select * from source;
+select
+    count(*) as total_rows,
+    list(distinct col) as columns_with_nulls
+from (
+    select 'name' as col from temp_data where name is null
+    union all
+    select 'email' as col from temp_data where email is null
+    union all
+    select 'age' as col from temp_data where age is null
+)
+`,
+		},
+		{
+			name:              "no columns",
+			selectQuery:       "select * from source",
+			columnsToValidate: []string{},
+			expectedQuery: `drop table if exists temp_data;
+create temp table temp_data as select * from source;
+select
+    count(*) as total_rows,
+    list(distinct col) as columns_with_nulls
+from (
+)
+`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			worker := &conversionWorker{}
+			actualQuery := worker.buildValidationQuery(tc.selectQuery, tc.columnsToValidate)
+			assert.Equal(t, tc.expectedQuery, actualQuery)
+		})
+	}
 }

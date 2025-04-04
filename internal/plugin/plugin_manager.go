@@ -186,7 +186,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+		return fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
 	}
 
 	// start plugin if needed
@@ -216,7 +216,7 @@ func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format
 	//  check if the format is provided by the table plugin or whether we need to start format plugin
 	formatPluginName, ok := config.GetPluginForFormat(format)
 	if !ok {
-		return nil, fmt.Errorf("error determining source plugin for format %s", format.FullName)
+		return nil, fmt.Errorf("error determining plugin for format %s", format.FullName)
 	}
 	// if the format is provided by the table plugin, we can just convert it to proto
 	if formatPluginName == tablePlugin.Plugin {
@@ -267,7 +267,7 @@ func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return nil, fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+		return nil, fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
 	}
 	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
 	// and then pass reattach info

@@ -252,17 +252,20 @@ func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int32) error {
 func (w *Converter) inferConversionSchema(executionId string, chunkNumber int32) (*schema.ConversionSchema, error) {
 	jsonFileName := table.ExecutionIdToJsonlFileName(executionId, chunkNumber)
 	filePath := filepath.Join(w.sourceDir, jsonFileName)
-	// TODO figure out why we need this hack
-	tableSchema, err := w.inferSchemaForJSONLFile(filePath)
+	// TODO figure out why we need this hack - trying 2 different methods
+	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(filePath)
 	if err != nil {
-		tableSchema, err = w.inferSchemaForJSONLFileWithDescribe(filePath)
+		inferredSchema, err = w.inferSchemaForJSONLFile(filePath)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer conversionSchema from JSON file: %w", err)
 	}
-	return schema.NewConversionSchemaWithInferredSchema(w.tableSchema, tableSchema), nil
+	return schema.NewConversionSchemaWithInferredSchema(w.tableSchema, inferredSchema), nil
 }
 
+// inferSchemaForJSONLFile infers the schema of a JSONL file using DuckDB
+// it uses 2 different queries as depending on the data, one or the other has been observed to work
+// (needs investigation)
 func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
 	// Open DuckDB connection
 	db, err := database.NewDuckDb()
@@ -292,8 +295,7 @@ func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 
 	// Convert to TableSchema
 	res := &schema.TableSchema{
-		AutoMapSourceFields: false,
-		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
+		Columns: make([]*schema.ColumnSchema, 0, len(fields)),
 	}
 
 	// Convert each field to a column schema
@@ -326,10 +328,7 @@ func (w *Converter) inferSchemaForJSONLFileWithDescribe(filePath string) (*schem
 	}
 	defer rows.Close()
 
-	var res = &schema.TableSchema{
-		// NOTE: set autoMap to false as we have inferred the schema
-		AutoMapSourceFields: false,
-	}
+	var res = &schema.TableSchema{}
 
 	// Read the results
 	for rows.Next() {
