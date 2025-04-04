@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
-	_ "github.com/marcboeker/go-duckdb/v2"
+	_ "github.com/marcboeker/go-duckdb"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"

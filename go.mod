@@ -6,9 +6,9 @@ toolchain go1.24.0
 
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
-//github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
-//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-//github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+	github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
@@ -20,7 +20,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.2.0
 	github.com/turbot/pipe-fittings/v2 v2.3.1
-	github.com/turbot/tailpipe-plugin-sdk v0.2.1-rc.0
+	github.com/turbot/tailpipe-plugin-sdk v0.2.1-rc.1
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
@@ -39,20 +39,12 @@ require (
 	github.com/hashicorp/go-plugin v1.6.1
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
-	github.com/marcboeker/go-duckdb/v2 v2.1.0
+	github.com/marcboeker/go-duckdb v1.8.4
 	github.com/thediveo/enumflag/v2 v2.0.5
 	github.com/turbot/tailpipe-plugin-core v0.1.7
 	golang.org/x/sync v0.11.0
 	golang.org/x/text v0.22.0
 	google.golang.org/protobuf v1.36.1
-)
-
-require (
-	github.com/goccy/go-json v0.10.5 // indirect
-	github.com/google/flatbuffers v25.1.24+incompatible // indirect
-	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
-	github.com/pierrec/lz4/v4 v4.1.22 // indirect
-	github.com/zeebo/xxh3 v1.0.2 // indirect
 )
 
 require (
@@ -70,7 +62,7 @@ require (
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.44.183 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.30.3 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.27.26 // indirect
+	github.com/aws/aws-sdk-go-v2/config v1.27.11 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.26 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.16.11 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.3.15 // indirect
@@ -99,12 +91,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dgraph-io/ristretto v0.2.0 // indirect
 	github.com/dlclark/regexp2 v1.4.0 // indirect
-	github.com/duckdb/duckdb-go-bindings v0.1.13 // indirect
-	github.com/duckdb/duckdb-go-bindings/darwin-amd64 v0.1.8 // indirect
-	github.com/duckdb/duckdb-go-bindings/darwin-arm64 v0.1.8 // indirect
-	github.com/duckdb/duckdb-go-bindings/linux-amd64 v0.1.8 // indirect
-	github.com/duckdb/duckdb-go-bindings/linux-arm64 v0.1.8 // indirect
-	github.com/duckdb/duckdb-go-bindings/windows-amd64 v0.1.8 // indirect
 	github.com/elastic/go-grok v0.3.1 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.17.0 // indirect
@@ -121,9 +107,11 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.11.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
+	github.com/google/flatbuffers v25.1.24+incompatible // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -156,16 +144,15 @@ require (
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/karrick/gows v0.3.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/magefile/mage v1.15.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
-	github.com/marcboeker/go-duckdb/arrowmapping v0.0.6 // indirect
-	github.com/marcboeker/go-duckdb/mapping v0.0.6 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
-	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mattn/go-tty v0.0.3 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
@@ -181,6 +168,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
+	github.com/pierrec/lz4/v4 v4.1.22 // indirect
 	github.com/pjbgf/sha1cd v0.3.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
@@ -193,6 +181,7 @@ require (
 	github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
@@ -208,6 +197,7 @@ require (
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	github.com/zclconf/go-cty-yaml v1.0.3 // indirect
+	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.49.0 // indirect

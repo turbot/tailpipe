@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/marcboeker/go-duckdb/v2"
 )
 
 const testDataDir = "testdata"
