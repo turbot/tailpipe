@@ -9,7 +9,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
-	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/zclconf/go-cty/cty"
@@ -25,11 +24,9 @@ type Table struct {
 	Columns []Column `hcl:"column,block" cty:"columns"`
 
 	// should we include ALL source fields in addition to any defined columns, or ONLY include the columns defined
-	AutoMapSourceFields bool `hcl:"automap_source_fields,optional" cty:"automap_source_fields"`
-	// should we exclude any source fields from the output (only applicable if automap_source_fields is true)
-	ExcludeSourceFields []string `hcl:"exclude_source_fields,optional" cty:"exclude_source_fields"`
+	Select string `hcl:"select,optional" cty:"select"`
 	// the default null value for the table (may be overridden for specific columns)
-	NullValue string `hcl:"null_value,optional" cty:"null_value"`
+	NullIf string `hcl:"null_if,optional" cty:"null_if"`
 }
 
 func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -43,7 +40,7 @@ func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Dia
 	c := &Table{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fullName),
 		// default to automap source fields
-		AutoMapSourceFields: true,
+		Select: "*",
 	}
 
 	// NOTE: as tailpipe does not have the concept of mods, the full name is table.<name> and
@@ -55,11 +52,10 @@ func NewTable(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Dia
 
 func (t *Table) ToProto() *proto.Schema {
 	var res = &proto.Schema{
-		AutomapSourceFields: t.AutoMapSourceFields,
-		ExcludeSourceFields: t.ExcludeSourceFields,
-		Description:         typehelpers.SafeString(t.Description),
-		NullValue:           typehelpers.SafeString(t.NullValue),
-		Name:                t.ShortName,
+		Description: typehelpers.SafeString(t.Description),
+		NullValue:   typehelpers.SafeString(t.NullIf),
+		Name:        t.ShortName,
+		Select:      t.Select,
 	}
 	for _, col := range t.Columns {
 		res.Columns = append(res.Columns, col.ToProto())
@@ -77,15 +73,7 @@ func (t *Table) CtyValue() (cty.Value, error) {
 func (t *Table) Validate() hcl.Diagnostics {
 	var diags hcl.Diagnostics
 	// build list of optional columns without types
-	var optionalColumnsWithNoType []string
-	if !t.AutoMapSourceFields && len(t.ExcludeSourceFields) > 0 {
-		diags = append(diags, &hcl.Diagnostic{
-			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("Table '%s' failed validation", t.ShortName),
-			Detail:   "exclude_source_fields can only be set if automap_source_fields is true",
-			Subject:  t.DeclRange.Ptr(),
-		})
-	}
+	var validationErrors []string
 
 	for _, col := range t.Columns {
 		// if the column is options, a type must be specified
@@ -98,14 +86,25 @@ func (t *Table) Validate() hcl.Diagnostics {
 		}
 
 		if !typehelpers.BoolValue(col.Required) && col.Type == nil {
-			optionalColumnsWithNoType = append(optionalColumnsWithNoType, col.Name)
+			validationErrors = append(validationErrors, fmt.Sprintf("column '%': type must be specified if column is optional ", col.Name))
+		}
+
+		// check the type is valid
+		if !schema.IsValidColumnType(typehelpers.SafeString(col.Type)) {
+			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': type '%s' is not a valid type", col.Name, typehelpers.SafeString(col.Type)))
+		}
+		if col.Source != nil && col.Transform != nil {
+			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': source and transform cannot both be set", col.Name))
+		}
+		if col.TimeFormat != nil && strings.ToLower(typehelpers.SafeString(col.Type)) != "timestamp" {
+			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': time_format can only be set for timestamp columns", col.Name))
 		}
 	}
-	if len(optionalColumnsWithNoType) > 0 {
+	if len(validationErrors) > 0 {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  fmt.Sprintf("Table '%s' failed validation", t.ShortName),
-			Detail:   fmt.Sprintf("column type must be specified if column is optional (%s '%s')", utils.Pluralize("column", len(optionalColumnsWithNoType)), strings.Join(optionalColumnsWithNoType, "', '")),
+			Detail:   strings.Join(validationErrors, "\n"),
 			Subject:  t.DeclRange.Ptr(),
 		})
 	}

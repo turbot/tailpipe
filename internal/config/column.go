@@ -17,7 +17,7 @@ type Column struct {
 	// Is the column required?
 	Required *bool `hcl:"required" cty:"required"`
 	// An optional null value for the column. If the source value contains this, the column will be null
-	NullValue *string `hcl:"null_value" cty:"null_value"`
+	NullIf *string `hcl:"null_if" cty:"null_if"`
 	// The strptime format of the time field so it can be recognized and analyzed properly.
 	TimeFormat *string `hcl:"time_format" cty:"time_format"`
 	// A duck DB transform function to apply to the column. This should be expressed as a SQL function
@@ -33,7 +33,7 @@ func (c Column) ToProto() *proto.ColumnSchema {
 		ColumnName:  c.Name,
 		Type:        typehelpers.SafeString(c.Type),
 		Description: typehelpers.SafeString(c.Description),
-		NullValue:   typehelpers.SafeString(c.NullValue),
+		NullValue:   typehelpers.SafeString(c.NullIf),
 		Required:    typehelpers.BoolValue(c.Required),
 		TimeFormat:  typehelpers.SafeString(c.TimeFormat),
 		Transform:   typehelpers.SafeString(c.Transform),
