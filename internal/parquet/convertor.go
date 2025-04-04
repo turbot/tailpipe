@@ -80,6 +80,9 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
+	// normalise the table schema to use lowercase column names
+	tableSchema.NormaliseColumnTypes()
+
 	w := &Converter{
 		id:               executionId,
 		chunks:           make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
