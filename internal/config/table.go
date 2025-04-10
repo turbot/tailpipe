@@ -96,9 +96,6 @@ func (t *Table) Validate() hcl.Diagnostics {
 		if col.Source != nil && col.Transform != nil {
 			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': source and transform cannot both be set", col.Name))
 		}
-		if col.TimeFormat != nil && strings.ToLower(typehelpers.SafeString(col.Type)) != "timestamp" {
-			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': time_format can only be set for timestamp columns", col.Name))
-		}
 	}
 	if len(validationErrors) > 0 {
 		diags = append(diags, &hcl.Diagnostic{
