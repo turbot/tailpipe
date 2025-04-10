@@ -17,6 +17,8 @@ import (
 // Table is a struct representing a custom table definition
 type Table struct {
 	modconfig.HclResourceImpl
+	// required to allow partial decoding
+	Remain hcl.Body `hcl:",remain" json:"-"`
 
 	// the default format for this table (todo make a map keyed by source name?)
 	DefaultSourceFormat *Format `hcl:"format" cty:"format"`

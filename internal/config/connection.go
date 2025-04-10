@@ -19,6 +19,9 @@ func init() {
 
 type TailpipeConnection struct {
 	modconfig.HclResourceImpl
+	// required to allow partial decoding
+	Remain hcl.Body `hcl:",remain" json:"-"`
+
 	Plugin string `cty:"plugin"`
 	Hcl    []byte `cty:"hcl"`
 	// the hcl range for the connection - use our version so we can sty serialise it
