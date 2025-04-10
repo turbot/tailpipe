@@ -23,6 +23,8 @@ func init() {
 
 type Partition struct {
 	modconfig.HclResourceImpl
+	// required to allow partial decoding
+	Remain hcl.Body `hcl:",remain" json:"-"`
 
 	// the name of the table this partition is for - this is the first label in the partition block
 	TableName string
