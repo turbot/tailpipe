@@ -331,17 +331,17 @@ func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToVal
 select
     (select count(*) from invalid_rows) as total_rows,
     list(distinct col) as columns_with_nulls
-from (
-    select col from (
-        values `)
+from (`)
 
-	// add the column names as values
-	quotedColumns := make([]string, len(columnsToValidate))
+	// build a query to find which columns actually have null values
 	for i, col := range columnsToValidate {
-		quotedColumns[i] = fmt.Sprintf("('%s')", col)
+		if i > 0 {
+			queryBuilder.WriteString("\n    union all\n")
+		}
+		queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s is null", col, col))
 	}
-	queryBuilder.WriteString(strings.Join(quotedColumns, ", "))
-	queryBuilder.WriteString(") as t(col));")
+
+	queryBuilder.WriteString("\n);")
 
 	return queryBuilder.String()
 }
