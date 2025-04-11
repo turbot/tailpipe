@@ -141,7 +141,7 @@ func TestBuildViewQuery(t *testing.T) {
 				json:      `{  "StructField": {   "StructStringField": "StructStringVal", "StructIntField": 100   }}`,
 				sqlColumn: "struct_field.struct_string_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	case
 		when "StructField" is null then null
 		else struct_pack(
@@ -175,7 +175,7 @@ from
 				json:      `{  "JsonField": {   "string_field": "JsonStringVal", "int_field": 100   }}`,
 				sqlColumn: "json_field.string_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	json("JsonField") as "json_field"
 from
 	read_ndjson(
@@ -206,7 +206,7 @@ from
 				json:      `{  "end": {   "any": "StructStringVal"  }}`,
 				sqlColumn: `"end"."any"`,
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	case
 		when "end" is null then null
 		else struct_pack(
@@ -242,7 +242,7 @@ from
 				json:      `{ }`,
 				sqlColumn: `"end"."any"`,
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	case
 		when "end" is null then null
 		else struct_pack(
@@ -294,7 +294,7 @@ from
 				json:      `{  "StructField": {    "NestedStruct": {      "NestedStructStringField": "NestedStructStringVal"    },    "StructStringField": "StructStringVal"  }}`,
 				sqlColumn: "struct_field.nested_struct.nested_struct_string_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	case
 		when "StructField" is null then null
 		else struct_pack(
@@ -353,7 +353,7 @@ from
 {  }`,
 				sqlColumn: "struct_field.nested_struct.nested_struct_string_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	case
 		when "StructField" is null then null
 		else struct_pack(
@@ -406,7 +406,7 @@ from
 				json:      `{  "end": {    "any": {      "for": "NestedStructStringVal"    }}}`,
 				sqlColumn: `"end"."any"."for"`,
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	case
 		when "end" is null then null
 		else struct_pack(
@@ -452,7 +452,7 @@ from
 				json:      `{"BooleanField": true, "TinyIntField": 1, "SmallIntField": 2, "IntegerField": 3, "BigIntField": 4, "UTinyIntField": 5, "USmallIntField": 6, "UIntegerField": 7, "UBigIntField": 8, "FloatField": 1.23, "DoubleField": 4.56, "VarcharField": "StringValue", "TimestampField": "2024-01-01T00:00:00Z"}`,
 				sqlColumn: "varchar_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	"BooleanField" as "boolean_field",
 	"TinyIntField" as "tinyint_field",
 	"SmallIntField" as "smallint_field",
@@ -501,7 +501,7 @@ from
 				json:      `{"end": true, "for": 1}`,
 				sqlColumn: `"end"`,
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	"end" as "end",
 	"for" as "for"
 from
@@ -539,7 +539,7 @@ from
 				json:      `{"BooleanField": true}`,
 				sqlColumn: "boolean_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	"BooleanField" as "boolean_field",
 	"TinyIntField" as "tinyint_field",
 	"SmallIntField" as "smallint_field",
@@ -601,7 +601,7 @@ from
 {"TinyIntField": 1, "BooleanField": true}`,
 				sqlColumn: "boolean_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	"BooleanField" as "boolean_field",
 	"TinyIntField" as "tinyint_field",
 	"SmallIntField" as "smallint_field",
@@ -661,7 +661,7 @@ from
 				json:      `{}`,
 				sqlColumn: "varchar_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	"BooleanField" as "boolean_field",
 	"TinyIntField" as "tinyint_field",
 	"SmallIntField" as "smallint_field",
@@ -721,7 +721,7 @@ from
 				json:      `{"BooleanArrayField": [true, false], "TinyIntArrayField": [1, 2], "SmallIntArrayField": [2, 3], "IntegerArrayField": [3, 4], "BigIntArrayField": [4, 5], "UTinyIntArrayField": [5, 6], "USmallIntArrayField": [6, 7], "UIntegerArrayField": [7, 8], "UBigIntArrayField": [8, 9], "FloatArrayField": [1.23, 2.34], "DoubleArrayField": [4.56, 5.67], "VarcharArrayField": ["StringValue1", "StringValue2"], "TimestampArrayField": ["2024-01-01T00:00:00Z", "2024-01-02T00:00:00Z"]}`,
 				sqlColumn: "boolean_array_field",
 			},
-			wantQuery: `select * from(select
+			wantQuery: `select * from (select
 	"BooleanArrayField" as "boolean_array_field",
 	"TinyIntArrayField" as "tinyint_array_field",
 	"SmallIntArrayField" as "smallint_array_field",
@@ -778,7 +778,7 @@ from
 				sqlColumn: "struct_array_field[1].struct_string_field",
 			},
 			wantQuery: `with raw as (
-	select * from(select
+	select * from (select
 		row_number() over () as rowid,
 		"StructArrayField" as "struct_array_field"
 	from
@@ -942,7 +942,7 @@ left join
 				sqlColumn: "struct_array_field[1].struct_string_field",
 			},
 			wantQuery: `with raw as (
-	select * from(select
+	select * from (select
 		row_number() over () as rowid,
 		"StructArrayField" as "struct_array_field",
 		"IntField" as "int_field",
@@ -1056,7 +1056,7 @@ left join
 				sqlColumn: "int_field",
 			},
 			wantQuery: `with raw as (
-	select * from(select
+	select * from (select
 		row_number() over () as rowid,
 		"StructArrayField" as "struct_array_field",
 		"IntField" as "int_field",
@@ -1145,7 +1145,7 @@ left join
 				sqlColumn: "struct_array_field",
 			},
 			wantQuery: `with raw as (
-	select * from(select
+	select * from (select
 		row_number() over () as rowid,
 		"StructArrayField" as "struct_array_field"
 	from
@@ -1211,7 +1211,7 @@ left join
 				sqlColumn: "struct_array_field[1].struct_string_field",
 			},
 			wantQuery: `with raw as (
-	select * from(select
+	select * from (select
 		row_number() over () as rowid,
 		"StructArrayField" as "struct_array_field"
 	from
@@ -1287,7 +1287,7 @@ left join
 				sqlColumn: "struct_array_field2[1].struct_string_field2",
 			},
 			wantQuery: `with raw as (
-	select * from(select
+	select * from (select
 		row_number() over () as rowid,
 		"StructArrayField" as "struct_array_field",
 		"StructArrayField2" as "struct_array_field2"
@@ -1529,7 +1529,7 @@ from (
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			worker := &conversionWorker{}
-			actualQuery := worker.buildValidationQuery(tc.selectQuery, tc.columnsToValidate)
+			actualQuery := worker.buildValidationQuery(tc.columnsToValidate)
 			assert.Equal(t, tc.expectedQuery, actualQuery)
 		})
 	}

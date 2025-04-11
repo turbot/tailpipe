@@ -241,9 +241,9 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 
 	row := w.db.QueryRow(validationQuery)
 	var totalRows int64
-	var columnsWithNulls *string // Use pointer to string to handle NULL values
+	var columnsWithNullsInterface []interface{}
 
-	err := row.Scan(&totalRows, &columnsWithNulls)
+	err := row.Scan(&totalRows, &columnsWithNullsInterface)
 	if err != nil {
 		// this error may be because the schema of this chunk is different to the inferred schema
 		// infer the schema of this chunk and compare - if they are different, return that in an error
@@ -258,15 +258,22 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 		}
 
 		// just return the original error
-
-		// try to get the row count of the file we failed to convert
 		return "", "", handleConversionError(err, jsonlFilePath)
 	}
+
+	// Convert the interface slice to string slice
+	var columnsWithNulls []string
+	for _, col := range columnsWithNullsInterface {
+		if col != nil {
+			columnsWithNulls = append(columnsWithNulls, col.(string))
+		}
+	}
+
 	if totalRows > 0 {
 		// we have a failure - return an error with details about which columns had nulls
 		nullColumns := "unknown"
-		if columnsWithNulls != nil {
-			nullColumns = *columnsWithNulls
+		if len(columnsWithNulls) > 0 {
+			nullColumns = strings.Join(columnsWithNulls, ", ")
 		}
 		return "", "", NewConversionError(fmt.Sprintf("validation failed - found null values in columns: %s", nullColumns), totalRows, jsonlFilePath)
 	}
@@ -275,6 +282,9 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 	return selectQuery, cleanupQuery, nil
 }
 
+// buildValidationQuery builds a query to copy the data from the select query to a temp table
+// it then validates that the required columns are not null, removing invalid rows and returning
+// the count of invalid rows and the columns with nulls
 func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
 	queryBuilder := strings.Builder{}
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
