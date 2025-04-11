@@ -384,25 +384,35 @@ from (`)
 func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
 	queryBuilder := strings.Builder{}
 
-	// create a temp table to hold the data
+	// Step 1: Create a temporary table to hold the data we want to validate
+	// This allows us to efficiently check multiple columns without scanning the source multiple times
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
 
-	// create a query to count rows with nulls and list the columns
+	// Step 2: Build the validation query that:
+	// - Counts distinct rows that have any null values
+	// - Lists all columns that contain null values
 	queryBuilder.WriteString(`select
-    count(distinct rowid) as total_rows,
-    list(distinct col) as columns_with_nulls
+    count(distinct rowid) as total_rows,  -- Count unique rows with any null values
+    list(distinct col) as columns_with_nulls  -- List all columns that have null values
 from (`)
 
-	// build a query to find which columns actually have null values
+	// Step 3: For each column we need to validate:
+	// - Create a query that selects rows where this column is null
+	// - Include the column name so we know which column had the null
+	// - UNION ALL combines all these results (faster than UNION as we don't need to deduplicate)
 	for i, col := range columnsToValidate {
 		if i > 0 {
-			queryBuilder.WriteString("\n    union all\n")
+			queryBuilder.WriteString("    union all\n")
 		}
-		queryBuilder.WriteString(fmt.Sprintf("    select rowid, '%s' as col from temp_data where %s is null", col, col))
+		// For each column, create a query that:
+		// - Selects the rowid (to count distinct rows)
+		// - Includes the column name (to list which columns had nulls)
+		// - Only includes rows where this column is null
+		queryBuilder.WriteString(fmt.Sprintf("    select rowid, '%s' as col from temp_data where %s is null\n", col, col))
 	}
 
-	queryBuilder.WriteString("\n);")
+	queryBuilder.WriteString(");")
 
 	return queryBuilder.String()
 }
