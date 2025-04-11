@@ -313,35 +313,36 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 // the count of invalid rows and the columns with nulls
 func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
 	queryBuilder := strings.Builder{}
-	// create a temp table to hold the data
+
+	// Step 1: Create a temporary table to hold the data we want to validate
+	// This allows us to efficiently check multiple columns without scanning the source multiple times
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
-	// create a query to count the number of rows with nulls in the required columns
-	queryBuilder.WriteString(`with invalid_rows as (
-    select distinct rowid
-    from temp_data
-    where `)
 
-	// use the shared null check logic
-	whereClause := w.buildNullCheckQuery(columnsToValidate)
-	queryBuilder.WriteString(whereClause)
+	// Step 2: Build the validation query that:
+	// - Counts distinct rows that have any null values
+	// - Lists all columns that contain null values
+	queryBuilder.WriteString(`select
+    count(distinct rowid) as total_rows,  -- Count unique rows with any null values
+    list(distinct col) as columns_with_nulls  -- List all columns that have null values
+from (`)
 
-	queryBuilder.WriteString(`
-)
-select
-    (select count(*) from invalid_rows) as total_rows,
-    list(distinct col) as columns_with_nulls
-from (
-    select col from (
-        values `)
-
-	// add the column names as values
-	quotedColumns := make([]string, len(columnsToValidate))
+	// Step 3: For each column we need to validate:
+	// - Create a query that selects rows where this column is null
+	// - Include the column name so we know which column had the null
+	// - UNION ALL combines all these results (faster than UNION as we don't need to deduplicate)
 	for i, col := range columnsToValidate {
-		quotedColumns[i] = fmt.Sprintf("('%s')", col)
+		if i > 0 {
+			queryBuilder.WriteString("    union all\n")
+		}
+		// For each column, create a query that:
+		// - Selects the rowid (to count distinct rows)
+		// - Includes the column name (to list which columns had nulls)
+		// - Only includes rows where this column is null
+		queryBuilder.WriteString(fmt.Sprintf("    select rowid, '%s' as col from temp_data where %s is null\n", col, col))
 	}
-	queryBuilder.WriteString(strings.Join(quotedColumns, ", "))
-	queryBuilder.WriteString(") as t(col));")
+
+	queryBuilder.WriteString(");")
 
 	return queryBuilder.String()
 }
