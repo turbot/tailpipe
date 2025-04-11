@@ -104,11 +104,6 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 
 	// process the ParquetJobPool
 	rowCount, err := w.convertFile(jsonFilePath)
-	if err != nil {
-		// don't wrap error already a ConversionError
-		return err
-	}
-
 	// update the row count
 	w.converter.updateRowCount(rowCount)
 
@@ -119,7 +114,7 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 	}
 	activeDuration := time.Since(startTime)
 	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
-	return nil
+	return err
 }
 
 // convert the given jsonl file to parquet
@@ -152,12 +147,14 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	// get list of columns to validate
 	columnsToValidate := w.getColumnsToValidate()
 
+	var cleanupQuery string
+	var rowValidationError error
 	if len(columnsToValidate) > 0 || !w.converter.tableSchema.Complete() {
-		updatedSelectQuery, cleanupQuery, rowValidationError := w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
+		selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
 
 		if rowValidationError != nil {
 			// if no select query was returned, we cannot proceed - just return the error
-			if updatedSelectQuery == "" {
+			if selectQuery == "" {
 				return 0, rowValidationError
 			}
 			// so we have a validation error - but we DID return an updated select query - that indicates we should
@@ -165,19 +162,20 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 
 			// ensure that we return the row validation error, merged with any other error we receive
 			defer func() {
-				var conversionError *ConversionError
-				if err != nil {
+				if err == nil {
+					err = rowValidationError
+				} else {
+					var conversionError *ConversionError
 					if errors.As(rowValidationError, &conversionError) {
 						// we have a conversion error - we need to set the row count to 0
 						// so we can report the error
 						conversionError.Merge(err)
 					}
+					err = conversionError
 				}
 			}()
 		}
 
-		// so
-		selectQuery = updatedSelectQuery
 		defer func() {
 			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
 			//  or can we rely on the drop if exists?
@@ -299,6 +297,11 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 		// if we have row validation errors, we return a ConversionError but also return the select query
 		// so the calling code can convert the rest of the chunk
 		rowValidationError = NewConversionError(fmt.Sprintf("validation failed - found null values in columns: %s", nullColumns), totalRows, jsonlFilePath)
+
+		// delete invalid rows from the temp table
+		if err := w.deleteInvalidRows(columnsToValidate); err != nil {
+			return "", "", handleConversionError(err, jsonlFilePath)
+		}
 	}
 	selectQuery = "select * from temp_data"
 	cleanupQuery := "drop table temp_data"
@@ -310,10 +313,10 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 // the count of invalid rows and the columns with nulls
 func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
 	queryBuilder := strings.Builder{}
+	// create a temp table to hold the data
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
-
-	// First identify and count invalid rows
+	// create a query to count the number of rows with nulls in the required columns
 	queryBuilder.WriteString(`select
     count(*) as total_rows,
     list(distinct col) as columns_with_nulls
@@ -321,29 +324,48 @@ from (`)
 
 	if len(columnsToValidate) > 0 {
 		queryBuilder.WriteString("\n")
-		for i, col := range columnsToValidate {
+		// use the shared null check logic to build the union queries
+		whereClause := w.buildNullCheckQuery(columnsToValidate)
+		parts := strings.Split(whereClause, " or ")
+		for i, part := range parts {
 			if i > 0 {
 				queryBuilder.WriteString("\n    union all\n")
 			}
-			queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s is null", col, col))
+			// extract the column name from the null check (e.g. "col is null" -> "col")
+			col := strings.TrimSuffix(strings.TrimPrefix(part, " "), " is null")
+			queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s", col, part))
 		}
 	}
-	queryBuilder.WriteString("\n);\n")
-
-	// Now remove invalid rows from temp_data
-	queryBuilder.WriteString("delete from temp_data where ")
-	for i, col := range columnsToValidate {
-		if i > 0 {
-			queryBuilder.WriteString(" or ")
-		}
-		queryBuilder.WriteString(fmt.Sprintf("%s is null", col))
-	}
-	queryBuilder.WriteString(";\n")
-
-	// Return the count of remaining valid rows
-	queryBuilder.WriteString("select count(*) from temp_data;")
+	queryBuilder.WriteString("\n);")
 
 	return queryBuilder.String()
+}
+
+// buildNullCheckQuery builds a WHERE clause to check for null values in the specified columns
+func (w *conversionWorker) buildNullCheckQuery(columnsToValidate []string) string {
+	if len(columnsToValidate) == 0 {
+		return ""
+	}
+
+	// build a slice of null check conditions
+	conditions := make([]string, len(columnsToValidate))
+	for i, col := range columnsToValidate {
+		conditions[i] = fmt.Sprintf("%s is null", col)
+	}
+	return strings.Join(conditions, " or ")
+}
+
+// deleteInvalidRows removes rows with null values in the specified columns from the temp table
+func (w *conversionWorker) deleteInvalidRows(columnsToValidate []string) error {
+	if len(columnsToValidate) == 0 {
+		return nil
+	}
+
+	whereClause := w.buildNullCheckQuery(columnsToValidate)
+	query := fmt.Sprintf("delete from temp_data where %s;", whereClause)
+
+	_, err := w.db.Exec(query)
+	return err
 }
 
 // renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
