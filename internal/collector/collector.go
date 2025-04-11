@@ -139,7 +139,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 
 	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
 	if !resolvedFromTime.Time.IsZero() {
-		c.partition.AddFilter(fmt.Sprintf("tp_timestamp >= '%s'", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
+		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
+		c.partition.AddFilter(fmt.Sprintf("tp_timestamp is null or tp_timestamp >= '%s'", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
 	}
 
 	// create a parquet writer

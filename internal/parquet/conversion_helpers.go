@@ -39,7 +39,7 @@ from
 	// if there are no struct[] fields, we are done - just add the select at the start
 	if len(structSliceColumns) == 0 {
 		// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
-		return fmt.Sprintf("select * from(select\n%s", columnStrings.String())
+		return fmt.Sprintf("select * from (select\n%s", columnStrings.String())
 	}
 
 	// TODO: Currently we don't support []struct so this code never gets hit. https://github.com/turbot/tailpipe-plugin-sdk/issues/55
@@ -48,7 +48,7 @@ from
 	// add row number in case of potential grouping
 	var str strings.Builder
 	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
-	str.WriteString("select * from(select\n")
+	str.WriteString("select * from (select\n")
 	str.WriteString("\trow_number() over () as rowid,\n")
 	str.WriteString(columnStrings.String())
 
