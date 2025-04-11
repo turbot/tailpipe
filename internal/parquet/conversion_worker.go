@@ -313,23 +313,14 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 // the count of invalid rows and the columns with nulls
 func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
 	queryBuilder := strings.Builder{}
+
 	// create a temp table to hold the data
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
-	// create a query to count the number of rows with nulls in the required columns
-	queryBuilder.WriteString(`with invalid_rows as (
-    select distinct rowid
-    from temp_data
-    where `)
 
-	// use the shared null check logic
-	whereClause := w.buildNullCheckQuery(columnsToValidate)
-	queryBuilder.WriteString(whereClause)
-
-	queryBuilder.WriteString(`
-)
-select
-    (select count(*) from invalid_rows) as total_rows,
+	// create a query to count rows with nulls and list the columns
+	queryBuilder.WriteString(`select
+    count(distinct rowid) as total_rows,
     list(distinct col) as columns_with_nulls
 from (`)
 
@@ -338,7 +329,7 @@ from (`)
 		if i > 0 {
 			queryBuilder.WriteString("\n    union all\n")
 		}
-		queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s is null", col, col))
+		queryBuilder.WriteString(fmt.Sprintf("    select rowid, '%s' as col from temp_data where %s is null", col, col))
 	}
 
 	queryBuilder.WriteString("\n);")
