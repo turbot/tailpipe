@@ -143,12 +143,17 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 		selectQuery += fmt.Sprintf(" where %s", partition.Filter)
 	}
 
-	// if this is a directly converted artifact, or of any required columns have transforms, we need to validate the data
+	// we need to perform validation if:
+	// 1. the table schema was partial (i.e. this is a custom table with RowMappings defined)
+	// 2. this is a directly converted artifact
+	// 3. any required columns have transforms
+
 	// (NOTE: if we validate we write the data to a temp table then update the select query to read from that temp table)
 	// get list of columns to validate
 	columnsToValidate := w.getColumnsToValidate()
-	if len(columnsToValidate) > 0 {
-		updatedSelectQuery, cleanupQuery, err := w.validateRequiredFields(jsonlFilePath, selectQuery, columnsToValidate)
+
+	if len(columnsToValidate) > 0 || !w.converter.tableSchema.Complete() {
+		updatedSelectQuery, cleanupQuery, err := w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
 		if err != nil {
 			return 0, err
 		}
@@ -156,7 +161,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 		defer func() {
 			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
 			//  or can we rely on the drop if exists?
-			// validateRequiredFields creates the table temp_data - the cleanupQuery drops it
+			// validateSchema creates the table temp_data - the cleanupQuery drops it
 			_, tempTableError := w.db.Exec(cleanupQuery)
 			if tempTableError != nil {
 				slog.Error("failed to drop temp table", "error", err)
@@ -228,9 +233,10 @@ func (w *conversionWorker) getColumnsToValidate() []string {
 	return res
 }
 
-// validateRequiredFields copys the data from the given select query to a temp table and validates required fields are non null
-// the query  count of invalid rows and a list of null fields
-func (w *conversionWorker) validateRequiredFields(jsonlFilePath string, selectQuery string, columnsToValidate []string) (string, string, error) {
+// validateSchema copies the data from the given select query to a temp table and validates required fields are non null
+// it also validates that the schema of the chunk is the same as the inferred schema and if it is not, reports a useful error
+// the query count of invalid rows and a list of null fields
+func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery string, columnsToValidate []string) (string, string, error) {
 	validationQuery := w.buildValidationQuery(selectQuery, columnsToValidate)
 
 	row := w.db.QueryRow(validationQuery)
@@ -239,6 +245,20 @@ func (w *conversionWorker) validateRequiredFields(jsonlFilePath string, selectQu
 
 	err := row.Scan(&totalRows, &columnsWithNulls)
 	if err != nil {
+		// this error may be because the schema of this chunk is different to the inferred schema
+		// infer the schema of this chunk and compare - if they are different, return that in an error
+		schemaChangeErr := w.converter.detectSchemaChange(jsonlFilePath)
+		if schemaChangeErr != nil {
+			// if the error returned is a SchemaChangeError, we can return that so update the val of err
+			var e = &SchemaChangeError{}
+			if errors.As(schemaChangeErr, &e) {
+				// try to get the row count of the file we failed to convert
+				return "", "", handleConversionError(e, jsonlFilePath)
+			}
+		}
+
+		// just return the original error
+
 		// try to get the row count of the file we failed to convert
 		return "", "", handleConversionError(err, jsonlFilePath)
 	}

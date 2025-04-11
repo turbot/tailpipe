@@ -2,19 +2,14 @@ package parquet
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 const parquetWorkerCount = 5
@@ -125,7 +120,7 @@ func (w *Converter) Close() {
 // if this is the first chunk, determine if we have a full conversionSchema yet and if not infer from the chunk
 // signal the scheduler that `chunks are available
 func (w *Converter) AddChunk(executionId string, chunk int32) error {
-	var viewQueryError error
+	var err error
 	w.schemaWg.Wait()
 
 	// Execute schema inference exactly once for the first chunk.
@@ -134,13 +129,14 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	w.viewQueryOnce.Do(func() {
 		w.schemaWg.Add(1)
 		defer w.schemaWg.Done()
-		if viewQueryError = w.inferSchemaIfNeeded(executionId, chunk); viewQueryError != nil {
+		if err = w.buildConversionSchema(executionId, chunk); err != nil {
+			// err will be returned by the parent function
 			return
 		}
 		w.viewQueryFormat = buildViewQuery(w.conversionSchema)
 	})
-	if viewQueryError != nil {
-		return fmt.Errorf("failed to infer schema: %w", viewQueryError)
+	if err != nil {
+		return fmt.Errorf("failed to infer schema: %w", err)
 	}
 	w.chunkLock.Lock()
 	w.chunks = append(w.chunks, chunk)
@@ -224,133 +220,6 @@ func (w *Converter) getNextChunk() (int32, bool) {
 	chunk := w.chunks[lastIdx]
 	w.chunks = w.chunks[:lastIdx]
 	return chunk, true
-}
-
-func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int32) error {
-	//  determine if we have a full schema yet and if not infer from the chunk
-	// NOTE: schema mode will be MUTATED once we infer it
-
-	// if table schema is already complete, we can skip the inference and just populate the conversionSchema
-	if w.tableSchema.Complete() {
-		w.conversionSchema = schema.NewConversionSchema(w.tableSchema)
-		return nil
-	}
-	// do the inference
-	conversionSchema, err := w.inferConversionSchema(executionID, chunk)
-	if err != nil {
-		return fmt.Errorf("failed to infer conversionSchema from first JSON file: %w", err)
-	}
-
-	w.conversionSchema = conversionSchema
-
-	// now validate the conversionSchema is complete - we should have types for all columns
-	// (if we do not that indicates a custom table definition was used which does not specify types for all optional fields -
-	// this should have caused a config validation error earlier on
-	return w.conversionSchema.EnsureComplete()
-}
-
-func (w *Converter) inferConversionSchema(executionId string, chunkNumber int32) (*schema.ConversionSchema, error) {
-	jsonFileName := table.ExecutionIdToJsonlFileName(executionId, chunkNumber)
-	filePath := filepath.Join(w.sourceDir, jsonFileName)
-	// TODO figure out why we need this hack - trying 2 different methods
-	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(filePath)
-	if err != nil {
-		inferredSchema, err = w.inferSchemaForJSONLFile(filePath)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("failed to infer conversionSchema from JSON file: %w", err)
-	}
-	return schema.NewConversionSchemaWithInferredSchema(w.tableSchema, inferredSchema), nil
-}
-
-// inferSchemaForJSONLFile infers the schema of a JSONL file using DuckDB
-// it uses 2 different queries as depending on the data, one or the other has been observed to work
-// (needs investigation)
-func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
-	// Open DuckDB connection
-	db, err := database.NewDuckDb()
-	if err != nil {
-		log.Fatalf("failed to open DuckDB connection: %v", err)
-	}
-	defer db.Close()
-
-	// Query to infer schema using json_structure
-	query := `
-		select json_structure(json)::varchar as schema
-		from read_json_auto(?)
-		limit 1;
-	`
-
-	var schemaStr string
-	err = db.QueryRow(query, filePath).Scan(&schemaStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-
-	// Parse the schema JSON
-	var fields map[string]string
-	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
-		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
-	}
-
-	// Convert to TableSchema
-	res := &schema.TableSchema{
-		Columns: make([]*schema.ColumnSchema, 0, len(fields)),
-	}
-
-	// Convert each field to a column schema
-	for name, typ := range fields {
-		res.Columns = append(res.Columns, &schema.ColumnSchema{
-			SourceName: name,
-			ColumnName: name,
-			Type:       typ,
-		})
-	}
-
-	return res, nil
-}
-
-func (w *Converter) inferSchemaForJSONLFileWithDescribe(filePath string) (*schema.TableSchema, error) {
-
-	// Open DuckDB connection
-	db, err := database.NewDuckDb()
-	if err != nil {
-		log.Fatalf("failed to open DuckDB connection: %v", err)
-	}
-	defer db.Close()
-
-	// Use DuckDB to describe the schema of the JSONL file
-	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
-
-	rows, err := db.Query(query, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
-	}
-	defer rows.Close()
-
-	var res = &schema.TableSchema{}
-
-	// Read the results
-	for rows.Next() {
-		var name, dataType string
-		err := rows.Scan(&name, &dataType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		// Append inferred columns to the schema
-		res.Columns = append(res.Columns, &schema.ColumnSchema{
-			SourceName: name,
-			ColumnName: name,
-			Type:       dataType,
-		})
-	}
-
-	// Check for any errors from iterating over rows
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed during rows iteration: %w", err)
-	}
-
-	return res, nil
 }
 
 func (w *Converter) addJobErrors(errorList ...error) {

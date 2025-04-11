@@ -30,7 +30,7 @@ func handleConversionError(err error, path string) error {
 	slog.Error("parquet conversion failed", logArgs...)
 
 	// return wrapped error
-	return NewConversionError(fmt.Sprintf("failed to convert file: %s", err.Error()), rows, path)
+	return NewConversionError(err.Error(), rows, path)
 }
 
 func countLines(filename string) (int64, error) {
