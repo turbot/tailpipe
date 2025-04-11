@@ -314,7 +314,9 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 
 	// If the column has a transform, use it
 	if column.Transform != "" {
-		return fmt.Sprintf("%s%s as \"%s\"", tab, column.Transform, column.ColumnName)
+		// as this is going into a string format, we need to escape %
+		escapedTransform := strings.ReplaceAll(column.Transform, "%", "%%")
+		return fmt.Sprintf("%s%s as \"%s\"", tab, escapedTransform, column.ColumnName)
 	}
 
 	// NOTE: we will have normalised column types to lower case
