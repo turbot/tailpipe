@@ -153,10 +153,30 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	columnsToValidate := w.getColumnsToValidate()
 
 	if len(columnsToValidate) > 0 || !w.converter.tableSchema.Complete() {
-		updatedSelectQuery, cleanupQuery, err := w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
-		if err != nil {
-			return 0, err
+		updatedSelectQuery, cleanupQuery, rowValidationError := w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
+
+		if rowValidationError != nil {
+			// if no select query was returned, we cannot proceed - just return the error
+			if updatedSelectQuery == "" {
+				return 0, rowValidationError
+			}
+			// so we have a validation error - but we DID return an updated select query - that indicates we should
+			// continue and just report the row validation errors
+
+			// ensure that we return the row validation error, merged with any other error we receive
+			defer func() {
+				var conversionError *ConversionError
+				if err != nil {
+					if errors.As(rowValidationError, &conversionError) {
+						// we have a conversion error - we need to set the row count to 0
+						// so we can report the error
+						conversionError.Merge(err)
+					}
+				}
+			}()
 		}
+
+		// so
 		selectQuery = updatedSelectQuery
 		defer func() {
 			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
@@ -269,17 +289,20 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 		}
 	}
 
+	var rowValidationError error
 	if totalRows > 0 {
 		// we have a failure - return an error with details about which columns had nulls
 		nullColumns := "unknown"
 		if len(columnsWithNulls) > 0 {
 			nullColumns = strings.Join(columnsWithNulls, ", ")
 		}
-		return "", "", NewConversionError(fmt.Sprintf("validation failed - found null values in columns: %s", nullColumns), totalRows, jsonlFilePath)
+		// if we have row validation errors, we return a ConversionError but also return the select query
+		// so the calling code can convert the rest of the chunk
+		rowValidationError = NewConversionError(fmt.Sprintf("validation failed - found null values in columns: %s", nullColumns), totalRows, jsonlFilePath)
 	}
 	selectQuery = "select * from temp_data"
 	cleanupQuery := "drop table temp_data"
-	return selectQuery, cleanupQuery, nil
+	return selectQuery, cleanupQuery, rowValidationError
 }
 
 // buildValidationQuery builds a query to copy the data from the select query to a temp table
@@ -289,6 +312,8 @@ func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToVal
 	queryBuilder := strings.Builder{}
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
+
+	// First identify and count invalid rows
 	queryBuilder.WriteString(`select
     count(*) as total_rows,
     list(distinct col) as columns_with_nulls
@@ -303,9 +328,22 @@ from (`)
 			queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s is null", col, col))
 		}
 	}
-	queryBuilder.WriteString("\n)\n")
-	validationQuery := queryBuilder.String()
-	return validationQuery
+	queryBuilder.WriteString("\n);\n")
+
+	// Now remove invalid rows from temp_data
+	queryBuilder.WriteString("delete from temp_data where ")
+	for i, col := range columnsToValidate {
+		if i > 0 {
+			queryBuilder.WriteString(" or ")
+		}
+		queryBuilder.WriteString(fmt.Sprintf("%s is null", col))
+	}
+	queryBuilder.WriteString(";\n")
+
+	// Return the count of remaining valid rows
+	queryBuilder.WriteString("select count(*) from temp_data;")
+
+	return queryBuilder.String()
 }
 
 // renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.

@@ -74,3 +74,8 @@ func NewConversionError(msg string, rowsAffected int64, path string) *Conversion
 func (c *ConversionError) Error() string {
 	return fmt.Sprintf("%s: %s", c.SourceFile, c.BaseError.Error())
 }
+
+// Merge adds a second error to the conversion error message.
+func (c *ConversionError) Merge(err error) {
+	c.BaseError = fmt.Errorf("%s\n%s", c.BaseError.Error(), err.Error())
+}
