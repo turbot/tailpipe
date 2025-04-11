@@ -6,9 +6,9 @@ toolchain go1.24.0
 
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
-	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
-	github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+//github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+//github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
@@ -41,7 +41,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb/v2 v2.1.0
 	github.com/thediveo/enumflag/v2 v2.0.5
-	github.com/turbot/tailpipe-plugin-core v0.1.7
+	github.com/turbot/tailpipe-plugin-core v0.1.10
 	golang.org/x/sync v0.11.0
 	golang.org/x/text v0.22.0
 	google.golang.org/protobuf v1.36.1
