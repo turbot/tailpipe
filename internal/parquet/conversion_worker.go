@@ -378,7 +378,41 @@ from (`)
 
 	return queryBuilder.String()
 }
+/*func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
+	queryBuilder := strings.Builder{}
+	// create a temp table to hold the data
+	queryBuilder.WriteString("drop table if exists temp_data;\n")
+	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
+	// create a query to count the number of rows with nulls in the required columns
+	queryBuilder.WriteString(`with invalid_rows as (
+    select distinct rowid
+    from temp_data
+    where `)
 
+	// use the shared null check logic
+	whereClause := w.buildNullCheckQuery(columnsToValidate)
+	queryBuilder.WriteString(whereClause)
+
+	queryBuilder.WriteString(`
+)
+select
+    (select count(*) from invalid_rows) as total_rows,
+    list(distinct col) as columns_with_nulls
+from (`)
+
+	// build a query to find which columns actually have null values
+	for i, col := range columnsToValidate {
+		if i > 0 {
+			queryBuilder.WriteString("\n    union all\n")
+		}
+		queryBuilder.WriteString(fmt.Sprintf("    select '%s' as col from temp_data where %s is null", col, col))
+	}
+
+	queryBuilder.WriteString("\n);")
+
+	return queryBuilder.String()
+}
+*/
 // buildNullCheckQuery builds a WHERE clause to check for null values in the specified columns
 func (w *conversionWorker) buildNullCheckQuery(columnsToValidate []string) string {
 	if len(columnsToValidate) == 0 {
