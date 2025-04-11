@@ -87,16 +87,22 @@ func (t *Table) Validate() hcl.Diagnostics {
 			continue
 		}
 
+		// check the type is valid
+		if col.Source != nil && col.Transform != nil {
+			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': source and transform cannot both be set", col.Name))
+		}
+
+		// TODO kai think about this
+		//// if there is a transform, a type is not required (as the output of the transform will determine the type)
+		//if col.Transform != nil {
+		//	continue
+		//}
 		if !typehelpers.BoolValue(col.Required) && col.Type == nil {
 			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': type must be specified if column is optional ", col.Name))
 		}
 
-		// check the type is valid
 		if col.Type != nil && !schema.IsValidColumnType(typehelpers.SafeString(col.Type)) {
 			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': type '%s' is not a valid type", col.Name, typehelpers.SafeString(col.Type)))
-		}
-		if col.Source != nil && col.Transform != nil {
-			validationErrors = append(validationErrors, fmt.Sprintf("column '%s': source and transform cannot both be set", col.Name))
 		}
 	}
 	if len(validationErrors) > 0 {

@@ -312,13 +312,15 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 	// Calculate the tab spacing
 	tab := strings.Repeat("\t", tabs)
 
+	// If the column has a transform, use it
 	if column.Transform != "" {
-		return fmt.Sprintf("%s%s as \"%s\"", tab, column.Transform, column.ColumnName)
+		// as this is going into a string format, we need to escape %
+		escapedTransform := strings.ReplaceAll(column.Transform, "%", "%%")
+		return fmt.Sprintf("%s%s as \"%s\"", tab, escapedTransform, column.ColumnName)
 	}
 
 	// NOTE: we will have normalised column types to lower case
 	switch column.Type {
-	// TODO:  NOTE we DO NOT support functions on struct fields (perhaps we just omit the casting???
 	case "struct":
 		var str strings.Builder
 
