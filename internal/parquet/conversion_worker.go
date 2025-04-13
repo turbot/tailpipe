@@ -104,16 +104,18 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 
 	// process the ParquetJobPool
 	rowCount, err := w.convertFile(jsonFilePath)
+	// if we have an error, return it below
 	// update the row count
 	w.converter.updateRowCount(rowCount)
 
 	// delete JSON file (configurable?)
-	if err := os.Remove(jsonFilePath); err != nil {
+	if removeErr := os.Remove(jsonFilePath); err != nil {
 		// log the error but don't fail
-		slog.Error("failed to delete JSONL file", "file", jsonFilePath, "error", err)
+		slog.Error("failed to delete JSONL file", "file", jsonFilePath, "error", removeErr)
 	}
 	activeDuration := time.Since(startTime)
 	slog.Debug("converted JSONL to Parquet", "file", jsonFilePath, "duration (ms)", activeDuration.Milliseconds())
+	// remove the conversion error (if any)
 	return err
 }
 
@@ -255,6 +257,13 @@ func (w *conversionWorker) getColumnsToValidate() []string {
 // it also validates that the schema of the chunk is the same as the inferred schema and if it is not, reports a useful error
 // the query count of invalid rows and a list of null fields
 func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery string, columnsToValidate []string) (string, string, error) {
+	// if we have no columns to validate, just write the data to the temp table,
+	// a process which will fail if the schema has changed, alerting us of this error
+	if len(columnsToValidate) == 0 {
+		return w.schemasChangeValidation(jsonlFilePath, selectQuery)
+	}
+
+	// if we have no columns to validate, biuld a  validation query to return the number of invalid rows and the columns with nulls
 	validationQuery := w.buildValidationQuery(selectQuery, columnsToValidate)
 
 	row := w.db.QueryRow(validationQuery)
@@ -263,20 +272,9 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 
 	err := row.Scan(&totalRows, &columnsWithNullsInterface)
 	if err != nil {
-		// this error may be because the schema of this chunk is different to the inferred schema
-		// infer the schema of this chunk and compare - if they are different, return that in an error
-		schemaChangeErr := w.converter.detectSchemaChange(jsonlFilePath)
-		if schemaChangeErr != nil {
-			// if the error returned is a SchemaChangeError, we can return that so update the val of err
-			var e = &SchemaChangeError{}
-			if errors.As(schemaChangeErr, &e) {
-				// try to get the row count of the file we failed to convert
-				return "", "", handleConversionError(e, jsonlFilePath)
-			}
-		}
 
 		// just return the original error
-		return "", "", handleConversionError(err, jsonlFilePath)
+		return "", "", w.handleSchemaChangeError(err, jsonlFilePath)
 	}
 
 	// Convert the interface slice to string slice
@@ -306,6 +304,40 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 	selectQuery = "select * from temp_data"
 	cleanupQuery := "drop table temp_data"
 	return selectQuery, cleanupQuery, rowValidationError
+}
+
+func (w *conversionWorker) schemasChangeValidation(jsonlFilePath string, selectQuery string) (string, string, error) {
+	var queryBuilder strings.Builder
+	// Step 1: Create a temporary table to hold the data we want to validate
+	// This allows us to efficiently check multiple columns without scanning the source multiple times
+	queryBuilder.WriteString("drop table if exists temp_data;\n")
+	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
+	_, err := w.db.Exec(queryBuilder.String())
+	if err != nil {
+		return "", "", w.handleSchemaChangeError(err, jsonlFilePath)
+
+	}
+	selectQuery = "select * from temp_data"
+	cleanupQuery := "drop table temp_data"
+
+	return selectQuery, cleanupQuery, nil
+}
+
+// handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
+// infer the schema of this chunk and compare - if they are different, return that in an error
+func (w *conversionWorker) handleSchemaChangeError(err error, jsonlFilePath string) error {
+	schemaChangeErr := w.converter.detectSchemaChange(jsonlFilePath)
+	if schemaChangeErr != nil {
+		// if the error returned is a SchemaChangeError, we can return that so update the val of err
+		var e = &SchemaChangeError{}
+		if errors.As(schemaChangeErr, &e) {
+			// try to get the row count of the file we failed to convert
+			return handleConversionError(e, jsonlFilePath)
+		}
+	}
+
+	// just return the original error
+	return handleConversionError(err, jsonlFilePath)
 }
 
 // buildValidationQuery builds a query to copy the data from the select query to a temp table
