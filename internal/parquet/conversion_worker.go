@@ -109,7 +109,7 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 	w.converter.updateRowCount(rowCount)
 
 	// delete JSON file (configurable?)
-	if removeErr := os.Remove(jsonFilePath); err != nil {
+	if removeErr := os.Remove(jsonFilePath); removeErr != nil {
 		// log the error but don't fail
 		slog.Error("failed to delete JSONL file", "file", jsonFilePath, "error", removeErr)
 	}
@@ -356,7 +356,7 @@ func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToVal
 	// - Lists all columns that contain null values
 	queryBuilder.WriteString(`select
     count(distinct rowid) as total_rows,  -- Count unique rows with any null values
-    list(distinct col) as columns_with_nulls  -- List all columns that have null values
+    coalesce(list(distinct col), []) as columns_with_nulls  -- List all columns that have null values, defaulting to empty list if NULL
 from (`)
 
 	// Step 3: For each column we need to validate:
