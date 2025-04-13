@@ -4,57 +4,52 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/turbot/tailpipe-plugin-sdk/constants"
+
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
 // TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
 func buildViewQuery(tableSchema *schema.ConversionSchema) string {
-	var structSliceColumns []*schema.ColumnSchema
+	var tpIndexMapped, tpTimestampMapped bool
 
 	// first build the select clauses - use the table def columns
-	var columnStrings strings.Builder
-	for i, column := range tableSchema.Columns {
-		if i > 0 {
-			columnStrings.WriteString(",\n")
-		}
+	var selectClauses []string
+	for _, column := range tableSchema.Columns {
+		selectClauses = append(selectClauses, getSelectSqlForField(column))
 
-		columnStrings.WriteString(getSqlForField(column, 1))
-		if column.Type == "struct[]" {
-			structSliceColumns = append(structSliceColumns, column)
+		if column.ColumnName == constants.TpIndex {
+			tpIndexMapped = true
 		}
-		// TODO take nested struct arrays into account
+		if column.ColumnName == constants.TpTimestamp {
+			tpTimestampMapped = true
+		}
+	}
+	if !tpIndexMapped {
+		selectClauses = append(selectClauses, fmt.Sprintf("'%s' as tp_index", schema.DefaultIndex))
+	}
+	// if we have a mapping for tp_timestamp, add tp_date as well
+	if tpTimestampMapped {
+		// Add tp_date after tp_timestamp is defined
+		selectClauses = append(selectClauses, `case
+		when tp_timestamp is not null
+		then date_trunc('day', tp_timestamp::timestamp)
+	end as tp_date`)
 	}
 
 	// build column definitions - these will be passed to the read_json function
 	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
 
-	columnStrings.WriteString(fmt.Sprintf(`
+	selectClauses = append(selectClauses, fmt.Sprintf(`
 from
 	read_ndjson(
 		'%%s',
 %s
 	))`, helpers.Tabify(columnDefinitions, "\t\t")))
 
-	// if there are no struct[] fields, we are done - just add the select at the start
-	if len(structSliceColumns) == 0 {
-		// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
-		return fmt.Sprintf("select * from (select\n%s", columnStrings.String())
-	}
-
-	// TODO: Currently we don't support []struct so this code never gets hit. https://github.com/turbot/tailpipe-plugin-sdk/issues/55
-	// if there are struct[] fields, we need to build a more complex query
-
-	// add row number in case of potential grouping
-	var str strings.Builder
 	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
-	str.WriteString("select * from (select\n")
-	str.WriteString("\trow_number() over () as rowid,\n")
-	str.WriteString(columnStrings.String())
-
-	// build the struct slice query
-	return getViewQueryForStructSlices(str.String(), tableSchema, structSliceColumns)
-
+	return fmt.Sprintf("select * from (select\n%s", strings.Join(selectClauses, ",\n    "))
 }
 
 // return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
@@ -308,15 +303,12 @@ from
 }
 
 // Return the SQL line to select the given field
-func getSqlForField(column *schema.ColumnSchema, tabs int) string {
-	// Calculate the tab spacing
-	tab := strings.Repeat("\t", tabs)
-
+func getSelectSqlForField(column *schema.ColumnSchema) string {
 	// If the column has a transform, use it
 	if column.Transform != "" {
 		// as this is going into a string format, we need to escape %
 		escapedTransform := strings.ReplaceAll(column.Transform, "%", "%%")
-		return fmt.Sprintf("%s%s as \"%s\"", tab, escapedTransform, column.ColumnName)
+		return fmt.Sprintf("\t%s as \"%s\"", escapedTransform, column.ColumnName)
 	}
 
 	// NOTE: we will have normalised column types to lower case
@@ -325,9 +317,9 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 		var str strings.Builder
 
 		// Start case logic to handle null values for the struct
-		str.WriteString(fmt.Sprintf("%scase\n", tab))
-		str.WriteString(fmt.Sprintf("%s\twhen \"%s\" is null then null\n", tab, column.SourceName))
-		str.WriteString(fmt.Sprintf("%s\telse struct_pack(\n", tab))
+
+		str.WriteString(fmt.Sprintf("\tcase\n\t\twhen \"%s\" is null then null\n", column.SourceName))
+		str.WriteString(fmt.Sprintf("\t\telse struct_pack(\n"))
 
 		// Add nested fields to the struct_pack
 		for j, nestedColumn := range column.StructFields {
@@ -335,21 +327,25 @@ func getSqlForField(column *schema.ColumnSchema, tabs int) string {
 				str.WriteString(",\n")
 			}
 			parentName := fmt.Sprintf("\"%s\"", column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+2))
+			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, 2))
 		}
 
 		// Close struct_pack and case
-		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
-		str.WriteString(fmt.Sprintf("%send as \"%s\"", tab, column.ColumnName))
+		str.WriteString(fmt.Sprintf("\n\t\t)\n"))
+		str.WriteString(fmt.Sprintf("\tend as \"%s\"", column.ColumnName))
 		return str.String()
 
 	case "json":
 		// Convert the value using json()
-		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf("\tjson(\"%s\") as \"%s\"", column.SourceName, column.ColumnName)
 
 	default:
+		// special case for tp_index - coalesce tp_index with default index
+		if column.ColumnName == constants.TpIndex {
+			return fmt.Sprintf("\tcoalesce(\"%s\", '%s') as \"%s\"", column.SourceName, schema.DefaultIndex, column.ColumnName)
+		}
 		// Scalar fields
-		return fmt.Sprintf("%s\"%s\" as \"%s\"", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf("\t\"%s\" as \"%s\"", column.SourceName, column.ColumnName)
 	}
 }
 

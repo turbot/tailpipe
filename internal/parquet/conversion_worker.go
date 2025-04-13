@@ -151,33 +151,10 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 
 	var cleanupQuery string
 	var rowValidationError error
-	if len(columnsToValidate) > 0 || !w.converter.tableSchema.Complete() {
-		selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
 
-		if rowValidationError != nil {
-			// if no select query was returned, we cannot proceed - just return the error
-			if selectQuery == "" {
-				return 0, rowValidationError
-			}
-			// so we have a validation error - but we DID return an updated select query - that indicates we should
-			// continue and just report the row validation errors
+	selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
 
-			// ensure that we return the row validation error, merged with any other error we receive
-			defer func() {
-				if err == nil {
-					err = rowValidationError
-				} else {
-					var conversionError *ConversionError
-					if errors.As(rowValidationError, &conversionError) {
-						// we have a conversion error - we need to set the row count to 0
-						// so we can report the error
-						conversionError.Merge(err)
-					}
-					err = conversionError
-				}
-			}()
-		}
-
+	if cleanupQuery != "" {
 		defer func() {
 			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
 			//  or can we rely on the drop if exists?
@@ -189,6 +166,30 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 				if err == nil {
 					err = tempTableError
 				}
+			}
+		}()
+	}
+	// did validation fail
+	if rowValidationError != nil {
+		// if no select query was returned, we cannot proceed - just return the error
+		if selectQuery == "" {
+			return 0, rowValidationError
+		}
+		// so we have a validation error - but we DID return an updated select query - that indicates we should
+		// continue and just report the row validation errors
+
+		// ensure that we return the row validation error, merged with any other error we receive
+		defer func() {
+			if err == nil {
+				err = rowValidationError
+			} else {
+				var conversionError *ConversionError
+				if errors.As(rowValidationError, &conversionError) {
+					// we have a conversion error - we need to set the row count to 0
+					// so we can report the error
+					conversionError.Merge(err)
+				}
+				err = conversionError
 			}
 		}()
 	}
@@ -235,18 +236,13 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	return rowCount, err
 }
 
-// getColumnsToValidate returns the list of columns which need to be validated at this staghe
-// normally, required columns are validated in the plugin, however there are a couple of exceptions:
-// 1. if the format is one which supports direct artifcact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
-// 2. if any required columns have transforms, we must validate those columns as the transforms are applied at this stage
+// getColumnsToValidate returns the list of columns which need to be validated - all required columns
 func (w *conversionWorker) getColumnsToValidate() []string {
 	var res []string
-	// if the format is one which requires a direct conversion we must validate all required columns
-	formatSupportsDirectConversion := w.converter.Partition.FormatSupportsDirectConversion()
 
-	// otherwise validate required columns which have a transform
+	// validate all required columns
 	for _, col := range w.converter.conversionSchema.Columns {
-		if col.Required && (col.Transform != "" || formatSupportsDirectConversion) {
+		if col.Required {
 			res = append(res, col.ColumnName)
 		}
 	}
