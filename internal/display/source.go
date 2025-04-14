@@ -12,12 +12,14 @@ import (
 type SourceResource struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	Plugin      string `json:"plugin,omitempty"`
 }
 
 // GetShowData implements the printers.Showable interface
 func (r *SourceResource) GetShowData() *printers.RowData {
 	res := printers.NewRowData(
 		printers.NewFieldValue("Name", r.Name),
+		printers.NewFieldValue("Plugin", r.Plugin),
 		printers.NewFieldValue("Description", r.Description),
 	)
 	return res
@@ -27,6 +29,7 @@ func (r *SourceResource) GetShowData() *printers.RowData {
 func (r *SourceResource) GetListData() *printers.RowData {
 	res := printers.NewRowData(
 		printers.NewFieldValue("NAME", r.Name),
+		printers.NewFieldValue("PLUGIN", r.Plugin),
 		printers.NewFieldValue("DESCRIPTION", r.Description),
 	)
 	return res
@@ -53,6 +56,7 @@ func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 			res = append(res, &SourceResource{
 				Name:        source.Name,
 				Description: source.Description,
+				Plugin:      p.Name,
 			})
 		}
 	}
