@@ -17,7 +17,7 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// first build the select clauses - use the table def columns
 	var selectClauses []string
 	for _, column := range tableSchema.Columns {
-		selectClauses = append(selectClauses, getSelectSqlForField(column))
+		selectClauses = append(selectClauses, getSelectSqlForField(column, 1))
 
 		if column.ColumnName == constants.TpIndex {
 			tpIndexMapped = true
@@ -34,31 +34,27 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// if we have a mapping for tp_timestamp, add tp_date as well
 	if tpTimestampMapped {
 		// Add tp_date after tp_timestamp is defined
-		selectClauses = append(selectClauses, `case
-		when tp_timestamp is not null
-		then date_trunc('day', tp_timestamp::timestamp)
+		selectClauses = append(selectClauses, `	case
+		when tp_timestamp is not null then date_trunc('day', tp_timestamp::timestamp)
 	end as tp_date`)
 	}
 
 	// build column definitions - these will be passed to the read_json function
 	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
 
-	selectClauses = append(selectClauses, fmt.Sprintf(`
-from
-	read_ndjson(
-		'%%s',
-%s
-	))`, helpers.Tabify(columnDefinitions, "\t\t")))
-
 	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
 	return fmt.Sprintf(`select * from (select
 	row_number() over () as rowid,
-	%s`, strings.Join(selectClauses, "\n"))
+%s
+from
+	read_ndjson(
+		'%%s',
+	%s
+	))`, strings.Join(selectClauses, ",\n"), helpers.Tabify(columnDefinitions, "\t"))
 }
 
 // return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
 func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string {
-	// columns = {BooleanField: 'BOOLEAN', BooleanField2: 'BOOLEAN', BooleanField3: 'BOOLEAN'})
 	var str strings.Builder
 	str.WriteString("columns = {")
 	for i, column := range sourceColumns {
@@ -66,19 +62,22 @@ func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string
 			str.WriteString(", ")
 		}
 		str.WriteString(fmt.Sprintf(`
-	"%s": '%s'`, column.Name, column.Type))
+		"%s": '%s'`, column.Name, column.Type))
 	}
 	str.WriteString("\n}")
 	return str.String()
 }
 
 // Return the SQL line to select the given field
-func getSelectSqlForField(column *schema.ColumnSchema) string {
+func getSelectSqlForField(column *schema.ColumnSchema, tabs int) string {
+	// Calculate the tab spacing
+	tab := strings.Repeat("\t", tabs)
+
 	// If the column has a transform, use it
 	if column.Transform != "" {
 		// as this is going into a string format, we need to escape %
 		escapedTransform := strings.ReplaceAll(column.Transform, "%", "%%")
-		return fmt.Sprintf("\t%s as \"%s\"", escapedTransform, column.ColumnName)
+		return fmt.Sprintf("%s%s as \"%s\"", tab, escapedTransform, column.ColumnName)
 	}
 
 	// NOTE: we will have normalised column types to lower case
@@ -97,25 +96,21 @@ func getSelectSqlForField(column *schema.ColumnSchema) string {
 				str.WriteString(",\n")
 			}
 			parentName := fmt.Sprintf("\"%s\"", column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, 2))
+			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+2))
 		}
 
 		// Close struct_pack and case
-		str.WriteString(fmt.Sprintf("\n\t\t)\n"))
-		str.WriteString(fmt.Sprintf("\tend as \"%s\"", column.ColumnName))
+		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
+		str.WriteString(fmt.Sprintf("%send as \"%s\"", tab, column.ColumnName))
 		return str.String()
 
 	case "json":
 		// Convert the value using json()
-		return fmt.Sprintf("\tjson(\"%s\") as \"%s\"", column.SourceName, column.ColumnName)
+		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
 
 	default:
-		// special case for tp_index - coalesce tp_index with default index
-		if column.ColumnName == constants.TpIndex {
-			return fmt.Sprintf("\tcoalesce(\"%s\", '%s') as \"%s\"", column.SourceName, schema.DefaultIndex, column.ColumnName)
-		}
 		// Scalar fields
-		return fmt.Sprintf("\t\"%s\" as \"%s\"", column.SourceName, column.ColumnName)
+		return fmt.Sprintf("%s\"%s\" as \"%s\"", tab, column.SourceName, column.ColumnName)
 	}
 }
 
