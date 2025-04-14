@@ -95,7 +95,7 @@ func ListFormatResources(ctx context.Context) ([]*FormatResource, error) {
 
 	// add custom formats
 	for _, f := range config.GlobalConfig.Formats {
-		formatMap[f.GetUnqualifiedName()] = NewFormatResource("config", &sdktypes.FormatDescription{
+		formatMap[f.GetUnqualifiedName()] = NewFormatResource(f.Config.Range.Filename, &sdktypes.FormatDescription{
 			Name:        f.ShortName,
 			Type:        f.Type,
 			Description: types.SafeString(f.Description),
@@ -163,7 +163,9 @@ func getFormatInstance(ctx context.Context, name string) (*FormatResource, error
 
 	// if this is a custom format, pass the custom formats to the describe call
 	var opts []plugin.DescribeOpts
+	var filePath string
 	if customFormat, ok := config.GlobalConfig.Formats[name]; ok {
+		filePath = customFormat.Config.Range.Filename
 		opts = append(opts, plugin.WithCustomFormats(customFormat), plugin.WithCustomFormatsOnly())
 	}
 
@@ -174,7 +176,12 @@ func getFormatInstance(ctx context.Context, name string) (*FormatResource, error
 
 	// prefer custom format (order of precedence)
 	if format, isCustom := desc.CustomFormats[name]; isCustom {
-		return NewFormatResource("config", format), nil
+		loc := "config"
+		if filePath != "" {
+			loc = filePath
+
+		}
+		return NewFormatResource(loc, format), nil
 	}
 
 	// if format is a preset
