@@ -30,9 +30,13 @@ func NewFormatResource(location string, format *sdktypes.FormatDescription) *For
 
 // GetListData implements the printers.Listable interface
 func (r *FormatResource) GetListData() *printers.RowData {
+	name := r.Name
+	if name == "" {
+		name = "-"
+	}
 	res := printers.NewRowData(
 		printers.NewFieldValue("TYPE", r.Type),
-		printers.NewFieldValue("NAME", r.Name),
+		printers.NewFieldValue("NAME", name),
 		printers.NewFieldValue("LOCATION", r.Location),
 		printers.NewFieldValue("DESCRIPTION", r.Description),
 	)
