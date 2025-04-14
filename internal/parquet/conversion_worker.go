@@ -236,13 +236,19 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	return rowCount, err
 }
 
-// getColumnsToValidate returns the list of columns which need to be validated - all required columns
+// getColumnsToValidate returns the list of columns which need to be validated at this staghe
+// normally, required columns are validated in the plugin, however there are a couple of exceptions:
+// 1. if the format is one which supports direct artifact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
+// 2. if any required columns have transforms, we must validate those columns as the transforms are applied at this stage
+// TODO once we have tested/benchmarked, move all validation here and do not validate in plugin even for static tables
 func (w *conversionWorker) getColumnsToValidate() []string {
 	var res []string
+	// if the format is one which requires a direct conversion we must validate all required columns
+	formatSupportsDirectConversion := w.converter.Partition.FormatSupportsDirectConversion()
 
-	// validate all required columns
+	// otherwise validate required columns which have a transform
 	for _, col := range w.converter.conversionSchema.Columns {
-		if col.Required {
+		if col.Required && (col.Transform != "" || formatSupportsDirectConversion) {
 			res = append(res, col.ColumnName)
 		}
 	}
