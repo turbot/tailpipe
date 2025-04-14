@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // handleConversionError attempts to handle conversion errors by counting the number of lines in the file.
@@ -61,6 +62,7 @@ type ConversionError struct {
 	SourceFile   string
 	BaseError    error
 	RowsAffected int64
+	displayError string
 }
 
 func NewConversionError(msg string, rowsAffected int64, path string) *ConversionError {
@@ -68,11 +70,12 @@ func NewConversionError(msg string, rowsAffected int64, path string) *Conversion
 		SourceFile:   filepath.Base(path),
 		BaseError:    errors.New(msg),
 		RowsAffected: rowsAffected,
+		displayError: strings.Split(msg, "\n")[0],
 	}
 }
 
 func (c *ConversionError) Error() string {
-	return fmt.Sprintf("%s: %s", c.SourceFile, c.BaseError.Error())
+	return fmt.Sprintf("%s: %s", c.SourceFile, c.displayError)
 }
 
 // Merge adds a second error to the conversion error message.
