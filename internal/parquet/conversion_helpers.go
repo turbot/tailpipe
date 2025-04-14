@@ -98,7 +98,7 @@ func getSelectSqlForField(column *schema.ColumnSchema, tabs int) string {
 		// Start case logic to handle null values for the struct
 
 		str.WriteString(fmt.Sprintf("\tcase\n\t\twhen \"%s\" is null then null\n", column.SourceName))
-		str.WriteString(fmt.Sprintf("\t\telse struct_pack(\n"))
+		str.WriteString("\t\telse struct_pack(\n")
 
 		// Add nested fields to the struct_pack
 		for j, nestedColumn := range column.StructFields {
@@ -119,6 +119,7 @@ func getSelectSqlForField(column *schema.ColumnSchema, tabs int) string {
 		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
 
 	default:
+		// Scalar fields
 		return fmt.Sprintf("%s\"%s\" as \"%s\"", tab, column.SourceName, column.ColumnName)
 	}
 }
