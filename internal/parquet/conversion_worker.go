@@ -373,7 +373,9 @@ from (`)
 	queryBuilder.WriteString(");")
 
 	return queryBuilder.String()
-}/*
+}
+
+/*
 // buildValidationQuery builds a query to copy the data from the select query to a temp table
 // it then validates that the required columns are not null, removing invalid rows and returning
 // the count of invalid rows and the columns with nulls
