@@ -1,78 +1,66 @@
 package parquet
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
-	"testing"
-
 	_ "github.com/marcboeker/go-duckdb/v2"
-	"github.com/spf13/viper"
-	pcmdconfig "github.com/turbot/pipe-fittings/v2/cmdconfig"
-	"github.com/turbot/pipe-fittings/v2/parse"
-	"github.com/turbot/pipe-fittings/v2/workspace_profile"
-	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
-var testDb *database.DuckDb
-
-const testDir = "buildViewQuery_test_data"
-
-// we use the same path for all tests
-var jsonlFilePath string
-
-func setup() error {
-	var err error
-
-	// Create a temporary config directory
-	tempConfigDir, err := os.MkdirTemp("", "tailpipe_test_config")
-	if err != nil {
-		return fmt.Errorf("error creating temp config directory: %w", err)
-	}
-
-	// Set the config path to our temporary directory
-	viper.Set("config_path", tempConfigDir)
-
-	// Initialize workspace profile with parse options
-	parseOpts := []parse.ParseHclOpt{
-		parse.WithEscapeBackticks(true),
-		parse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
-	}
-	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
-	if err != nil {
-		return fmt.Errorf("error creating workspace profile loader: %w", err)
-	}
-	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
-	if err := config.GlobalWorkspaceProfile.EnsureWorkspaceDirs(); err != nil {
-		return fmt.Errorf("error ensuring workspace dirs: %w", err)
-	}
-
-	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
-	if err != nil {
-		return fmt.Errorf("error creating duckdb: %w", err)
-	}
-	testDb = db
-	// make tempdata directory in local folder
-	// Create the directory
-	err = os.MkdirAll(testDir, 0755)
-	if err != nil {
-		db.Close()
-		return fmt.Errorf("error creating temp directory: %w", err)
-	}
-
-	// resolve the jsonl file path
-	jsonlFilePath, err = filepath.Abs(filepath.Join(testDir, "test.jsonl"))
-	return err
-}
-
-func teardown() {
-	os.RemoveAll("test_data")
-	if testDb != nil {
-		testDb.Close()
-	}
-}
+//var testDb *database.DuckDb
+//
+//const testDir = "buildViewQuery_test_data"
+//
+//// we use the same path for all tests
+//var jsonlFilePath string
+//
+//func setup() error {
+//	var err error
+//
+//	// Create a temporary config directory
+//	tempConfigDir, err := os.MkdirTemp("", "tailpipe_test_config")
+//	if err != nil {
+//		return fmt.Errorf("error creating temp config directory: %w", err)
+//	}
+//
+//	// Set the config path to our temporary directory
+//	viper.Set("config_path", tempConfigDir)
+//
+//	// Initialize workspace profile with parse options
+//	parseOpts := []parse.ParseHclOpt{
+//		parse.WithEscapeBackticks(true),
+//		parse.WithDisableTemplateForProperties(constants.GrokConfigProperties),
+//	}
+//	loader, err := pcmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
+//	if err != nil {
+//		return fmt.Errorf("error creating workspace profile loader: %w", err)
+//	}
+//	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
+//	if err := config.GlobalWorkspaceProfile.EnsureWorkspaceDirs(); err != nil {
+//		return fmt.Errorf("error ensuring workspace dirs: %w", err)
+//	}
+//
+//	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
+//	if err != nil {
+//		return fmt.Errorf("error creating duckdb: %w", err)
+//	}
+//	testDb = db
+//	// make tempdata directory in local folder
+//	// Create the directory
+//	err = os.MkdirAll(testDir, 0755)
+//	if err != nil {
+//		db.Close()
+//		return fmt.Errorf("error creating temp directory: %w", err)
+//	}
+//
+//	// resolve the jsonl file path
+//	jsonlFilePath, err = filepath.Abs(filepath.Join(testDir, "test.jsonl"))
+//	return err
+//}
+//
+//func teardown() {
+//	os.RemoveAll("test_data")
+//	if testDb != nil {
+//		testDb.Close()
+//	}
+//}
 
 // TODO KAI FIX
 //func TestBuildViewQuery(t *testing.T) {
@@ -1412,63 +1400,63 @@ func teardown() {
 //		})
 //	}
 //}
-
-func executeQuery(t *testing.T, queryFormat, json, sqlColumn string) (any, error) {
-
-	// now verify the query runs
-	// copy json to a jsonl file
-	err := createJSONLFile(json)
-	if err != nil {
-		t.Fatalf("error creating jsonl file: %s", err)
-	}
-	defer os.Remove(jsonlFilePath)
-
-	// render query with the file path
-	query := fmt.Sprintf(queryFormat, jsonlFilePath)
-
-	// get the data
-	var data []any
-
-	// execute in duckdb
-	// build select queryz
-	testQuery := fmt.Sprintf("select %s from (%s)", sqlColumn, query)
-	rows, err := testDb.Query(testQuery)
-
-	if err != nil {
-		return nil, fmt.Errorf("error executing query: %w", err)
-	}
-	// Iterate over the results
-	for rows.Next() {
-		var d any
-
-		if err := rows.Scan(&d); err != nil {
-			return nil, fmt.Errorf("error scanning data: %w", err)
-		}
-		data = append(data, d)
-	}
-
-	return data, nil
-}
-
-func createJSONLFile(json string) error {
-	// remove just in case
-	os.Remove(jsonlFilePath)
-	jsonlFile, err := os.Create(jsonlFilePath)
-	if err != nil {
-		return fmt.Errorf("error creating jsonl file: %w", err)
-	}
-	_, err = jsonlFile.WriteString(json)
-	if err != nil {
-		return fmt.Errorf("error writing to jsonl file: %w", err)
-	}
-	// close the file
-	err = jsonlFile.Close()
-	if err != nil {
-		return fmt.Errorf("error closing jsonl file: %w", err)
-	}
-	return err
-}
-
+//
+//func executeQuery(t *testing.T, queryFormat, json, sqlColumn string) (any, error) {
+//
+//	// now verify the query runs
+//	// copy json to a jsonl file
+//	err := createJSONLFile(json)
+//	if err != nil {
+//		t.Fatalf("error creating jsonl file: %s", err)
+//	}
+//	defer os.Remove(jsonlFilePath)
+//
+//	// render query with the file path
+//	query := fmt.Sprintf(queryFormat, jsonlFilePath)
+//
+//	// get the data
+//	var data []any
+//
+//	// execute in duckdb
+//	// build select queryz
+//	testQuery := fmt.Sprintf("select %s from (%s)", sqlColumn, query)
+//	rows, err := testDb.Query(testQuery)
+//
+//	if err != nil {
+//		return nil, fmt.Errorf("error executing query: %w", err)
+//	}
+//	// Iterate over the results
+//	for rows.Next() {
+//		var d any
+//
+//		if err := rows.Scan(&d); err != nil {
+//			return nil, fmt.Errorf("error scanning data: %w", err)
+//		}
+//		data = append(data, d)
+//	}
+//
+//	return data, nil
+//}
+//
+//func createJSONLFile(json string) error {
+//	// remove just in case
+//	os.Remove(jsonlFilePath)
+//	jsonlFile, err := os.Create(jsonlFilePath)
+//	if err != nil {
+//		return fmt.Errorf("error creating jsonl file: %w", err)
+//	}
+//	_, err = jsonlFile.WriteString(json)
+//	if err != nil {
+//		return fmt.Errorf("error writing to jsonl file: %w", err)
+//	}
+//	// close the file
+//	err = jsonlFile.Close()
+//	if err != nil {
+//		return fmt.Errorf("error closing jsonl file: %w", err)
+//	}
+//	return err
+//}
+//
 // TODO KAI re-add
 //
 //func TestBuildValidationQuery(t *testing.T) {
