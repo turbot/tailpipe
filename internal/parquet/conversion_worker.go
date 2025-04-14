@@ -348,14 +348,14 @@ func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToVal
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
 
 	// Step 2: Build the validation query that:
-	// - Counts distinct rows that have any null values
-	// - Lists all columns that contain null values
+	// - Counts distinct rows that have null values in required columns
+	// - Lists all required columns that contain null values
 	queryBuilder.WriteString(`select
-    count(distinct rowid) as total_rows,  -- Count unique rows with any null values
-    coalesce(list(distinct col), []) as columns_with_nulls  -- List all columns that have null values, defaulting to empty list if NULL
+    count(distinct rowid) as rows_with_required_nulls,  -- Count unique rows with nulls in required columns
+    coalesce(list(distinct col), []) as required_columns_with_nulls  -- List required columns that have null values, defaulting to empty list if NULL
 from (`)
 
-	// Step 3: For each column we need to validate:
+	// Step 3: For each required column we need to validate:
 	// - Create a query that selects rows where this column is null
 	// - Include the column name so we know which column had the null
 	// - UNION ALL combines all these results (faster than UNION as we don't need to deduplicate)
@@ -363,7 +363,7 @@ from (`)
 		if i > 0 {
 			queryBuilder.WriteString("    union all\n")
 		}
-		// For each column, create a query that:
+		// For each required column, create a query that:
 		// - Selects the rowid (to count distinct rows)
 		// - Includes the column name (to list which columns had nulls)
 		// - Only includes rows where this column is null
@@ -375,46 +375,6 @@ from (`)
 	return queryBuilder.String()
 }
 
-/*
-// buildValidationQuery builds a query to copy the data from the select query to a temp table
-// it then validates that the required columns are not null, removing invalid rows and returning
-// the count of invalid rows and the columns with nulls
-func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
-	queryBuilder := strings.Builder{}
-
-	// Step 1: Create a temporary table to hold the data we want to validate
-	// This allows us to efficiently check multiple columns without scanning the source multiple times
-	queryBuilder.WriteString("drop table if exists temp_data;\n")
-	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
-
-	// Step 2: Build the validation query that:
-	// - Counts distinct rows that have any null values
-	// - Lists all columns that contain null values
-	queryBuilder.WriteString(`select
-    count(distinct rowid) as total_rows,  -- Count unique rows with any null values
-    list(distinct col) as columns_with_nulls  -- List all columns that have null values
-from (`)
-
-	// Step 3: For each column we need to validate:
-	// - Create a query that selects rows where this column is null
-	// - Include the column name so we know which column had the null
-	// - UNION ALL combines all these results (faster than UNION as we don't need to deduplicate)
-	for i, col := range columnsToValidate {
-		if i > 0 {
-			queryBuilder.WriteString("    union all\n")
-		}
-		// For each column, create a query that:
-		// - Selects the rowid (to count distinct rows)
-		// - Includes the column name (to list which columns had nulls)
-		// - Only includes rows where this column is null
-		queryBuilder.WriteString(fmt.Sprintf("    select rowid, '%s' as col from temp_data where %s is null\n", col, col))
-	}
-
-	queryBuilder.WriteString(");")
-
-	return queryBuilder.String()
-}
-*/
 // buildNullCheckQuery builds a WHERE clause to check for null values in the specified columns
 func (w *conversionWorker) buildNullCheckQuery(columnsToValidate []string) string {
 	if len(columnsToValidate) == 0 {

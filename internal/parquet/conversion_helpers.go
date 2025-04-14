@@ -17,14 +17,24 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// first build the select clauses - use the table def columns
 	var selectClauses []string
 	for _, column := range tableSchema.Columns {
-		selectClauses = append(selectClauses, getSelectSqlForField(column, 1))
 
-		if column.ColumnName == constants.TpIndex {
+		var selectClause string
+		switch column.ColumnName {
+		case constants.TpDate:
+			// skip this column - it is derived from tp_timestamp
+			continue
+		case constants.TpIndex:
 			tpIndexMapped = true
-		}
-		if column.ColumnName == constants.TpTimestamp {
+			selectClause = fmt.Sprintf("\tcoalesce(\"%s\", '%s') as \"%s\"", column.SourceName, schema.DefaultIndex, column.ColumnName)
+		case constants.TpTimestamp:
 			tpTimestampMapped = true
+			// fallthrough to populate the select clasue as normal
+			fallthrough
+		default:
+			selectClause = getSelectSqlForField(column, 1)
 		}
+
+		selectClauses = append(selectClauses, selectClause)
 	}
 	// default tpIndex to 'default'
 	// (note - if tpIndex IS mapped, getSelectSqlForField will have added a coalesce statement to default to 'default'
@@ -109,7 +119,6 @@ func getSelectSqlForField(column *schema.ColumnSchema, tabs int) string {
 		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
 
 	default:
-		// Scalar fields
 		return fmt.Sprintf("%s\"%s\" as \"%s\"", tab, column.SourceName, column.ColumnName)
 	}
 }
