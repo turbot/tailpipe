@@ -303,7 +303,8 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 			return "", "", handleConversionError(err, jsonlFilePath)
 		}
 	}
-	selectQuery = "select * from temp_data"
+	// build a select query to select the data back out of the temp table (excluding rowid, which we added for validation)
+	selectQuery = "select * exclude rowid from temp_data"
 	cleanupQuery := "drop table temp_data"
 	return selectQuery, cleanupQuery, rowValidationError
 }
@@ -313,7 +314,8 @@ func (w *conversionWorker) schemasChangeValidation(jsonlFilePath string, selectQ
 	// Step 1: Create a temporary table to hold the data we want to validate
 	// This allows us to efficiently check multiple columns without scanning the source multiple times
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
-	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
+	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
+	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as select * from (%s);\n", selectQuery))
 	_, err := w.db.Exec(queryBuilder.String())
 	if err != nil {
 		return "", "", w.handleSchemaChangeError(err, jsonlFilePath)
@@ -350,8 +352,9 @@ func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToVal
 
 	// Step 1: Create a temporary table to hold the data we want to validate
 	// This allows us to efficiently check multiple columns without scanning the source multiple times
+	// NOTE: add in row number to allow for distinct row counting - we must exclude this when we select data out of the temp table again
 	queryBuilder.WriteString("drop table if exists temp_data;\n")
-	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
+	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as select row_number() over () as rowid, * from (%s);\n", selectQuery))
 
 	// Step 2: Build the validation query that:
 	// - Counts distinct rows that have null values in required columns
