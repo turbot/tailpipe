@@ -52,15 +52,13 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	// build column definitions - these will be passed to the read_json function
 	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
 
-	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
-	return fmt.Sprintf(`select * from (select
-	row_number() over () as rowid,
+	return fmt.Sprintf(`select
 %s
 from
 	read_ndjson(
 		'%%s',
 	%s
-	))`, strings.Join(selectClauses, ",\n"), helpers.Tabify(columnDefinitions, "\t"))
+	)`, strings.Join(selectClauses, ",\n"), helpers.Tabify(columnDefinitions, "\t"))
 }
 
 // return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
