@@ -151,33 +151,10 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 
 	var cleanupQuery string
 	var rowValidationError error
-	if len(columnsToValidate) > 0 || !w.converter.tableSchema.Complete() {
-		selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
 
-		if rowValidationError != nil {
-			// if no select query was returned, we cannot proceed - just return the error
-			if selectQuery == "" {
-				return 0, rowValidationError
-			}
-			// so we have a validation error - but we DID return an updated select query - that indicates we should
-			// continue and just report the row validation errors
+	selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
 
-			// ensure that we return the row validation error, merged with any other error we receive
-			defer func() {
-				if err == nil {
-					err = rowValidationError
-				} else {
-					var conversionError *ConversionError
-					if errors.As(rowValidationError, &conversionError) {
-						// we have a conversion error - we need to set the row count to 0
-						// so we can report the error
-						conversionError.Merge(err)
-					}
-					err = conversionError
-				}
-			}()
-		}
-
+	if cleanupQuery != "" {
 		defer func() {
 			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
 			//  or can we rely on the drop if exists?
@@ -189,6 +166,30 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 				if err == nil {
 					err = tempTableError
 				}
+			}
+		}()
+	}
+	// did validation fail
+	if rowValidationError != nil {
+		// if no select query was returned, we cannot proceed - just return the error
+		if selectQuery == "" {
+			return 0, rowValidationError
+		}
+		// so we have a validation error - but we DID return an updated select query - that indicates we should
+		// continue and just report the row validation errors
+
+		// ensure that we return the row validation error, merged with any other error we receive
+		defer func() {
+			if err == nil {
+				err = rowValidationError
+			} else {
+				var conversionError *ConversionError
+				if errors.As(rowValidationError, &conversionError) {
+					// we have a conversion error - we need to set the row count to 0
+					// so we can report the error
+					conversionError.Merge(err)
+				}
+				err = conversionError
 			}
 		}()
 	}
@@ -237,8 +238,9 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 
 // getColumnsToValidate returns the list of columns which need to be validated at this staghe
 // normally, required columns are validated in the plugin, however there are a couple of exceptions:
-// 1. if the format is one which supports direct artifcact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
+// 1. if the format is one which supports direct artifact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
 // 2. if any required columns have transforms, we must validate those columns as the transforms are applied at this stage
+// TODO once we have tested/benchmarked, move all validation here and do not validate in plugin even for static tables
 func (w *conversionWorker) getColumnsToValidate() []string {
 	var res []string
 	// if the format is one which requires a direct conversion we must validate all required columns
@@ -352,14 +354,14 @@ func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToVal
 	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as %s;\n", selectQuery))
 
 	// Step 2: Build the validation query that:
-	// - Counts distinct rows that have any null values
-	// - Lists all columns that contain null values
+	// - Counts distinct rows that have null values in required columns
+	// - Lists all required columns that contain null values
 	queryBuilder.WriteString(`select
-    count(distinct rowid) as total_rows,  -- Count unique rows with any null values
-    coalesce(list(distinct col), []) as columns_with_nulls  -- List all columns that have null values, defaulting to empty list if NULL
+    count(distinct rowid) as rows_with_required_nulls,  -- Count unique rows with nulls in required columns
+    coalesce(list(distinct col), []) as required_columns_with_nulls  -- List required columns that have null values, defaulting to empty list if NULL
 from (`)
 
-	// Step 3: For each column we need to validate:
+	// Step 3: For each required column we need to validate:
 	// - Create a query that selects rows where this column is null
 	// - Include the column name so we know which column had the null
 	// - UNION ALL combines all these results (faster than UNION as we don't need to deduplicate)
@@ -367,7 +369,7 @@ from (`)
 		if i > 0 {
 			queryBuilder.WriteString("    union all\n")
 		}
-		// For each column, create a query that:
+		// For each required column, create a query that:
 		// - Selects the rowid (to count distinct rows)
 		// - Includes the column name (to list which columns had nulls)
 		// - Only includes rows where this column is null
