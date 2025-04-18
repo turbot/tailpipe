@@ -1,4 +1,9 @@
-## v0.3.0 [2025-04-02]
+## v0.3.1 [2025-04-18]
+_Bug fixes_
+* Fix partition filter argument. ([#375](https://github.com/turbot/tailpipe/issues/375))
+
+## v0.3.0 [2025-04-16]
+
 _What's new_
 * Add support for custom tables. (([#225](https://github.com/turbot/tailpipe/issues/225)))
 * Add location to format list/show. ([#283](https://github.com/turbot/tailpipe/issues/283))
