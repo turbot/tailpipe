@@ -2,6 +2,7 @@ package cmdconfig
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"runtime/debug"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
@@ -22,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"
+	"github.com/turbot/tailpipe/internal/plugin"
 )
 
 var waitForTasksChannel chan struct{}
@@ -37,6 +40,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	viper.Set(pconstants.ConfigKeyIsTerminalTTY, isatty.IsTerminal(os.Stdout.Fd()))
 
 	ctx := cmd.Context()
+	logger.Initialize()
 
 	// set up the global viper config with default values from
 	// config files and ENV variables
@@ -47,13 +51,19 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// check for error
 	error_helpers.FailOnError(ew.Error)
 
-	logger.Initialize()
+	// pump in the initial set of logs (AFTER we have loaded the config, which may specify log level)
+	// this will also write out the Execution ID - enabling easy filtering of logs for a single execution
+	// we need to do this since all instances will log to a single file and logs will be interleaved
+	slog.Info("Tailpipe CLI",
+		"app version", viper.GetString("main.version"),
+		"log level", os.Getenv(app_specific.EnvLogLevel))
 
 	// runScheduledTasks skips running tasks if this instance is the plugin manager
 	waitForTasksChannel = runScheduledTasks(ctx, cmd, args)
 
 	// set the max memory if specified
 	setMemoryLimit()
+
 	return nil
 }
 
@@ -125,16 +135,22 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	}
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
-	error_helpers.FailOnError(err)
+	if err != nil {
+		return error_helpers.NewErrorsAndWarning(err)
+	}
 
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
 	// create the required data and internal folder for this workspace if needed
 	err = config.GlobalWorkspaceProfile.EnsureWorkspaceDirs()
-	error_helpers.FailOnError(err)
+	if err != nil {
+		return error_helpers.NewErrorsAndWarning(err)
+	}
 
 	// ensure we have a database file for this workspace
 	err = database.EnsureDatabaseFile(ctx)
-	error_helpers.FailOnError(err)
+	if err != nil {
+		return error_helpers.NewErrorsAndWarning(err)
+	}
 
 	var cmd = viper.Get(pconstants.ConfigKeyActiveCommand).(*cobra.Command)
 
@@ -150,8 +166,16 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 		cmdconfig.SetDefaultsFromConfig(loader.ConfiguredProfile.ConfigMap(cmd))
 	}
 
-	// load the connection config and HCL options
-	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(ctx)
+	// ensure the core plugin is installed or the min version requirement is satisfied
+	// NOTE: if this installed the core plugin, the plugin version file will be updated and the updated file returned
+	pluginVersionFile, err := plugin.EnsureCorePlugin(ctx)
+	if err != nil {
+		return error_helpers.NewErrorsAndWarning(err)
+	}
+
+	// load the connection config and HCL options (passing plugin versions
+	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(pluginVersionFile)
+
 	if loadConfigErrorsAndWarnings.Error != nil {
 		return loadConfigErrorsAndWarnings
 	}

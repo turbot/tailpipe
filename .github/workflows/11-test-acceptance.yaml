@@ -81,7 +81,6 @@ jobs:
           path: ~/artifacts/linux.tar.gz
           if-no-files-found: error
 
-  # TODO - Update the acceptance test job with the correct test suite
   acceptance_test:
     name: Test
     needs: goreleaser
@@ -92,6 +91,7 @@ jobs:
         test_block:
           - "all_column_types"
           - "from_and_to"
+          - "introspection"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout

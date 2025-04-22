@@ -1,7 +1,6 @@
 package logger
 
 import (
-	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/sanitize"
@@ -14,13 +13,6 @@ import (
 func Initialize() {
 	logger := TailpipeLogger()
 	slog.SetDefault(logger)
-
-	// pump in the initial set of logs
-	// this will also write out the Execution ID - enabling easy filtering of logs for a single execution
-	// we need to do this since all instances will log to a single file and logs will be interleaved
-	slog.Info("Tailpipe CLI",
-		"app version", viper.GetString("main.version"),
-		"log level", os.Getenv(app_specific.EnvLogLevel))
 }
 
 // TailpipeLogger returns a logger that writes to stderr and sanitizes log entries

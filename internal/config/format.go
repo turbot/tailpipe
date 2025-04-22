@@ -20,6 +20,9 @@ func init() {
 
 type Format struct {
 	modconfig.HclResourceImpl
+	// required to allow partial decoding
+	Remain hcl.Body `hcl:",remain" json:"-"`
+
 	// the format type
 	Type string `cty:"type"`
 	// the raw HCL of the format (this will be decoded by the plugin which implements the format)

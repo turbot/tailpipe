@@ -12,9 +12,9 @@ import (
 )
 
 type PluginListDetails struct {
-	Name       string
-	Version    string
-	Partitions []string
+	Name       string   `json:"name"`
+	Version    string   `json:"version"`
+	Partitions []string `json:"partitions"`
 }
 
 // GetListData implements the printers.Listable interface

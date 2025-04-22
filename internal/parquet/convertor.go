@@ -2,19 +2,14 @@ package parquet
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"log/slog"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 const parquetWorkerCount = 5
@@ -29,7 +24,7 @@ type Converter struct {
 	id string
 
 	// the file chunks numbers available to process
-	chunks      []int
+	chunks      []int32
 	chunkLock   sync.Mutex
 	chunkSignal *sync.Cond
 	// the channel to send execution to the workers
@@ -56,10 +51,19 @@ type Converter struct {
 	// the format string for the conversion query will be the same for all chunks - build once and store
 	viewQueryFormat string
 
-	// the table schema - populated when the first chunk arrives if the schema is not already complete
-	schema        *schema.TableSchema
-	schemaMut     sync.RWMutex
+	// the table conversionSchema - populated when the first chunk arrives if the conversionSchema is not already complete
+	conversionSchema *schema.ConversionSchema
+	// the source schema - used to build the conversionSchema
+	tableSchema *schema.TableSchema
+
+	// viewQueryOnce ensures the schema inference only happens once for the first chunk,
+	// even if multiple chunks arrive concurrently. Combined with schemaWg, this ensures
+	// all subsequent chunks wait for the initial schema inference to complete before proceeding.
 	viewQueryOnce sync.Once
+	// schemaWg is used to block processing of subsequent chunks until the initial
+	// schema inference is complete. This ensures all chunks wait for the schema
+	// to be fully initialized before proceeding with their processing.
+	schemaWg sync.WaitGroup
 
 	// the partition being collected
 	Partition *config.Partition
@@ -67,19 +71,22 @@ type Converter struct {
 	statusFunc func(int64, int64, ...error)
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, schema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
+	// normalise the table schema to use lowercase column names
+	tableSchema.NormaliseColumnTypes()
+
 	w := &Converter{
 		id:               executionId,
-		chunks:           make([]int, 0, chunkBufferLength), // Pre-allocate reasonable capacity
+		chunks:           make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
 		Partition:        partition,
 		jobChan:          make(chan *parquetJob, parquetWorkerCount*2),
 		cancel:           cancel,
 		sourceDir:        sourceDir,
 		destDir:          destDir,
-		schema:           schema,
+		tableSchema:      tableSchema,
 		statusFunc:       statusFunc,
 		fileRootProvider: &FileRootProvider{},
 	}
@@ -110,20 +117,28 @@ func (w *Converter) Close() {
 }
 
 // AddChunk adds a new chunk to the list of chunks to be processed
-// if this is the first chunk, determine if we have a full schema yet and if not infer from the chunk
+// if this is the first chunk, determine if we have a full conversionSchema yet and if not infer from the chunk
 // signal the scheduler that `chunks are available
-func (w *Converter) AddChunk(executionId string, chunk int) error {
-	w.chunkLock.Lock()
-	var viewQueryError error
-	// when we receive the first chunk, infer the schema
+func (w *Converter) AddChunk(executionId string, chunk int32) error {
+	var err error
+	w.schemaWg.Wait()
+
+	// Execute schema inference exactly once for the first chunk.
+	// The WaitGroup ensures all subsequent chunks wait for this to complete.
+	// If schema inference fails, the error is captured and returned to the caller.
 	w.viewQueryOnce.Do(func() {
-		if viewQueryError = w.inferSchemaIfNeeded(executionId, chunk); viewQueryError != nil {
-			w.chunkLock.Unlock()
+		w.schemaWg.Add(1)
+		defer w.schemaWg.Done()
+		if err = w.buildConversionSchema(executionId, chunk); err != nil {
+			// err will be returned by the parent function
 			return
 		}
-		w.viewQueryFormat = buildViewQuery(w.schema)
+		w.viewQueryFormat = buildViewQuery(w.conversionSchema)
 	})
-
+	if err != nil {
+		return fmt.Errorf("failed to infer schema: %w", err)
+	}
+	w.chunkLock.Lock()
 	w.chunks = append(w.chunks, chunk)
 	w.chunkLock.Unlock()
 
@@ -187,12 +202,12 @@ func (w *Converter) scheduler(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case w.jobChan <- &parquetJob{chunkNumber: int64(chunk)}:
+		case w.jobChan <- &parquetJob{chunkNumber: chunk}:
 		}
 	}
 }
 
-func (w *Converter) getNextChunk() (int, bool) {
+func (w *Converter) getNextChunk() (int32, bool) {
 	w.chunkLock.Lock()
 	defer w.chunkLock.Unlock()
 
@@ -205,89 +220,6 @@ func (w *Converter) getNextChunk() (int, bool) {
 	chunk := w.chunks[lastIdx]
 	w.chunks = w.chunks[:lastIdx]
 	return chunk, true
-}
-
-func (w *Converter) inferSchemaIfNeeded(executionID string, chunk int) error {
-	//  determine if we have a full schema yet and if not infer from the chunk
-	// NOTE: schema mode will be MUTATED once we infer it
-
-	// TODO #testing test this https://github.com/turbot/tailpipe/issues/108
-
-	// first get read lock
-	w.schemaMut.RLock()
-	// is the schema complete (i.e. we are NOT automapping source columns and we have all types defined)
-	complete := w.schema.Complete()
-	w.schemaMut.RUnlock()
-
-	// do we have the full schema?
-	if !complete {
-		// get write lock
-		w.schemaMut.Lock()
-		// check again if schema is still not full (to avoid race condition as another worker may have filled it)
-		if !w.schema.Complete() {
-			// do the inference
-			s, err := w.inferChunkSchema(executionID, chunk)
-			if err != nil {
-				return fmt.Errorf("failed to infer schema from first JSON file: %w", err)
-			}
-			w.schema.InitialiseFromInferredSchema(s)
-		}
-		w.schemaMut.Unlock()
-	}
-	// now validate the schema is complete - we should have types for all columns
-	// (if we do not that indicates a custom table definition was used which does not specify types for all optional fields -
-	// this should have caused a config validation error earlier on
-	return w.schema.EnsureComplete()
-}
-
-func (w *Converter) inferChunkSchema(executionId string, chunkNumber int) (*schema.TableSchema, error) {
-	jsonFileName := table.ExecutionIdToFileName(executionId, chunkNumber)
-	filePath := filepath.Join(w.sourceDir, jsonFileName)
-	return w.inferSchemaForJSONLFile(filePath)
-}
-func (w *Converter) inferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
-	// Open DuckDB connection
-	db, err := database.NewDuckDb()
-	if err != nil {
-		log.Fatalf("failed to open DuckDB connection: %v", err)
-	}
-	defer db.Close()
-
-	// Query to infer schema using json_structure
-	query := `
-		select json_structure(json)::varchar as schema 
-		from read_json_auto(?) 
-		limit 1;
-	`
-
-	var schemaStr string
-	err = db.QueryRow(query, filePath).Scan(&schemaStr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute query: %w", err)
-	}
-
-	// Parse the schema JSON
-	var fields map[string]string
-	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
-		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
-	}
-
-	// Convert to TableSchema
-	res := &schema.TableSchema{
-		AutoMapSourceFields: false,
-		Columns:             make([]*schema.ColumnSchema, 0, len(fields)),
-	}
-
-	// Convert each field to a column schema
-	for name, typ := range fields {
-		res.Columns = append(res.Columns, &schema.ColumnSchema{
-			SourceName: name,
-			ColumnName: name,
-			Type:       typ,
-		})
-	}
-
-	return res, nil
 }
 
 func (w *Converter) addJobErrors(errorList ...error) {

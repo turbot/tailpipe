@@ -9,6 +9,9 @@ import (
 
 type Filter struct {
 	modconfig.HclResourceImpl
+	// required to allow partial decoding
+	Remain hcl.Body `hcl:",remain" json:"-"`
+
 	Where *string `hcl:"where"`
 }
 

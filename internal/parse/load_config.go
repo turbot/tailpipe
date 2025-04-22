@@ -1,7 +1,6 @@
 package parse
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 
@@ -20,7 +19,7 @@ import (
 )
 
 // LoadTailpipeConfig loads the HCL connection config, resources and workspace profiles
-func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeConfig, ew error_helpers.ErrorAndWarnings) {
+func LoadTailpipeConfig(v *versionfile.PluginVersionFile) (tailpipeConfig *config.TailpipeConfig, ew error_helpers.ErrorAndWarnings) {
 	utils.LogTime("TailpipeConfig.loadTailpipeConfig start")
 	defer utils.LogTime("TailpipeConfig.loadTailpipeConfig end")
 
@@ -36,23 +35,8 @@ func LoadTailpipeConfig(ctx context.Context) (tailpipeConfig *config.TailpipeCon
 		return nil, ew
 	}
 
-	// load plugin versions
-	v, err := versionfile.LoadPluginVersionFile(ctx)
-	if err != nil {
-		ew.Error = err
-		return nil, ew
-	}
-
-	// TODO KAI CHECK THIS
-	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
-	localPluginErrors := v.AddLocalPlugins(ctx)
-	ew.Merge(localPluginErrors)
-	if ew.Error != nil {
-		return nil, ew
-	}
-
+	// assign the plugin versions to the tailpipe config
 	tailpipeConfig.PluginVersions = v.Plugins
-
 	// initialise all partitions - this populates the Plugin and CustomTable (where set) properties
 	tailpipeConfig.InitPartitions(v)
 
