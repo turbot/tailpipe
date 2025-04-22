@@ -87,18 +87,18 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 
 	/* this is the what we want
 
-	with raw AS (
+	with raw as (
 	    select
-	        row_number() OVER () AS rowid,
-	        "StructArrayField" AS "struct_array_field",
-	        "IntField" AS "int_field",
-	        "StringField" AS "string_field",
-	        "FloatField" AS "float_field",
-	        "BooleanField" AS "boolean_field",
-	        "IntArrayField" AS "int_array_field",
-	        "StringArrayArrayField" AS "string_array_field",
-	        "FloatArrayField" AS "float_array_field",
-	        "BooleanArrayField" AS "boolean_array_field"
+	        row_number() OVER () as rowid,
+	        "StructArrayField" as "struct_array_field",
+	        "IntField" as "int_field",
+	        "StringField" as "string_field",
+	        "FloatField" as "float_field",
+	        "BooleanField" as "boolean_field",
+	        "IntArrayField" as "int_array_field",
+	        "StringArrayArrayField" as "string_array_field",
+	        "FloatArrayField" as "float_array_field",
+	        "BooleanArrayField" as "boolean_array_field"
 	    from
 	        read_ndjson(
 	            '/Users/kai/Dev/github/turbot/tailpipe/internal/parquet/buildViewQuery_test_data/1.jsonl',
@@ -114,20 +114,20 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	                "BooleanArrayField": 'boolean[]'
 	            }
 	        )
-	), unnest_struct_array_field AS (
+	), unnest_struct_array_field as (
 	    select
 	        rowid,
 	        unnest(coalesce("struct_array_field", array[]::struct("StructStringField" varchar, "StructIntField" integer)[])::struct("StructStringField" varchar, "StructIntField" integer)[]) as struct_array_field
 	    from
 	        raw
-	), rebuild_unnest_struct_array_field AS (
+	), rebuild_unnest_struct_array_field as (
 	    select
 	        rowid,
 	        struct_array_field->>'StructStringField' as StructArrayField_StructStringField,
 	        struct_array_field->>'StructIntField' as StructArrayField_StructIntField
 	    from
 	        unnest_struct_array_field
-	), grouped_unnest_struct_array_field AS (
+	), grouped_unnest_struct_array_field as (
 	    select
 	        rowid,
 	        array_agg(struct_pack(
@@ -140,7 +140,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	        rowid
 	)
 	select
-	    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+	    COALESCE(joined_struct_array_field.struct_array_field, NULL) as struct_array_field,
 	    raw.int_field,
 	    raw.string_field,
 	    raw.float_field,
@@ -152,7 +152,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	from
 	    raw
 	LEFT JOIN
-	    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
+	    grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid;
 	*/
 
 	/* 	with raw as (
@@ -166,7 +166,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	for _, structSliceCol := range structSliceColumns {
 
 		/*
-			, unnest_struct_array_field AS (
+			, unnest_struct_array_field as (
 			    select
 			        rowid,
 		*/
@@ -195,7 +195,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 )`)
 
 		/*
-		   , rebuild_unnest_struct_array_field AS (
+		   , rebuild_unnest_struct_array_field as (
 		      select
 		   	   rowid,
 		*/
@@ -226,7 +226,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 )`, unnestName))
 
 		/*
-		      , grouped_unnest_struct_array_field AS (
+		      , grouped_unnest_struct_array_field as (
 		      	    select
 		      	        rowid,
 		      	        array_agg(struct_pack(
@@ -266,7 +266,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 	// build the final select
 	/*
 		select
-			    COALESCE(joined_struct_array_field.struct_array_field, NULL) AS struct_array_field,
+			    COALESCE(joined_struct_array_field.struct_array_field, NULL) as struct_array_field,
 			    raw.int_field,
 			    raw.string_field,
 			    raw.float_field,
@@ -278,7 +278,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 			from
 			    raw
 			LEFT JOIN
-			    grouped_unnest_struct_array_field joined_struct_array_field ON raw.rowid = joined_struct_array_field.rowid;
+			    grouped_unnest_struct_array_field joined_struct_array_field on raw.rowid = joined_struct_array_field.rowid;
 	*/
 	// build list of coalesce fields and join fields
 	var coalesceFields strings.Builder
@@ -293,7 +293,7 @@ func getViewQueryForStructSlices(q string, rowSchema *schema.TableSchema, struct
 
 		coalesceFields.WriteString(fmt.Sprintf(`	coalesce(%s.%s, null) as %s`, joinedName, column.ColumnName, column.ColumnName))
 		leftJoins.WriteString(fmt.Sprintf(`LEFT JOIN
-	%s %s ON raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
+	%s %s on raw.rowid = %s.rowid`, groupedName, joinedName, joinedName))
 
 	}
 

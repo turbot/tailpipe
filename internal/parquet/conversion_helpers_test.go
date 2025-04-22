@@ -245,7 +245,7 @@ import (
 //			defer db.Close()
 //
 //			// Create a view with the converted type
-//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view AS select %s from (select '%s' as %s) t",
+//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view as select %s from (select '%s' as %s) t",
 //				selectSql, tt.input, tt.sourceName)
 //			_, err = db.Exec(createViewSQL)
 //			require.NoError(t, err)
@@ -261,7 +261,7 @@ import (
 //			var value interface{}
 //			if tt.name == "interval" {
 //				// For intervals, we need to cast to string to get a consistent format
-//				err = db.QueryRow(fmt.Sprintf("select CAST(%s AS varchar) from test_view", tt.columnName)).Scan(&value)
+//				err = db.QueryRow(fmt.Sprintf("select CAST(%s as varchar) from test_view", tt.columnName)).Scan(&value)
 //			} else {
 //				err = db.QueryRow(fmt.Sprintf("select %s from test_view", tt.columnName)).Scan(&value)
 //			}
@@ -447,7 +447,7 @@ import (
 //			defer db.Close()
 //
 //			// Create a view with the converted type
-//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view AS select %s from (select '%s' as %s) t",
+//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view as select %s from (select '%s' as %s) t",
 //				selectSql, tt.input, tt.sourceName)
 //			_, err = db.Exec(createViewSQL)
 //			if err == nil {
@@ -583,7 +583,7 @@ import (
 //			defer db.Close()
 //
 //			// Create view with the test data
-//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view AS select %s from (select '%s' as %s) t",
+//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view as select %s from (select '%s' as %s) t",
 //				selectSql, tt.input, tt.sourceName)
 //			_, err = db.Exec(createViewSQL)
 //
