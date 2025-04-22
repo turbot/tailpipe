@@ -25,6 +25,7 @@ import (
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
+	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe-plugin-core/core"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
@@ -64,7 +65,7 @@ func (p *PluginManager) AddObserver(o Observer) {
 func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) (*CollectResponse, error) {
 	// start plugin if needed
 	tablePlugin := partition.Plugin
-	tablePluginClient, err := p.getPlugin(ctx, tablePlugin)
+	tablePluginClient, err := p.getPlugin(tablePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
@@ -144,81 +145,12 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
-// formatToProto takes a config.Format, describes the format and returns the proto.FormatData for the plugin
-func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
-	//  check if the format is provided by the table plugin or whether we need to start format plugin
-	formatPluginName, ok := config.GetPluginForFormat(format)
-	if !ok {
-		return nil, fmt.Errorf("error determining source plugin for format %s", format.FullName)
-	}
-	// if the format is provided by the table plugin, we can just convert it to proto
-	if formatPluginName == tablePlugin.Plugin {
-		slog.Info("format is provided by the table plugin - converting to proto", "format", format.FullName, "plugin", formatPluginName)
-		return format.ToProto(), nil
-	}
-
-	// so the plugin is NOT the table plugin - start it if needed
-	formatPlugin := pplugin.NewPlugin(formatPluginName)
-	if formatPlugin.Plugin == tablePlugin.Plugin {
-		// the format is provided by the table plugin - nothing to do
-		return nil, nil
-	}
-	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
-
-	// so the format is provided by a different plugin - start it if needed and execute a describe
-	// if format is NOT a preset, we need to pass the custom formats to the describe call
-	var opts []DescribeOpts
-	if format.PresetName == "" {
-		opts = append(opts, WithCustomFormats(format), WithCustomFormatsOnly())
-	}
-
-	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, opts...)
-	if err != nil {
-		return nil, fmt.Errorf("error resolving format: %w", err)
-	}
-
-	var desc *types.FormatDescription
-	if format.PresetName != "" {
-		// if format is a preset
-		desc, ok = describeResponse.FormatPresets[format.PresetName]
-		if !ok {
-			return nil, fmt.Errorf("plugin '%s' returned no description for format preset '%s'", formatPluginName, format.PresetName)
-		}
-	} else {
-		// we expect the custom format to be the one we asked for
-		desc, ok = describeResponse.CustomFormats[format.FullName]
-		if !ok {
-			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.PresetName)
-		}
-	}
-
-	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
-}
-
-type DescribeOpts func(*proto.DescribeRequest)
-
-func WithCustomFormats(customFormats ...*config.Format) DescribeOpts {
-	return func(req *proto.DescribeRequest) {
-		var customFormatsProto []*proto.FormatData
-		for _, f := range customFormats {
-			customFormatsProto = append(customFormatsProto, f.ToProto())
-		}
-		req.CustomFormats = customFormatsProto
-	}
-}
-
-func WithCustomFormatsOnly() DescribeOpts {
-	return func(req *proto.DescribeRequest) {
-		req.CustomFormatsOnly = true
-	}
-}
-
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
 func (p *PluginManager) Describe(ctx context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
-	pluginClient, err := p.getPlugin(ctx, pluginDef)
+	pluginClient, err := p.getPlugin(pluginDef)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
 	}
@@ -255,11 +187,11 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+		return fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
 	}
 
 	// start plugin if needed
-	pluginClient, err := p.getPlugin(ctx, sourcePlugin)
+	pluginClient, err := p.getPlugin(sourcePlugin)
 	if err != nil {
 		return fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
@@ -280,11 +212,63 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 	return err
 }
 
+// formatToProto takes a config.Format, describes the format and returns the proto.FormatData for the plugin
+func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format, tablePlugin *pplugin.Plugin) (*proto.FormatData, error) {
+	//  check if the format is provided by the table plugin or whether we need to start format plugin
+	formatPluginName, ok := config.GetPluginForFormat(format)
+	if !ok {
+		return nil, fmt.Errorf("error determining plugin for format %s", format.FullName)
+	}
+	// if the format is provided by the table plugin, we can just convert it to proto
+	if formatPluginName == tablePlugin.Plugin {
+		slog.Info("format is provided by the table plugin - converting to proto", "format", format.FullName, "plugin", formatPluginName)
+		return format.ToProto(), nil
+	}
+
+	// so the plugin is NOT the table plugin - start it if needed
+	formatPlugin := pplugin.NewPlugin(formatPluginName)
+	if formatPlugin.Plugin == tablePlugin.Plugin {
+		// the format is provided by the table plugin - nothing to do
+		return nil, nil
+	}
+	slog.Info("format is not provided by the table plugin - describing the format and converting to a regex format", "format", format.FullName, "plugin", formatPlugin.Plugin)
+
+	// so the format is provided by a different plugin - start it if needed and execute a describe
+	// if format is NOT a preset, we need to pass the custom formats to the describe call
+	var opts []DescribeOpts
+	if format.PresetName == "" {
+		opts = append(opts, WithCustomFormats(format), WithCustomFormatsOnly())
+	}
+
+	describeResponse, err := p.Describe(ctx, formatPlugin.Plugin, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving format: %w", err)
+	}
+
+	var desc *types.FormatDescription
+	if format.PresetName != "" {
+		// if format is a preset
+		desc, ok = describeResponse.FormatPresets[format.PresetName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format preset '%s'", formatPluginName, format.PresetName)
+		}
+	} else {
+		// we expect the custom format to be the one we asked for
+		// the escriptions are keyed by unqualified name, i.e. type.name
+		desc, ok = describeResponse.CustomFormats[format.UnqualifiedName]
+		if !ok {
+			return nil, fmt.Errorf("plugin '%s' returned no description for format '%s'", formatPluginName, format.UnqualifiedName)
+		}
+	}
+
+	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
+}
+
 func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*proto.SourcePluginReattach, error) {
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return nil, fmt.Errorf("error determining source plugin for source %s: %w", partition.Source.Type, err)
+		return nil, fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
 	}
 	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
 	// and then pass reattach info
@@ -293,7 +277,7 @@ func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *
 	}
 
 	// so the source plugin is different from the table plugin - start if needed
-	sourcePluginClient, err := p.getPlugin(ctx, sourcePlugin)
+	sourcePluginClient, err := p.getPlugin(sourcePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
 	}
@@ -310,14 +294,7 @@ func getExecutionId() string {
 
 // getPlugin returns the plugin client for the given plugin definition, starting the plugin if needed or returning
 // the existing client if we have one
-func (p *PluginManager) getPlugin(ctx context.Context, pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
-	if pluginDef.Alias == constants.CorePluginName {
-		// ensure the core plugin is installed or the min version requirement is satisfied
-		if err := ensureCorePlugin(ctx); err != nil {
-			return nil, err
-		}
-	}
-
+func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*grpc.PluginClient, error) {
 	p.pluginMutex.RLock()
 	// Plugins map is keyed by image ref
 	pluginImageRef := pluginDef.Plugin
@@ -467,12 +444,18 @@ func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*ppl
 	return pplugin.NewPlugin(pluginName), nil
 }
 
-// ensureCorePlugin ensures the core plugin is installed or the min version is satisfied
-func ensureCorePlugin(ctx context.Context) error {
+// EnsureCorePlugin ensures the core plugin is installed or the min version is satisfied
+func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, error) {
+	// load the plugin version file
+	pluginVersions, err := loadPluginVersionFile(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// get the installation state
 	state, err := installationstate.Load()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	action := "Installing"
@@ -482,30 +465,51 @@ func ensureCorePlugin(ctx context.Context) error {
 
 	if exists {
 		// check if the min version is satisfied; if not then update
-		// retrieve the plugin version data from tailpipe config
-		pluginVersions := config.GlobalConfig.PluginVersions
+
 		// find the version of the core plugin from the pluginVersions
-		installedVersion := pluginVersions[constants.CorePluginFullName].Version
+		installedVersion := pluginVersions.Plugins[constants.CorePluginFullName].Version
 		// if installed version is 'local', that will do
 		if installedVersion == "local" {
-			return nil
+			return pluginVersions, nil
 		}
 
 		// compare the version(using semver) with the min version
 		satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// if satisfied - we are done
 		if satisfy {
-			return nil
+			return pluginVersions, nil
 		}
 
 		// so an update is required - set action to updating and fall through to installation
 		action = "Updating"
 	}
 	// install the core plugin
-	return installCorePlugin(ctx, state, action)
+	if err = installCorePlugin(ctx, state, action); err != nil {
+		return nil, err
+	}
+
+	// now reload the version file as there may be new metadata for the cor plugin
+	return loadPluginVersionFile(ctx)
+}
+
+func loadPluginVersionFile(ctx context.Context) (*versionfile.PluginVersionFile, error) {
+	// load plugin versions
+	// NOTE we must do this before LoadTailpipeConfig as we need them for EnsureCorePlugin
+	pluginVersions, err := versionfile.LoadPluginVersionFile(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO KAI CHECK THIS
+	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
+	ew := pluginVersions.AddLocalPlugins(ctx)
+	if ew.Error != nil {
+		return nil, ew.Error
+	}
+	return pluginVersions, nil
 }
 
 func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string) error {

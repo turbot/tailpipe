@@ -236,7 +236,7 @@ import (
 //				SourceName: tt.sourceName,
 //				ColumnName: tt.columnName,
 //			}
-//			selectSql := getSelectSqlForDynamicField(column)—
+//			selectSql := getSelectSqlForField(column)
 //			assert.Equal(t, tt.expectedSQL, selectSql)
 //
 //			// Test actual DuckDB type
@@ -245,7 +245,7 @@ import (
 //			defer db.Close()
 //
 //			// Create a view with the converted type
-//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view AS select %s from (select '%s' as %s) t",
+//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view as select %s from (select '%s' as %s) t",
 //				selectSql, tt.input, tt.sourceName)
 //			_, err = db.Exec(createViewSQL)
 //			require.NoError(t, err)
@@ -261,7 +261,7 @@ import (
 //			var value interface{}
 //			if tt.name == "interval" {
 //				// For intervals, we need to cast to string to get a consistent format
-//				err = db.QueryRow(fmt.Sprintf("select CAST(%s AS varchar) from test_view", tt.columnName)).Scan(&value)
+//				err = db.QueryRow(fmt.Sprintf("select CAST(%s as varchar) from test_view", tt.columnName)).Scan(&value)
 //			} else {
 //				err = db.QueryRow(fmt.Sprintf("select %s from test_view", tt.columnName)).Scan(&value)
 //			}
@@ -438,7 +438,7 @@ import (
 //				SourceName: tt.sourceName,
 //				ColumnName: tt.columnName,
 //			}
-//			selectSql := getSelectSqlForDynamicField(column)
+//			selectSql := getSelectSqlForField(column)
 //			assert.Equal(t, tt.expectedSQL, selectSql)
 //
 //			// Test actual DuckDB type and error handling
@@ -447,7 +447,7 @@ import (
 //			defer db.Close()
 //
 //			// Create a view with the converted type
-//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view AS select %s from (select '%s' as %s) t",
+//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view as select %s from (select '%s' as %s) t",
 //				selectSql, tt.input, tt.sourceName)
 //			_, err = db.Exec(createViewSQL)
 //			if err == nil {
@@ -463,156 +463,6 @@ import (
 //			// Verify that we got an error and it contains the expected message
 //			require.Error(t, err)
 //			assert.Contains(t, err.Error(), tt.expectedError)
-//		})
-//	}
-//}
-//
-//func TestTimeFormatParsing(t *testing.T) {
-//	tests := []struct {
-//		name          string
-//		input         string
-//		columnType    string
-//		timeFormat    string
-//		sourceName    string
-//		columnName    string
-//		expectedSQL   string
-//		expectedValue time.Time
-//		expectedError string
-//	}{
-//		// Tests without explicit format - only ISO formats work automatically
-//		{
-//			name:          "iso timestamp no format",
-//			input:         "2024-03-14 15:45:30",
-//			columnType:    "timestamp",
-//			timeFormat:    "",
-//			sourceName:    "ts_field",
-//			columnName:    "ts_field",
-//			expectedSQL:   "\t\"ts_field\"::timestamp as \"ts_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 15, 45, 30, 0, time.UTC),
-//		},
-//		{
-//			name:          "iso date no format",
-//			input:         "2024-03-14",
-//			columnType:    "date",
-//			timeFormat:    "",
-//			sourceName:    "date_field",
-//			columnName:    "date_field",
-//			expectedSQL:   "\t\"date_field\"::data as \"date_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC),
-//		},
-//		{
-//			name:          "timestamp with T separator no format",
-//			input:         "2024-03-14T15:45:30",
-//			columnType:    "timestamp",
-//			timeFormat:    "",
-//			sourceName:    "ts_field",
-//			columnName:    "ts_field",
-//			expectedSQL:   "\t\"ts_field\"::timestamp as \"ts_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 15, 45, 30, 0, time.UTC),
-//		},
-//		{
-//			name:          "timestamp with microseconds no format",
-//			input:         "2024-03-14 15:45:30.123456",
-//			columnType:    "timestamp",
-//			timeFormat:    "",
-//			sourceName:    "ts_field",
-//			columnName:    "ts_field",
-//			expectedSQL:   "\t\"ts_field\"::timestamp as \"ts_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 15, 45, 30, 123456000, time.UTC),
-//		},
-//		// Tests with explicit format - required for non-ISO formats
-//		{
-//			name:          "european date format DD/MM/YYYY",
-//			input:         "14/03/2024",
-//			columnType:    "date",
-//			timeFormat:    "%d/%m/%Y",
-//			sourceName:    "date_field",
-//			columnName:    "date_field",
-//			expectedSQL:   "\tstrptime(\"date_field\", '%d/%m/%Y') as \"date_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC),
-//		},
-//		{
-//			name:          "american date format MM/DD/YYYY",
-//			input:         "03/14/2024",
-//			columnType:    "date",
-//			timeFormat:    "%m/%d/%Y",
-//			sourceName:    "date_field",
-//			columnName:    "date_field",
-//			expectedSQL:   "\tstrptime(\"date_field\", '%m/%d/%Y') as \"date_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 0, 0, 0, 0, time.UTC),
-//		},
-//		{
-//			name:          "custom timestamp format DD-MM-YYYY HH:MM",
-//			input:         "14-03-2024 15:45",
-//			columnType:    "timestamp",
-//			timeFormat:    "%d-%m-%Y %H:%M",
-//			sourceName:    "ts_field",
-//			columnName:    "ts_field",
-//			expectedSQL:   "\tstrptime(\"ts_field\", '%d-%m-%Y %H:%M') as \"ts_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 15, 45, 0, 0, time.UTC),
-//		},
-//		{
-//			name:          "timestamp with timezone format",
-//			input:         "2024-03-14 15:45:30+02:00",
-//			columnType:    "timestamp",
-//			timeFormat:    "%Y-%m-%d %H:%M:%S%z",
-//			sourceName:    "ts_field",
-//			columnName:    "ts_field",
-//			expectedSQL:   "\tstrptime(\"ts_field\", '%Y-%m-%d %H:%M:%S%z') as \"ts_field\"",
-//			expectedValue: time.Date(2024, 3, 14, 13, 45, 30, 0, time.UTC), // Note: adjusted for UTC
-//		},
-//	}
-//
-//	for _, tt := range tests {
-//		t.Run(tt.name, func(t *testing.T) {
-//			// Create column schema
-//			column := &schema.ColumnSchema{
-//				Type:       tt.columnType,
-//				SourceName: tt.sourceName,
-//				ColumnName: tt.columnName,
-//				TimeFormat: tt.timeFormat,
-//			}
-//
-//			// Get SQL for the column
-//			selectSql := getSelectSqlForDynamicField(column)
-//			assert.Equal(t, tt.expectedSQL, selectSql)
-//
-//			// Test with DuckDB
-//			db, err := sql.Open("duckdb", "")
-//			require.NoError(t, err)
-//			defer db.Close()
-//
-//			// Create view with the test data
-//			createViewSQL := fmt.Sprintf("CREATE VIEW test_view AS select %s from (select '%s' as %s) t",
-//				selectSql, tt.input, tt.sourceName)
-//			_, err = db.Exec(createViewSQL)
-//
-//			if tt.expectedError != "" {
-//				require.Error(t, err)
-//				assert.Contains(t, err.Error(), tt.expectedError)
-//				return
-//			}
-//
-//			require.NoError(t, err)
-//
-//			// Query the value
-//			var value time.Time
-//			err = db.QueryRow(fmt.Sprintf("select %s from test_view", tt.columnName)).Scan(&value)
-//			require.NoError(t, err)
-//
-//			// For debugging
-//			t.Logf("Test case: %s", tt.name)
-//			t.Logf("Input: %s", tt.input)
-//			t.Logf("Format: %s", tt.timeFormat)
-//			t.Logf("SQL: %s", selectSql)
-//			t.Logf("Expected: %v", tt.expectedValue)
-//			t.Logf("Got: %v", value)
-//
-//			assert.Equal(t, tt.expectedValue, value)
-//
-//			// Clean up
-//			_, err = db.Exec("DROP VIEW test_view")
-//			require.NoError(t, err)
 //		})
 //	}
 //}

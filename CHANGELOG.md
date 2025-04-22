@@ -1,6 +1,29 @@
+## v0.3.1 [2025-04-18]
+_Bug fixes_
+* Fix partition filter argument. ([#375](https://github.com/turbot/tailpipe/issues/375))
+
+## v0.3.0 [2025-04-16]
+
+_What's new_
+* Add support for custom tables. (([#225](https://github.com/turbot/tailpipe/issues/225)))
+* Add location to format list/show. ([#283](https://github.com/turbot/tailpipe/issues/283))
+* Add plugin to source list/show. ([#337](https://github.com/turbot/tailpipe/issues/337))
+* Improve display logic of conversion errors, since we log full error just display first line of error.
+
+_Bug fixes_
+* Plugin list command now correctly cases keys in JSON output 
+* Add support to querydisplay.ColumnValueAsString for UUID/Decimal in format received from DuckDB
+* Add comma separators to numeric output in query results. ([#685](https://github.com/turbot/pipe-fittings/issues/685))
+* Fix multiple backtick escaping - if more than 2 properties are back-ticked, the third onwards not being escaped.
+
+## v0.2.1 [2025-04-02]
+_Bug fixes_
+* Table introspection in json now displays descriptions correctly. ([#323](https://github.com/turbot/tailpipe/issues/323)):
+* Fix resolution of the format before calling Collect when the format plugin is different from the table plugin.([#319](https://github.com/turbot/tailpipe/issues/319)):
+
 ## v0.2.0 [2025-04-02]
 _What's new_
-* Add support for plugins with custom formats ([#264](https://github.com/turbot/tailpipe/issues/264)): 
+* Add support for plugins with custom formats  
   A `format` block can be defined in config and plugins can provide formats `types` and `presets` . Format are supported by the new Nginx and Apache plugins.
 * Add `format list` and `format show` commands. ([#235](https://github.com/turbot/tailpipe/issues/235))
 * Update the `plugin show` command to add exported formats and correctly display partitions, etc. ([#257](https://github.com/turbot/tailpipe/issues/257))
