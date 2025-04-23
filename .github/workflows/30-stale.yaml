@@ -1,0 +1,39 @@
+name: "30 - Admin: Stale Issues and PRs"
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: Set to true for a dry run
+        required: false
+        default: "false"
+        type: string
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Stale issues and PRs
+        id: stale-issues-and-prs
+        uses: actions/stale@1160a2240286f5da8ec72b1c0816ce2481aabf84 # v8.0.0
+        with:
+          close-issue-message: |
+            This issue was closed because it has been stalled for 90 days with no activity.
+          close-issue-reason: 'not_planned'
+          close-pr-message: |
+            This PR was closed because it has been stalled for 90 days with no activity.
+          # Set days-before-close to 30 because we want to close the issue/PR after 90 days total, since days-before-stale is set to 60
+          days-before-close: 30
+          days-before-stale: 60
+          debug-only: ${{ inputs.dryRun }}
+          exempt-issue-labels: 'good first issue,help wanted,blocker'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          stale-issue-label: 'stale'
+          stale-issue-message: |
+            This issue is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 30 days.
+          stale-pr-label: 'stale'
+          stale-pr-message: |
+            This PR is stale because it has been open 60 days with no activity. Remove stale label or comment or this will be closed in 30 days.
+          start-date: "2021-02-09"
+          operations-per-run: 1000
