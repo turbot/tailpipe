@@ -38,15 +38,17 @@ type conversionWorker struct {
 	// helper struct which provides unique filename roots
 	fileRootProvider *FileRootProvider
 	db               *database.DuckDb
+	maxMemoryMb      int64
 }
 
-func newParquetConversionWorker(converter *Converter) (*conversionWorker, error) {
+func newParquetConversionWorker(converter *Converter, maxMemoryMb int64) (*conversionWorker, error) {
 	w := &conversionWorker{
 		jobChan:          converter.jobChan,
 		sourceDir:        converter.sourceDir,
 		destDir:          converter.destDir,
 		fileRootProvider: converter.fileRootProvider,
 		converter:        converter,
+		maxMemoryMb:      maxMemoryMb,
 	}
 
 	// create a new DuckDB instance for each worker
