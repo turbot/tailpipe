@@ -424,7 +424,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 
 }
 
-// determineSourcePlugin determines plugin which provides trhe given source type for the given partition
+// determineSourcePlugin determines plugin which provides the given source type for the given partition
 // try to use the source information registered in the version file
 // if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {

@@ -4,11 +4,11 @@
 mkdir -p generated
 
 # Array of row counts
-ROWS=(1000 4000 8000)
+ROWS=(1000 3000 4000 6000 8000)
 
 # Array of column counts
 # Array of column counts
-COLUMNS=(10 25 100)
+COLUMNS=(10 25 50 100)
 
 # Array of index counts
 INDEXES=(1 25 100 400)
