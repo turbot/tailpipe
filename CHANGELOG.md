@@ -1,8 +1,10 @@
 ## v0.3.2 [2025-04-25]
 _What's new_
 * Update `MinCorePluginVersion` to v0.2.2.
-* Fix source file error for custom tables when using S3 or other external sources. ([#188](https://github.com/turbot/tailpipe-plugin-sdk/issues/188)) 
 * Update tailpipe-plugin-sdk to v0.4.0.
+
+_Bug fixes_
+* Fix source file error for custom tables when using S3 or other external sources. ([#188](https://github.com/turbot/tailpipe-plugin-sdk/issues/188)) 
 
 ## v0.3.1 [2025-04-18]
 _Bug fixes_
