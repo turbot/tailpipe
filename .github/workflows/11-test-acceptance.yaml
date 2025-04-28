@@ -92,6 +92,7 @@ jobs:
           - "all_column_types"
           - "from_and_to"
           - "introspection"
+          - "partition_tests"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
