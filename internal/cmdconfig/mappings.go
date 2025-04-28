@@ -15,7 +15,7 @@ func configDefaults(cmd *cobra.Command) map[string]any {
 		pconstants.ArgUpdateCheck: true,
 
 		// memory
-		pconstants.ArgMemoryMaxMb: 1024,
+		pconstants.ArgMemoryMaxMb: 32 * 1024,
 	}
 
 	cmdSpecificDefaults, ok := cmdSpecificDefaults()[cmd.Name()]

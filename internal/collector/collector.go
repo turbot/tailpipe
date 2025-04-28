@@ -13,8 +13,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
@@ -26,9 +26,9 @@ import (
 const eventBufferSize = 100
 
 type Collector struct {
-	// this channel is used to asynchronously process events from the plugin
+	// this buffered channel is used to asynchronously process events from the plugin
 	// our Notify function will send events to this channel
-	Events chan *proto.Event
+	Events chan events.Event
 
 	// the plugin manager is responsible for managing the plugin lifecycle and brokering
 	// communication between the plugin and the collector
@@ -67,7 +67,7 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 
 	// create the collector
 	c := &Collector{
-		Events:            make(chan *proto.Event, eventBufferSize),
+		Events:            make(chan events.Event, eventBufferSize),
 		pluginManager:     pluginManager,
 		collectionTempDir: collectionTempDir,
 		partition:         partition,
@@ -179,12 +179,13 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 
 // Notify implements observer.Observer
 // send an event down the channel to be picked up by the handlePluginEvent goroutine
-func (c *Collector) Notify(event *proto.Event) {
+func (c *Collector) Notify(_ context.Context, event events.Event) error {
 	// only send the event if the execution is not complete - this is to handle the case where it has
 	// terminated with an error, causing the collector to close, closing the channel
 	if !c.execution.complete() {
 		c.Events <- event
 	}
+	return nil
 }
 
 // WaitForCompletion waits for our execution to have state ExecutionState_COMPLETE
@@ -230,26 +231,26 @@ func (c *Collector) Completed() {
 }
 
 // handlePluginEvent handles an event from a plugin
-func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
+func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 	// handlePluginEvent the event
 	// switch based on the struct of the event
-	switch e.GetEvent().(type) {
-	case *proto.Event_StartedEvent:
-		slog.Info("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
+	switch ev := e.(type) {
+	case *events.Started:
+		slog.Info("Started event", "execution", ev.ExecutionId)
 		c.execution.state = ExecutionState_STARTED
-	case *proto.Event_StatusEvent:
+	case *events.Status:
 		c.statusLock.Lock()
 		defer c.statusLock.Unlock()
-		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
+		c.status.UpdateWithPluginStatus(ev)
 		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
-	case *proto.Event_ChunkWrittenEvent:
-		ev := e.GetChunkWrittenEvent()
+	case *events.Chunk:
+
 		executionId := ev.ExecutionId
 		chunkNumber := ev.ChunkNumber
 
 		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {
-			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
+			slog.Debug("Chunk event", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}
 
 		err := c.parquetConvertor.AddChunk(executionId, chunkNumber)
@@ -257,33 +258,33 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			c.execution.done(err)
 		}
-	case *proto.Event_CompleteEvent:
-		completedEvent := e.GetCompleteEvent()
-		slog.Info("handlePluginEvent received Event_CompleteEvent", "execution", completedEvent.ExecutionId)
+	case *events.Complete:
+		slog.Info("Complete event", "execution", ev.ExecutionId)
 
 		// was there an error?
-		if completedEvent.Error != "" {
-			slog.Error("execution error", "execution", completedEvent.ExecutionId, "error", completedEvent.Error)
-			// retrieve the execution
-			c.execution.done(fmt.Errorf("plugin error: %s", completedEvent.Error))
+		if ev.Err != nil {
+			slog.Error("execution error", "execution", ev.ExecutionId, "error", ev.Err)
+			// update the execution
+			c.execution.done(ev.Err)
+			return
 		}
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file
 
 		// start thread waiting for conversion to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
+		slog.Info("handlePluginEvent - waiting for conversions to complete")
 		go func() {
-			slog.Info("handlePluginEvent - waiting for conversions to complete", "execution", completedEvent.ExecutionId)
-			err := c.waitForConversions(ctx, completedEvent)
+			err := c.waitForConversions(ctx, ev)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
 				c.execution.done(err)
 			} else {
-				slog.Info("handlePluginEvent - conversions all complete", "execution", completedEvent.ExecutionId)
+				slog.Info("handlePluginEvent - conversions all complete")
 			}
 		}()
 
-	case *proto.Event_ErrorEvent:
+	case *events.Error:
 		// TODO #errors error events are deprecated an will only be sent for plugins not using sdk > v0.2.0
 		// TODO #errors decide what (if anything) we should do with error events from old plugins https://github.com/turbot/tailpipe/issues/297
 		//ev := e.GetErrorEvent()
@@ -376,39 +377,32 @@ func (c *Collector) StatusString() string {
 
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
-func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
-	slog.Info("waitForConversions - waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
+func (c *Collector) waitForConversions(ctx context.Context, ce *events.Complete) (err error) {
+	slog.Info("waitForConversions - waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunksWritten, "rows", ce.RowCount)
 
-	if ce.ChunkCount == 0 && ce.RowCount == 0 {
-		slog.Debug("waitForConversions - no chunks/rows to write", "execution", ce.ExecutionId)
-		var err error
-		if ce.Error != "" {
-			slog.Warn("waitForConversions - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
-			err = errors.New(ce.Error)
-		}
-		// mark execution as done, passing any error
+	// ensure we mark the execution as done
+	defer func() {
 		c.execution.done(err)
+	}()
+
+	// if there are no chunks or rows to write, we can just return
+	// (note: we know that the Complete event wil not have an error as that is handled before calling this function)
+	if ce.ChunksWritten == 0 && ce.RowCount == 0 {
+		slog.Debug("waitForConversions - no chunks/rows to write", "execution", ce.ExecutionId)
 		return nil
 	}
 
-	// so there was no plugin error - wait for the conversions to complete
+	// wait for the conversions to complete
 	c.parquetConvertor.WaitForConversions(ctx)
 
+	// create or update the table view for ths table being collected
 	if err := c.createTableView(ctx); err != nil {
 		slog.Error("error creating table view", "error", err)
-		c.execution.done(err)
 		return err
 	}
 
-	// mark execution as complete and record the end time
-	c.execution.done(err)
+	slog.Info("handlePluginEvent - conversions all complete")
 
-	// if there was an error, return it
-	if err != nil {
-		return err
-	}
-
-	// notify the writer that the collection is complete
 	return nil
 }
 

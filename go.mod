@@ -6,9 +6,9 @@ toolchain go1.24.0
 
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
-//github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
-//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-//github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+	github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
@@ -40,7 +40,6 @@ require (
 	github.com/hashicorp/go-version v1.7.0
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb/v2 v2.1.0
-	github.com/shirou/gopsutil/v3 v3.24.5
 	github.com/thediveo/enumflag/v2 v2.0.5
 	github.com/turbot/tailpipe-plugin-core v0.2.2
 	golang.org/x/sync v0.12.0
@@ -159,7 +158,6 @@ require (
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
-	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/magefile/mage v1.15.0 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/marcboeker/go-duckdb/arrowmapping v0.0.6 // indirect
@@ -186,7 +184,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pkg/term v1.1.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
@@ -194,7 +191,6 @@ require (
 	github.com/satyrius/gonx v1.4.0 // indirect
 	github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
-	github.com/shoenig/go-m1cpu v0.1.6 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect

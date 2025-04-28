@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -27,9 +26,11 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe-plugin-core/core"
+	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/observable"
 	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -44,8 +45,10 @@ type PluginManager struct {
 	// map of running plugins, keyed by plugin name
 	Plugins     map[string]*grpc.PluginClient
 	pluginMutex sync.RWMutex
-	obs         Observer
-	pluginPath  string
+	// the observer to notify of events
+	// (this will be the collector)
+	obs        observable.Observer
+	pluginPath string
 }
 
 func NewPluginManager() *PluginManager {
@@ -57,7 +60,7 @@ func NewPluginManager() *PluginManager {
 
 // AddObserver adds a
 // n observer to the plugin manager
-func (p *PluginManager) AddObserver(o Observer) {
+func (p *PluginManager) AddObserver(o observable.Observer) {
 	p.obs = o
 }
 
@@ -117,6 +120,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// set on req (may be nil - this is fine)
 	req.SourcePlugin = sourcePluginReattach
 
+	// start a goroutine to monitor the plugins
 	// populate the custom table
 	if partition.CustomTable != nil {
 		req.CustomTableSchema = partition.CustomTable.ToProto()
@@ -139,7 +143,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// start a goroutine to read the eventStream and listen to file events
 	// this will loop until it hits an error or the stream is closed
-	go p.readCollectionEvents(ctx, eventStream)
+	go p.readCollectionEvents(ctx, executionID, eventStream)
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
@@ -369,54 +373,72 @@ func (p *PluginManager) getPluginStartTimeout() time.Duration {
 	return pluginStartTimeout
 }
 
-func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream proto.TailpipePlugin_AddObserverClient) {
-	pluginEventChan := make(chan *proto.Event)
-	errChan := make(chan error)
+func (p *PluginManager) readCollectionEvents(ctx context.Context, executionId string, pluginStream proto.TailpipePlugin_AddObserverClient) {
+	pluginEventChan := make(chan events.Event)
 
+	slog.Info("starting to read plugin events")
 	// goroutine to read the plugin event stream and send the events down the event channel
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				errChan <- helpers.ToError(r)
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, helpers.ToError(r))
 			}
+			// ensure
+			close(pluginEventChan)
 		}()
 
 		for {
-			e, err := pluginStream.Recv()
+			pe, err := pluginStream.Recv()
 			if err != nil {
-				errChan <- err
+				slog.Error("error reading from plugin stream", "error", err)
+				// clean up the error
+				err = cleanupPluginError(err)
+				// send a completion event with an error
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, err)
 				return
 			}
+			e, err := events.EventFromProto(pe)
+			if err != nil {
+				slog.Info("error converting plugin event to proto", "error", err)
+				// send a completion event with an error
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, err)
+				return
+			}
+
+			slog.Info("got plugin event", "event", e)
 			pluginEventChan <- e
-			// if this is a completion event (or other error event???), stop polling
-			if e.GetCompleteEvent() != nil {
-				close(pluginEventChan)
+			// if this is a completion event , stop polling
+			if pe.GetCompleteEvent() != nil {
+				slog.Info("got completion event - stop polling and close plugin event channel")
+				return
 			}
 		}
 	}()
 
-	// loop until the context is cancelled
+	// loop until either:
+	// - the context is cancelled
+	// - there is an error reading from the plugin stream
+	// - the pluginEventChan is closed (following a completion event)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case err := <-errChan:
-			if err != nil {
-				// TODO #error handle error
-				// ignore EOF errors
-				if !strings.Contains(err.Error(), "EOF") {
-					fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo// TODO #error
-				}
-				return
-			}
-		case protoEvent := <-pluginEventChan:
+
+		case ev := <-pluginEventChan:
 			// convert the protobuf event to an observer event
 			// and send it to the observer
-			if protoEvent == nil {
+			if ev == nil {
 				// channel is closed
 				return
 			}
-			p.obs.Notify(protoEvent)
+			err := p.obs.Notify(ctx, ev)
+			if err != nil {
+				// if notify fails, send a completion event with the error
+				if err = p.obs.Notify(ctx, events.NewCompletedEvent(executionId, 0, 0, err)); err != nil {
+					slog.Error("error notifying observer of error", "error", err)
+				}
+				return
+			}
 		}
 	}
 
