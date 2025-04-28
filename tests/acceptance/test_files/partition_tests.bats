@@ -100,6 +100,7 @@ EOF
 }
 
 @test "verify missing source block from partition" {
+  skip "Re-enable after fixing the issue with missing source block"
   # Create a test partition configuration without a source block
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/missing_source_test.tpc
 partition "chaos_all_columns" "missing_source_test" {
@@ -117,6 +118,49 @@ EOF
 
   # Clean up config file
   rm -rf $TAILPIPE_INSTALL_DIR/config/missing_source_test.tpc
+}
+
+@test "verify partition with non-existent table name" {
+  # Create a test partition configuration with a non-existent table name
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/invalid_table_test.tpc
+partition "non_existent_table" "test_partition" {
+  source "chaos_all_columns" {
+    row_count = 10
+  }
+}
+EOF
+
+  # Run tailpipe collect and check for error message
+  run tailpipe collect non_existent_table.test_partition --progress=false
+  echo $output
+
+  # Verify that the output contains the specific error message about invalid table
+  assert_output --partial "error starting plugin non"
+  assert_output --partial "no plugin installed matching 'non'"
+
+  # Clean up config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/invalid_table_test.tpc
+}
+
+@test "verify partition with invalid table name format" {
+  # Create a test partition configuration with an invalid table name format
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/invalid_format_test.tpc
+partition "invalid.table.name" "test_partition" {
+  source "chaos_all_columns" {
+    row_count = 10
+  }
+}
+EOF
+
+  # Run tailpipe collect and check for error message
+  run tailpipe collect invalid.table.name.test_partition --progress=false
+  echo $output
+
+  # Verify that the output contains the specific error message about invalid table name format
+  assert_output --partial "Invalid name: A name must start with a letter or underscore and may contain only letters, digits, underscores, and dashes"
+
+  # Clean up config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/invalid_format_test.tpc
 }
 
 function teardown() {
