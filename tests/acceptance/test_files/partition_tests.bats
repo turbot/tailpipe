@@ -16,7 +16,7 @@ EOF
   tailpipe collect chaos_all_columns.filter_test_1 --progress=false
 
   # Run tailpipe query and verify the filtered data
-  run tailpipe query "select count(*) as count from chaos_all_columns where id % 2 = 0" --output csv
+  run tailpipe query "select count(*) as count from chaos_all_columns" --output csv
   echo $output
 
   # Based on actual output - should be 5 rows (half of 10)
