@@ -52,5 +52,12 @@ if [ $# -eq 0 ]; then
   # Run all test files
   $BATS_PATH --tap $MY_PATH/test_files
 else
-  $BATS_PATH --tap $MY_PATH/test_files/${1}
+  # Handle each argument
+  for arg in "$@"; do
+    # If the path is relative, make it absolute relative to the test files directory
+    if [[ "$arg" != /* ]]; then
+      arg="$MY_PATH/test_files/$arg"
+    fi
+    $BATS_PATH --tap "$arg"
+  done
 fi
