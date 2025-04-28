@@ -99,6 +99,26 @@ EOF
   rm -rf $TAILPIPE_INSTALL_DIR/config/invalid_source_test.tpc
 }
 
+@test "verify missing source block from partition" {
+  # Create a test partition configuration without a source block
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/missing_source_test.tpc
+partition "chaos_all_columns" "missing_source_test" {
+  # Intentionally missing source block
+}
+EOF
+
+  # Run tailpipe collect and check for error message
+  run tailpipe collect chaos_all_columns.missing_source_test --progress=false
+  echo $output
+
+  # Verify that the output contains the specific error message about missing source
+  assert_output --partial "Partition chaos_all_columns.missing_source_test is missing required source block"
+  assert_output --partial "A source block is required for every partition to specify the data source"
+
+  # Clean up config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/missing_source_test.tpc
+}
+
 function teardown() {
   rm -rf $TAILPIPE_INSTALL_DIR/data
 } 
