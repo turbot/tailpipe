@@ -163,6 +163,28 @@ EOF
   rm -rf $TAILPIPE_INSTALL_DIR/config/invalid_format_test.tpc
 }
 
+@test "verify incompatible source type for table" {
+  # Create a test partition configuration using an incompatible source type
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/incompatible_source_test.tpc
+partition "chaos_date_time" "incompatible_source_test" {
+  source "chaos_all_columns" {
+    row_count = 10
+  }
+}
+EOF
+
+  # Run tailpipe collect and check for error message
+  run tailpipe collect chaos_date_time.incompatible_source_test --progress=false
+  echo $output
+
+  # Verify that the output contains the specific error message about incompatible source
+  assert_output --partial "source type chaos_all_columns not supported by table chaos_date_time"
+
+  # Clean up config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/incompatible_source_test.tpc
+}
+
+
 function teardown() {
   rm -rf $TAILPIPE_INSTALL_DIR/data
 } 
