@@ -5,7 +5,7 @@ alwaysApply: false
 ---
 # Acceptance Tests Structure and Best Practices
 
-Acceptance tests are located in the [tests/acceptance/test_files/](mdc:tailpipe/tailpipe/tailpipe/tests/acceptance/test_files) directory. Each test case should be isolated in its own file for clarity and maintainability.
+Acceptance tests are located in the [tests/acceptance/test_files/](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tests/acceptance/test_files) directory. Each test case should be isolated in its own file for clarity and maintainability.
 
 ## Guidelines for Acceptance Tests
 
@@ -14,15 +14,16 @@ Acceptance tests are located in the [tests/acceptance/test_files/](mdc:tailpipe/
 - **Error Handling:** Focus assertions on user-facing error messages and observable outcomes, not on internal or debug messages that may change.
 - **Clarity:** Use descriptive test names and comments to explain the purpose and expected outcome of each test.
 - **Execution:** Tests should be runnable individually or in batches using the `run.sh` script from the `test_files` directory.
-- **Framework:** All tests use [BATS](mdc:tailpipe/tailpipe/tailpipe/https:/github.com/bats-core/bats-core) for shell-based testing.
+- **Framework:** All tests use [BATS](mdc:tailpipe/tailpipe/tailpipe/tailpipe/https:/github.com/bats-core/bats-core) for shell-based testing.
+- **CI/CD Integration:** After adding new test files, update the test matrix in [.github/workflows/11-test-acceptance.yaml](mdc:tailpipe/tailpipe/tailpipe/tailpipe/.github/workflows/11-test-acceptance.yaml) to include the new test file in the acceptance test suite.
 
 ## Example Test Files
 
-- [partition_row_count.bats](mdc:tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_row_count.bats): Example of verifying a specific row count.
-- [partition_filter.bats](mdc:tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_filter.bats): Example of verifying filter functionality.
-- [partition_invalid_filter.bats](mdc:tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_invalid_filter.bats): Example of checking for clear error messages on invalid input.
-- [partition_duplicate.bats](mdc:tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_duplicate.bats): Example of handling duplicate resource errors.
-- [partition_invalid_source.bats](mdc:tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_invalid_source.bats): Example of handling references to non-existent resources.
+- [partition_row_count.bats](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_row_count.bats): Example of verifying a specific row count.
+- [partition_filter.bats](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_filter.bats): Example of verifying filter functionality.
+- [partition_invalid_filter.bats](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_invalid_filter.bats): Example of checking for clear error messages on invalid input.
+- [partition_duplicate.bats](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_duplicate.bats): Example of handling duplicate resource errors.
+- [partition_invalid_source.bats](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tests/acceptance/test_files/partition_invalid_source.bats): Example of handling references to non-existent resources.
 
 Use these examples as templates for new acceptance tests, adapting the structure and best practices for other features and scenarios.
 
