@@ -388,6 +388,10 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 				return
 			}
 			pluginEventChan <- e
+			// if this is a completion event (or other error event???), stop polling
+			if e.GetCompleteEvent() != nil {
+				close(pluginEventChan)
+			}
 		}
 	}()
 
@@ -409,16 +413,10 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 			// convert the protobuf event to an observer event
 			// and send it to the observer
 			if protoEvent == nil {
-				// TODO #error unexpected - raise an error - send error to observers
+				// channel is closed
 				return
 			}
 			p.obs.Notify(protoEvent)
-			// TODO #error should we stop polling if we get an error event?
-			// if this is a completion event (or other error event???), stop polling
-			if protoEvent.GetCompleteEvent() != nil {
-				close(pluginEventChan)
-				return
-			}
 		}
 	}
 

@@ -26,14 +26,18 @@ import (
 const eventBufferSize = 100
 
 type Collector struct {
+	// this channel is used to asynchronously process events from the plugin
+	// our Notify function will send events to this channel
 	Events chan *proto.Event
 
+	// the plugin manager is responsible for managing the plugin lifecycle and brokering
+	// communication between the plugin and the collector
 	pluginManager *plugin.PluginManager
 	// the partition to collect
 	partition *config.Partition
-	// the execution
+	// the execution is used to manage the state of the collection
 	execution *execution
-
+	// the parquet convertor is used to convert the JSONL files to parquet
 	parquetConvertor *parquet.Converter
 
 	// the current plugin status - used to update the spinner
@@ -44,7 +48,7 @@ type Collector struct {
 	// the subdirectory of ~/.tailpipe/internal which will be used to store all file data for this collection
 	// this will have the form ~/.tailpipe/internal/collection/<profile>/<pid>
 	collectionTempDir string
-
+	// the path to the JSONL files - the plugin will write to this path
 	sourcePath string
 
 	// bubble tea app
@@ -52,13 +56,16 @@ type Collector struct {
 	cancel context.CancelFunc
 }
 
+// New creates a new collector
 func New(pluginManager *plugin.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	// first clear out any old collection temp dirs
 	filepaths.CleanupCollectionTempDirs()
+	// then create a new collection temp dir
 	collectionTempDir := filepaths.EnsureCollectionTempDir()
 
+	// create the collector
 	c := &Collector{
 		Events:            make(chan *proto.Event, eventBufferSize),
 		pluginManager:     pluginManager,
@@ -80,6 +87,11 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	return c, nil
 }
 
+// Close closes the collector
+// - closes the events channel
+// - closes the parquet convertor
+// - removes the JSONL path
+// - removes the collection temp dir
 func (c *Collector) Close() {
 	close(c.Events)
 
@@ -94,6 +106,13 @@ func (c *Collector) Close() {
 	_ = os.RemoveAll(c.collectionTempDir)
 }
 
+// Collect asynchronously starts the collection process
+// - creates a new execution
+// - tells the plugin manager to start collecting
+// - validates the schema returned by the plugin
+// - starts the collection UI
+// - creates a parquet writer, which will process the JSONL files as they are written
+// - starts listening to plugin events
 func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
@@ -108,7 +127,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		}
 	}()
 
-	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
+	// create the execution
+	// NOTE: create _before_ calling the plugin to ensure it is ready to receive the started event
 	c.execution = newExecution(c.partition)
 
 	// tell plugin to start collecting
@@ -117,8 +137,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		return err
 	}
 
-	resolvedFromTime := collectResponse.FromTime
-	// now set the execution id
+	// _now_ set the execution id
 	c.execution.id = collectResponse.ExecutionId
 
 	// validate the schema returned by the plugin
@@ -130,6 +149,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		// and return error
 		return err
 	}
+	// determine the time to start collecting from
+	resolvedFromTime := collectResponse.FromTime
 
 	// display the progress UI
 	err = c.showCollectionStatus(resolvedFromTime)
@@ -150,8 +171,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	}
 	c.parquetConvertor = parquetConvertor
 
-	// start listening to plugin event
-	c.listenToEventsAsync(ctx)
+	// start listening to plugin events asynchronously
+	go c.listenToEvents(ctx)
 
 	return nil
 }
@@ -174,7 +195,8 @@ func (c *Collector) WaitForCompletion(ctx context.Context) error {
 	return c.execution.waitForCompletion(ctx)
 }
 
-// Compact compacts the parquet files
+// Compact compacts the parquet files so that for each date folder
+// (the lowest level of the partition) there is only one parquet file
 func (c *Collector) Compact(ctx context.Context) error {
 	slog.Info("Compacting parquet files")
 
@@ -203,7 +225,7 @@ func (c *Collector) Completed() {
 
 	// if we suppressed progress display, we should write the summary
 	if !viper.GetBool(pconstants.ArgProgress) {
-		fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // we are writing to stdout
+		_, _ = fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // UI output
 	}
 }
 
@@ -291,31 +313,35 @@ func (c *Collector) createTableView(ctx context.Context) error {
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
 	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime)
 
+	// if the progress flag is set, start the tea app to display the progress
 	if viper.GetBool(pconstants.ArgProgress) {
-		return c.showTeaAppAsync()
+		// start the tea app asynchronously
+		go c.showTeaApp()
+		return nil
 	}
-
-	return c.showMinimalCollectionStatus()
+	// otherwise, just show a simple initial message - we will show a simple summary tat the end
+	return c.showMinimalCollectionStartMessage()
 }
 
-func (c *Collector) showTeaAppAsync() error {
+// showTeaApp starts the tea app to display the collection progress
+func (c *Collector) showTeaApp() {
+	// create the tea app
 	c.app = tea.NewProgram(newCollectionModel(c.status))
-
-	go func() {
-		model, err := c.app.Run()
-		if model.(collectionModel).cancelled {
-			slog.Info("Collection UI returned cancelled")
-			c.doCancel()
-		}
-		if err != nil {
-			slog.Warn("Collection UI returned error", "error", err)
-			c.doCancel()
-		}
-	}()
-	return nil
+	// and start it
+	model, err := c.app.Run()
+	if model.(collectionModel).cancelled {
+		slog.Info("Collection UI returned cancelled")
+		c.doCancel()
+	}
+	if err != nil {
+		slog.Warn("Collection UI returned error", "error", err)
+		c.doCancel()
+	}
 }
 
-func (c *Collector) showMinimalCollectionStatus() error {
+// showMinimalCollectionStartMessage displays a simple status message to indicate that the collection has started
+// this is used when the progress flag is not set
+func (c *Collector) showMinimalCollectionStartMessage() error {
 	// display initial message
 	initMsg := c.status.CollectionHeader()
 	_, err := fmt.Print(initMsg) //nolint:forbidigo //desired output
@@ -386,17 +412,16 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventCompl
 	return nil
 }
 
-func (c *Collector) listenToEventsAsync(ctx context.Context) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case event := <-c.Events:
-				c.handlePluginEvent(ctx, event)
-			}
+// listenToEvents listens to the events channel and handles events
+func (c *Collector) listenToEvents(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-c.Events:
+			c.handlePluginEvent(ctx, event)
 		}
-	}()
+	}
 }
 
 func (c *Collector) doCancel() {

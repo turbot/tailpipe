@@ -96,8 +96,10 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	// create the condition variable using the same lock
 	w.chunkSignal = sync.NewCond(&w.chunkLock)
 
-	// initliasse the workers
-	w.createWorkers()
+	// initialise the workers
+	if err := w.createWorkers(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create workers: %w", err)
+	}
 	// start the goroutine to schedule the jobs
 	go w.scheduler(ctx)
 
@@ -239,6 +241,13 @@ func (w *Converter) updateRowCount(count int64) {
 	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount))
 }
 
+// createWorkers initializes and starts parquet conversion workers based on configured memory limits
+// It calculates the optimal number of workers and memory allocation per worker using the following logic:
+// - If no memory limit is set, uses defaultParquetWorkerCount workers with defaultWorkerMemoryMb per worker
+// - If memory limit is set, ensures each worker gets at least minWorkerMemoryMb, reducing worker count if needed
+// - Reserves memory for the main process by dividing total memory by (workerCount + 1)
+// - Creates and starts the calculated number of workers, each with their allocated memory
+// Returns error if worker creation fails
 func (w *Converter) createWorkers(ctx context.Context) error {
 	// determine the number of workers to start
 	// see if there was a memory limit
