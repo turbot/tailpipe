@@ -8,7 +8,6 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 	"log"
 	"path/filepath"
-	"strings"
 )
 
 // populate the ConversionSchema
@@ -147,14 +146,6 @@ func (w *Converter) inferSchemaForJSONLFileWithDescribe(filePath string) (*schem
 	}
 
 	return res, nil
-}
-
-func (e *SchemaChangeError) Error() string {
-	changeStrings := make([]string, len(e.ChangedColumns))
-	for i, change := range e.ChangedColumns {
-		changeStrings[i] = fmt.Sprintf("'%s': '%s' -> '%s'", change.Name, change.OldType, change.NewType)
-	}
-	return fmt.Sprintf("inferred schema change detected - consider specifying a column type in table definition: %s", strings.Join(changeStrings, ", "))
 }
 
 func (w *Converter) detectSchemaChange(filePath string) error {

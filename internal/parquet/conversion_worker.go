@@ -95,6 +95,18 @@ func (w *conversionWorker) close() {
 	_ = w.db.Close()
 }
 
+func (w *conversionWorker) reopenConnection() error {
+	// close existing connection
+	w.close()
+	// create a new connection
+	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
+	if err != nil {
+		return fmt.Errorf("failed to reopen DuckDB connection: %w", err)
+	}
+	w.db = db
+	return nil
+}
+
 func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 	// ensure we signal the converter when we are done
 	defer w.converter.wg.Done()
@@ -123,8 +135,6 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 
 // convert the given jsonl file to parquet
 func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error) {
-	partition := w.converter.Partition
-
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
 		return 0, NewConversionError("invalid file type - conversionWorker only supports .jsonl files", 0, jsonlFilePath)
@@ -134,72 +144,201 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 		return 0, NewConversionError("file does not exist", 0, jsonlFilePath)
 	}
 
-	// render the view query
-	selectQuery := fmt.Sprintf(w.converter.viewQueryFormat, jsonlFilePath)
-
-	// if the partition includes a filter, add a where clause
-	if partition.Filter != "" {
-		selectQuery += fmt.Sprintf(" where %s", partition.Filter)
+	// copy the data from the jsonl file to a temp table
+	if err := w.copyChunkToTempTable(jsonlFilePath); err != nil {
+		// copyChunkToTempTable will already have called handleSchemaChangeError anf handleConversionError
+		return 0, err
 	}
+	// defer the cleanup of the temp table
+	defer func() {
+		// TODO benchmark whether dropping the table actually makes any difference to memory pressure
+		//  or can we rely on the drop if exists?
+		// validateSchema creates the table temp_data - the cleanupQuery drops it
+		_, tempTableError := w.db.Exec("drop table if exists temp_data;")
+		if tempTableError != nil {
+			slog.Error("failed to drop temp table", "error", err)
+			// if we do not already have an error return this error
+			if err == nil {
+				err = tempTableError
+			}
+		}
+	}()
+
+	// now validate the data
+	if err := w.validateSchema(jsonlFilePath); err != nil {
+		// TODO do a partial conversion???
+		// if we have an error, return it
+		return 0, err
+	}
+
+	// ok now we can do the copy query to write the data in the temp table to parquet files
+	// we limit the number of partitions we create per copy query to avoid excessive memory usage
+	// TODO consider dynamically changing the number of partitions to process based on column count
+	const defaultMaxPartitionsPerConversion = 500
+	partitionsPerConversion := defaultMaxPartitionsPerConversion
+
+	// get distinct partition key combinations
+	partitionKeys, err := w.getDistinctPartitionKeyCombinations()
+	if err != nil {
+		return 0, handleConversionError(err, jsonlFilePath)
+	}
+	slog.Debug("found partition combinations", "count", len(partitionKeys))
+
+	// Process partition keys in batches
+	var totalRowCount int64
+	for len(partitionKeys) > 0 {
+		batchSize := partitionsPerConversion
+		if batchSize > len(partitionKeys) {
+			batchSize = len(partitionKeys)
+		}
+
+		batch := partitionKeys[:batchSize]
+		rowCount, err := w.doConversionForBatch(jsonlFilePath, batch)
+		if err != nil {
+			if conversionRanOutOfMemory(err) {
+				if err := w.reopenConnection(); err != nil {
+					return totalRowCount, err
+				}
+				partitionsPerConversion = partitionsPerConversion / 2
+				if partitionsPerConversion < 1 {
+					return totalRowCount, fmt.Errorf("failed to convert batch - partition count reduced to 0")
+				}
+				continue
+			}
+			return totalRowCount, err
+		}
+
+		totalRowCount += rowCount
+		partitionKeys = partitionKeys[batchSize:]
+	}
+
+	return totalRowCount, nil
 
 	// we need to perform validation if:
 	// 1. the table schema was partial (i.e. this is a custom table with RowMappings defined)
 	// 2. this is a directly converted artifact
 	// 3. any required columns have transforms
 
-	// (NOTE: if we validate we write the data to a temp table then update the select query to read from that temp table)
-	// get list of columns to validate
-	columnsToValidate := w.getColumnsToValidate()
+	//selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
+	//
+	//if cleanupQuery != "" {
+	//	defer func() {
+	//		// TODO benchmark whether dropping the table actually makes any difference to memory pressure
+	//		//  or can we rely on the drop if exists?
+	//		// validateSchema creates the table temp_data - the cleanupQuery drops it
+	//		_, tempTableError := w.db.Exec(cleanupQuery)
+	//		if tempTableError != nil {
+	//			slog.Error("failed to drop temp table", "error", err)
+	//			// if we do not already have an error return this error
+	//			if err == nil {
+	//				err = tempTableError
+	//			}
+	//		}
+	//	}()
+	//}
+	//// did validation fail
+	//if rowValidationError != nil {
+	//	// if no select query was returned, we cannot proceed - just return the error
+	//	if selectQuery == "" {
+	//		return 0, rowValidationError
+	//	}
+	//	// so we have a validation error - but we DID return an updated select query - that indicates we should
+	//	// continue and just report the row validation errors
+	//
+	//	// ensure that we return the row validation error, merged with any other error we receive
+	//	defer func() {
+	//		if err == nil {
+	//			err = rowValidationError
+	//		} else {
+	//			var conversionError *ConversionError
+	//			if errors.As(rowValidationError, &conversionError) {
+	//				// we have a conversion error - we need to set the row count to 0
+	//				// so we can report the error
+	//				conversionError.Merge(err)
+	//			}
+	//			err = conversionError
+	//		}
+	//	}()
+	//}
 
-	var cleanupQuery string
-	var rowValidationError error
+}
 
-	selectQuery, cleanupQuery, rowValidationError = w.validateSchema(jsonlFilePath, selectQuery, columnsToValidate)
+func conversionRanOutOfMemory(err error) bool {
+	// TODO implement a better check for out of memory errors
+	return true
+}
 
-	if cleanupQuery != "" {
-		defer func() {
-			// TODO benchmark whether dropping the table actually makes any difference to memory pressure
-			//  or can we rely on the drop if exists?
-			// validateSchema creates the table temp_data - the cleanupQuery drops it
-			_, tempTableError := w.db.Exec(cleanupQuery)
-			if tempTableError != nil {
-				slog.Error("failed to drop temp table", "error", err)
-				// if we do not already have an error return this error
-				if err == nil {
-					err = tempTableError
-				}
-			}
-		}()
+func (w *conversionWorker) copyChunkToTempTable(jsonlFilePath string) error {
+	var queryBuilder strings.Builder
+
+	// render the view query with the jsonl file path
+	// - this build a select clause which selects the required data from the JSONL file (with columns types specified)
+	selectQuery := fmt.Sprintf(w.converter.viewQueryFormat, jsonlFilePath)
+
+	// now copy the data from the JSONL file to a temp table
+
+	// drop the temp table if it exists
+	queryBuilder.WriteString("drop table if exists temp_data;\n")
+
+	// create the temp table and copy the data from the JSONL file
+	// note:
+	// - also select a row id
+	// - add extra select wrapper to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
+	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as select row_number() over () as rowid, * from (%s);\n", selectQuery))
+	_, err := w.db.Exec(queryBuilder.String())
+	if err != nil {
+		return w.handleSchemaChangeError(err, jsonlFilePath)
+
 	}
-	// did validation fail
-	if rowValidationError != nil {
-		// if no select query was returned, we cannot proceed - just return the error
-		if selectQuery == "" {
-			return 0, rowValidationError
+	return nil
+}
+
+// getDistinctPartitionKeyCombinations returns a map of partition key column names to their values from temp_data table
+func (w *conversionWorker) getDistinctPartitionKeyCombinations() ([]map[string]interface{}, error) {
+	// define columns
+	columns := []string{sdkconstants.TpTable, sdkconstants.TpPartition, sdkconstants.TpIndex, sdkconstants.TpDate}
+
+	// build query to get distinct combinations
+	query := fmt.Sprintf(`select distinct %s from temp_data`,
+		strings.Join(columns, ","))
+
+	// execute query
+	rows, err := w.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []map[string]interface{}
+	for rows.Next() {
+		values := make([]interface{}, 4)
+		scanArgs := make([]interface{}, 4)
+		for i := range values {
+			scanArgs[i] = &values[i]
 		}
-		// so we have a validation error - but we DID return an updated select query - that indicates we should
-		// continue and just report the row validation errors
+		if err := rows.Scan(scanArgs...); err != nil {
+			return nil, err
+		}
 
-		// ensure that we return the row validation error, merged with any other error we receive
-		defer func() {
-			if err == nil {
-				err = rowValidationError
-			} else {
-				var conversionError *ConversionError
-				if errors.As(rowValidationError, &conversionError) {
-					// we have a conversion error - we need to set the row count to 0
-					// so we can report the error
-					conversionError.Merge(err)
-				}
-				err = conversionError
-			}
-		}()
+		// create map for this row
+		rowMap := make(map[string]interface{})
+		for i, col := range columns {
+			rowMap[col] = values[i]
+		}
+		result = append(result, rowMap)
 	}
+	return result, rows.Err()
+}
 
+func (w *conversionWorker) doConversionForBatch(jsonlFilePath string, partitionKeys []map[string]interface{}) (int64, error) {
 	// Create a query to write to partitioned parquet files
 
 	// get a unique file root
 	fileRoot := w.fileRootProvider.GetFileRoot()
+	selectQuery := fmt.Sprintf("select * from temp_data")
+	if w.converter.Partition.Filter != "" {
+		selectQuery += fmt.Sprintf(" where %s", w.converter.Partition.Filter)
+	}
 
 	// build a query to export the rows to partitioned parquet files
 	// NOTE: we initially write to a file with the extension '.parquet.tmp' - this is to avoid the creation of invalid parquet files
@@ -224,7 +363,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	row := w.db.QueryRow(exportQuery)
 	var rowCount int64
 	var files []interface{}
-	err = row.Scan(&rowCount, &files)
+	err := row.Scan(&rowCount, &files)
 	if err != nil {
 		// try to get the row count of the file we failed to convert
 		return 0, handleConversionError(err, jsonlFilePath)
@@ -260,15 +399,13 @@ func (w *conversionWorker) getColumnsToValidate() []string {
 // validateSchema copies the data from the given select query to a temp table and validates required fields are non null
 // it also validates that the schema of the chunk is the same as the inferred schema and if it is not, reports a useful error
 // the query count of invalid rows and a list of null fields
-func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery string, columnsToValidate []string) (string, string, error) {
-	// if we have no columns to validate, just write the data to the temp table,
-	// a process which will fail if the schema has changed, alerting us of this error
-	if len(columnsToValidate) == 0 {
-		return w.schemasChangeValidation(jsonlFilePath, selectQuery)
-	}
+func (w *conversionWorker) validateSchema(jsonlFilePath string) error {
+	// (NOTE: if we validate we write the data to a temp table then update the select query to read from that temp table)
+	// get list of columns to validate
+	columnsToValidate := w.getColumnsToValidate()
 
 	// if we have no columns to validate, biuld a  validation query to return the number of invalid rows and the columns with nulls
-	validationQuery := w.buildValidationQuery(selectQuery, columnsToValidate)
+	validationQuery := w.buildValidationQuery(columnsToValidate)
 
 	row := w.db.QueryRow(validationQuery)
 	var totalRows int64
@@ -276,9 +413,7 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 
 	err := row.Scan(&totalRows, &columnsWithNullsInterface)
 	if err != nil {
-
-		// just return the original error
-		return "", "", w.handleSchemaChangeError(err, jsonlFilePath)
+		return w.handleSchemaChangeError(err, jsonlFilePath)
 	}
 
 	// Convert the interface slice to string slice
@@ -302,31 +437,11 @@ func (w *conversionWorker) validateSchema(jsonlFilePath string, selectQuery stri
 
 		// delete invalid rows from the temp table
 		if err := w.deleteInvalidRows(columnsToValidate); err != nil {
-			return "", "", handleConversionError(err, jsonlFilePath)
+			return handleConversionError(err, jsonlFilePath)
 		}
 	}
-	// build a select query to select the data back out of the temp table (excluding rowid, which we added for validation)
-	selectQuery = "select * exclude rowid from temp_data"
-	cleanupQuery := "drop table temp_data"
-	return selectQuery, cleanupQuery, rowValidationError
-}
-
-func (w *conversionWorker) schemasChangeValidation(jsonlFilePath string, selectQuery string) (string, string, error) {
-	var queryBuilder strings.Builder
-	// Step 1: Create a temporary table to hold the data we want to validate
-	// This allows us to efficiently check multiple columns without scanning the source multiple times
-	queryBuilder.WriteString("drop table if exists temp_data;\n")
-	// note: extra select wrapper is used to allow for wrapping query before filter is applied so filter can use struct fields with dot-notation
-	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as select * from (%s);\n", selectQuery))
-	_, err := w.db.Exec(queryBuilder.String())
-	if err != nil {
-		return "", "", w.handleSchemaChangeError(err, jsonlFilePath)
-
-	}
-	selectQuery = "select * from temp_data"
-	cleanupQuery := "drop table temp_data"
-
-	return selectQuery, cleanupQuery, nil
+	// if we have no errors, we can just return nil
+	return nil
 }
 
 // handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
@@ -334,31 +449,25 @@ func (w *conversionWorker) schemasChangeValidation(jsonlFilePath string, selectQ
 func (w *conversionWorker) handleSchemaChangeError(err error, jsonlFilePath string) error {
 	schemaChangeErr := w.converter.detectSchemaChange(jsonlFilePath)
 	if schemaChangeErr != nil {
-		// if the error returned is a SchemaChangeError, we can return that so update the val of err
+		// if the error returned from detectSchemaChange is a SchemaChangeError, return that instead of the original error
 		var e = &SchemaChangeError{}
 		if errors.As(schemaChangeErr, &e) {
-			// try to get the row count of the file we failed to convert
-			return handleConversionError(e, jsonlFilePath)
+			// update err and fall through to handleConversionError - this wraps the error with additional row count info
+			err = e
 		}
 	}
 
-	// just return the original error
+	// just return the original error, wrapped with the row count
 	return handleConversionError(err, jsonlFilePath)
 }
 
 // buildValidationQuery builds a query to copy the data from the select query to a temp table
 // it then validates that the required columns are not null, removing invalid rows and returning
 // the count of invalid rows and the columns with nulls
-func (w *conversionWorker) buildValidationQuery(selectQuery string, columnsToValidate []string) string {
+func (w *conversionWorker) buildValidationQuery(columnsToValidate []string) string {
 	queryBuilder := strings.Builder{}
 
-	// Step 1: Create a temporary table to hold the data we want to validate
-	// This allows us to efficiently check multiple columns without scanning the source multiple times
-	// NOTE: add in row number to allow for distinct row counting - we must exclude this when we select data out of the temp table again
-	queryBuilder.WriteString("drop table if exists temp_data;\n")
-	queryBuilder.WriteString(fmt.Sprintf("create temp table temp_data as select row_number() over () as rowid, * from (%s);\n", selectQuery))
-
-	// Step 2: Build the validation query that:
+	// Build the validation query that:
 	// - Counts distinct rows that have null values in required columns
 	// - Lists all required columns that contain null values
 	queryBuilder.WriteString(`select
