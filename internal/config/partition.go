@@ -103,7 +103,6 @@ func (c *Partition) Validate() hcl.Diagnostics {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
 			Summary:  fmt.Sprintf("Partition %s is missing required source block", c.GetUnqualifiedName()),
-			Detail:   "A source block is required for every partition to specify the data source.",
 		})
 	}
 
