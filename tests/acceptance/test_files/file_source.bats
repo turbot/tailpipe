@@ -24,6 +24,8 @@ EOF
   assert_output --regexp 'count
 "200,000"'
 
+  # remove the config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/cloudtrail_logs.tpc
 }
 
 function teardown() {
