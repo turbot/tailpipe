@@ -13,7 +13,7 @@ export TEST_DATA_DIR=$MY_PATH/test_data/templates
 export SOURCE_FILES_DIR=$MY_PATH/test_data/source_files
 
 # Must have these commands for the test suite to run
-declare -a required_commands=("sed" "tailpipe" $BATS_PATH "rm" "mv" "cp" "mkdir" "cd" "node" "npm" "npx" "head" "wc" "find" "basename" "dirname")
+declare -a required_commands=("sed" "tailpipe" $BATS_PATH "rm" "mv" "cp" "mkdir" "cd" "node" "npm" "npx" "head" "wc" "find" "basename" "dirname" "expect")
 
 for required_command in "${required_commands[@]}"
 do
