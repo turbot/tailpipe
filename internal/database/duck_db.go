@@ -20,6 +20,7 @@ type DuckDb struct {
 	extensions     []string
 	dataSourceName string
 	tempDir        string
+	maxMemoryMb    int
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
@@ -49,11 +50,16 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 	if tempDir == "" {
 		tempDir = filepaths.EnsureCollectionTempDir()
 	}
-	if _, err := db.Exec(fmt.Sprintf("SET temp_directory = '%s';", tempDir)); err != nil {
+	if _, err := db.Exec(fmt.Sprintf("set temp_directory = '%s';", tempDir)); err != nil {
 		_ = w.Close()
 		return nil, fmt.Errorf("failed to set temp_directory: %w", err)
 	}
-
+	if w.maxMemoryMb > 0 {
+		if _, err := db.Exec(fmt.Sprintf("set max_memory = '%dMB';", w.maxMemoryMb)); err != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("failed to set max_memory: %w", err)
+		}
+	}
 	return w, nil
 }
 

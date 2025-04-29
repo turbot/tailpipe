@@ -405,7 +405,6 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, executionId st
 				return
 			}
 
-			slog.Info("got plugin event", "event", e)
 			pluginEventChan <- e
 			// if this is a completion event , stop polling
 			if pe.GetCompleteEvent() != nil {

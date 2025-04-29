@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/marcboeker/go-duckdb/v2"
 	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -38,10 +39,10 @@ type conversionWorker struct {
 	// helper struct which provides unique filename roots
 	fileRootProvider *FileRootProvider
 	db               *database.DuckDb
-	maxMemoryMb      int64
+	maxMemoryMb      int
 }
 
-func newParquetConversionWorker(converter *Converter, maxMemoryMb int64) (*conversionWorker, error) {
+func newParquetConversionWorker(converter *Converter, maxMemoryMb int) (*conversionWorker, error) {
 	w := &conversionWorker{
 		jobChan:          converter.jobChan,
 		sourceDir:        converter.sourceDir,
@@ -51,12 +52,9 @@ func newParquetConversionWorker(converter *Converter, maxMemoryMb int64) (*conve
 		maxMemoryMb:      maxMemoryMb,
 	}
 
-	// create a new DuckDB instance for each worker
-	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create DuckDB wrapper: %w", err)
+	if err := w.createDuckDbConnection(); err != nil {
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
-	w.db = db
 	return w, nil
 }
 
@@ -95,16 +93,22 @@ func (w *conversionWorker) close() {
 	_ = w.db.Close()
 }
 
-func (w *conversionWorker) reopenConnection() error {
-	// close existing connection
-	w.close()
-	// create a new connection
-	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions))
+// createDuckDbConnection creates a new DuckDB connection, setting the max memory limit
+func (w *conversionWorker) createDuckDbConnection() error {
+	// TODO HACK
+	//w.maxMemoryMb = 1024
+	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions), database.WithMaxMemoryMb(w.maxMemoryMb))
 	if err != nil {
 		return fmt.Errorf("failed to reopen DuckDB connection: %w", err)
 	}
 	w.db = db
 	return nil
+}
+
+// close existing connection and create a new database connection
+func (w *conversionWorker) reopenConnection() error {
+	w.close()
+	return w.createDuckDbConnection()
 }
 
 func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
@@ -135,6 +139,12 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 
 // convert the given jsonl file to parquet
 func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error) {
+	t := time.Now()
+	slog.Debug("starting conversion", "file", jsonlFilePath)
+	defer func() {
+		slog.Info("conversion complete", "file", jsonlFilePath, "duration (s)", time.Since(t).Seconds())
+	}()
+
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
 		return 0, NewConversionError(errors.New("invalid file type - conversionWorker only supports .jsonl files"), 0, jsonlFilePath)
@@ -304,9 +314,13 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 
 }
 
+// conversionRanOutOfMemory checks if the error is an out-of-memory error from DuckDB
 func conversionRanOutOfMemory(err error) bool {
-	// TODO implement a better check for out of memory errors
-	return true
+	var duckDBErr = &duckdb.Error{}
+	if errors.As(err, &duckDBErr) {
+		return duckDBErr.Type == duckdb.ErrorTypeOutOfMemory
+	}
+	return false
 }
 
 func (w *conversionWorker) copyChunkToTempTable(jsonlFilePath string) error {
@@ -491,6 +505,10 @@ func (w *conversionWorker) validateRows(jsonlFilePath string) error {
 	// (NOTE: if we validate we write the data to a temp table then update the select query to read from that temp table)
 	// get list of columns to validate
 	columnsToValidate := w.getColumnsToValidate()
+	if len(columnsToValidate) == 0 {
+		// no columns to validate - we are done
+		return nil
+	}
 
 	// if we have no columns to validate, biuld a  validation query to return the number of invalid rows and the columns with nulls
 	validationQuery := w.buildValidationQuery(columnsToValidate)

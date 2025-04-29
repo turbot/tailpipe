@@ -81,3 +81,7 @@ func (c *ConversionError) Error() string {
 func (c *ConversionError) Merge(err error) {
 	c.BaseError = fmt.Errorf("%s\n%s", c.BaseError.Error(), err.Error())
 }
+
+func (c *ConversionError) Unwrap() error {
+	return c.BaseError
+}

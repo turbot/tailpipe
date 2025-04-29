@@ -109,12 +109,14 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	for _, partition := range partitions {
 		// if a from time is set, clear the partition data from that time forward
 		if !fromTime.IsZero() {
+			slog.Info("Deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
 			_, err := parquet.DeleteParquetFiles(partition, fromTime)
 			if err != nil {
 				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "from", fromTime, "error", err)
 				errList = append(errList, err)
 				continue
 			}
+			slog.Info("Completed deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
 		}
 		// do the collection
 		err = collectPartition(ctx, cancel, partition, fromTime, pluginManager)

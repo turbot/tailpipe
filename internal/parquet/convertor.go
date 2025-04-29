@@ -251,11 +251,11 @@ func (w *Converter) updateRowCount(count int64) {
 func (w *Converter) createWorkers(ctx context.Context) error {
 	// determine the number of workers to start
 	// see if there was a memory limit
-	maxMemoryMb := viper.GetInt64(pconstants.ArgMemoryMaxMb)
+	maxMemoryMb := viper.GetInt(pconstants.ArgMemoryMaxMb)
 
 	// if no memory limit is set, calculate based on default worker count and min memory per worker
 	if maxMemoryMb == 0 {
-		maxMemoryMb = int64((defaultParquetWorkerCount + 1) * defaultWorkerMemoryMb)
+		maxMemoryMb = (defaultParquetWorkerCount + 1) * defaultWorkerMemoryMb
 	}
 
 	// calculate memory per worker and adjust worker count if needed
@@ -263,18 +263,18 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 	// - if calculated memory per worker is less than minimum required:
 	//   - reduce worker count to ensure each worker has minimum required memory
 	//   - ensure at least 1 worker remains
-	memoryPerWorkerMb := maxMemoryMb / int64(defaultParquetWorkerCount+1)
+	memoryPerWorkerMb := maxMemoryMb/defaultParquetWorkerCount + 1
 	workerCount := defaultParquetWorkerCount
-	if memoryPerWorkerMb < int64(minWorkerMemoryMb) {
+	if memoryPerWorkerMb < minWorkerMemoryMb {
 		// reduce worker count to ensure minimum memory per worker
-		workerCount = int(maxMemoryMb/int64(minWorkerMemoryMb)) - 1
+		workerCount = maxMemoryMb/minWorkerMemoryMb - 1
 		if workerCount < 1 {
 			workerCount = 1
 		}
 	}
 
 	// create the job channel
-	w.jobChan = make(chan *parquetJob, defaultParquetWorkerCount*2)
+	w.jobChan = make(chan *parquetJob, workerCount*2)
 
 	// start the workers
 	for i := 0; i < workerCount; i++ {
