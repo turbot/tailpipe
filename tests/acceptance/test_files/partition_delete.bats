@@ -23,13 +23,8 @@ EOF
   local row_count=$(echo "$output" | jq '.[] | select(.name == "chaos_all_columns.delete_test") | .local.row_count')
   assert_equal "$row_count" "20"
 
-  # Run partition delete with confirmation
-  run expect -c '
-    spawn tailpipe partition delete chaos_all_columns.delete_test
-    expect "Are you sure you want to delete partition chaos_all_columns.delete_test? (y/N):"
-    send "y\r"
-    expect eof
-  '
+  # Run partition delete
+  run tailpipe partition delete chaos_all_columns.delete_test --force
   echo $output
 
   # Verify the partition was deleted by checking partition list
