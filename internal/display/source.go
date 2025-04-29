@@ -10,18 +10,23 @@ import (
 )
 
 type SourceResource struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	Plugin      string `json:"plugin,omitempty"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	Plugin      string            `json:"plugin,omitempty"`
+	Properties  map[string]string `json:"properties,omitempty"`
 }
 
 // GetShowData implements the printers.Showable interface
 func (r *SourceResource) GetShowData() *printers.RowData {
-	res := printers.NewRowData(
+	var allProperties = []printers.FieldValue{
 		printers.NewFieldValue("Name", r.Name),
 		printers.NewFieldValue("Plugin", r.Plugin),
 		printers.NewFieldValue("Description", r.Description),
-	)
+	}
+	for k, v := range r.Properties {
+		allProperties = append(allProperties, printers.NewFieldValue(k, v))
+	}
+	res := printers.NewRowData(allProperties...)
 	return res
 }
 
@@ -65,17 +70,30 @@ func ListSourceResources(ctx context.Context) ([]*SourceResource, error) {
 }
 
 func GetSourceResource(ctx context.Context, sourceName string) (*SourceResource, error) {
-	// TODO: #refactor simplify by obtaining correct plugin and then extracting it's source
-	allSources, err := ListSourceResources(ctx)
+
+	// get the plugin which provides the format (note  config.GetPluginForFormatByName is smart enough
+	// to check whether this format is a preset and if so, return the plugin which provides the preset)
+	pluginName := config.GetPluginForSourceType(sourceName, config.GlobalConfig.PluginVersions)
+
+	// describe plugin to get format info, passing the custom formats list in case this is custom
+	// (we will have determined this above)
+	pm := plugin.NewPluginManager()
+	defer pm.Close()
+
+	desc, err := pm.Describe(ctx, pluginName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to describe source '%s': %w", sourceName, err)
 	}
 
-	for _, source := range allSources {
-		if source.Name == sourceName {
-			return source, nil
-		}
+	source, ok := desc.Sources[sourceName]
+	if !ok {
+		return nil, fmt.Errorf("source '%s' not found", sourceName)
 	}
+	return &SourceResource{
+		Name:        source.Name,
+		Description: source.Description,
+		Properties:  source.Properties,
+		Plugin:      pluginName,
+	}, nil
 
-	return nil, fmt.Errorf("source %s not found", sourceName)
 }
