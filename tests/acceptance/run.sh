@@ -10,6 +10,7 @@ export BATS_PATH=$MY_PATH/lib/bats/bin/bats
 export LIB_BATS_ASSERT=$MY_PATH/lib/bats-assert
 export LIB_BATS_SUPPORT=$MY_PATH/lib/bats-support
 export TEST_DATA_DIR=$MY_PATH/test_data/templates
+export SOURCE_FILES_DIR=$MY_PATH/test_data/source_files
 
 # Must have these commands for the test suite to run
 declare -a required_commands=("sed" "tailpipe" $BATS_PATH "rm" "mv" "cp" "mkdir" "cd" "node" "npm" "npx" "head" "wc" "find" "basename" "dirname")
