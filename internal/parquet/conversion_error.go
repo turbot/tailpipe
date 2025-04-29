@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -31,7 +30,7 @@ func handleConversionError(err error, path string) error {
 	slog.Error("parquet conversion failed", logArgs...)
 
 	// return wrapped error
-	return NewConversionError(err.Error(), rows, path)
+	return NewConversionError(err, rows, path)
 }
 
 func countLines(filename string) (int64, error) {
@@ -65,12 +64,12 @@ type ConversionError struct {
 	displayError string
 }
 
-func NewConversionError(msg string, rowsAffected int64, path string) *ConversionError {
+func NewConversionError(err error, rowsAffected int64, path string) *ConversionError {
 	return &ConversionError{
 		SourceFile:   filepath.Base(path),
-		BaseError:    errors.New(msg),
+		BaseError:    err,
 		RowsAffected: rowsAffected,
-		displayError: strings.Split(msg, "\n")[0],
+		displayError: strings.Split(err.Error(), "\n")[0],
 	}
 }
 
