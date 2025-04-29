@@ -3,6 +3,8 @@ package display
 import (
 	"context"
 	"fmt"
+	"github.com/iancoleman/strcase"
+	"github.com/turbot/tailpipe-plugin-sdk/types"
 
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
@@ -10,10 +12,10 @@ import (
 )
 
 type SourceResource struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description,omitempty"`
-	Plugin      string            `json:"plugin,omitempty"`
-	Properties  map[string]string `json:"properties,omitempty"`
+	Name        string                             `json:"name"`
+	Description string                             `json:"description,omitempty"`
+	Plugin      string                             `json:"plugin,omitempty"`
+	Properties  map[string]*types.PropertyMetadata `json:"properties,omitempty"`
 }
 
 // GetShowData implements the printers.Showable interface
@@ -23,8 +25,22 @@ func (r *SourceResource) GetShowData() *printers.RowData {
 		printers.NewFieldValue("Plugin", r.Plugin),
 		printers.NewFieldValue("Description", r.Description),
 	}
-	for k, v := range r.Properties {
-		allProperties = append(allProperties, printers.NewFieldValue(k, v))
+	if len(r.Properties) > 0 {
+		args := map[string]string{}
+
+		for k, v := range r.Properties {
+			propertyString := v.Type
+			if v.Description != "" {
+				propertyString += ": " + v.Description
+			}
+			if v.Required {
+				propertyString += " (required)"
+			}
+			// convert field-name to camel case for pretty display
+			name := strcase.ToCamel(k)
+			args[name] = propertyString
+		}
+		allProperties = append(allProperties, printers.NewFieldValue("Properties", args))
 	}
 	res := printers.NewRowData(allProperties...)
 	return res
