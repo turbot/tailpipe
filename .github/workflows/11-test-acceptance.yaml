@@ -94,6 +94,7 @@ jobs:
           - "introspection"
           - "partition_tests"
           - "file_source"
+          - "partition_delete"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout

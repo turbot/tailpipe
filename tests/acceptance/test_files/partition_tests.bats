@@ -184,6 +184,76 @@ EOF
   rm -rf $TAILPIPE_INSTALL_DIR/config/incompatible_source_test.tpc
 }
 
+@test "verify behavior when no partitions match pattern" {
+  # Create a test partition configuration with a specific name
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/no_match_test.tpc
+partition "chaos_all_columns" "specific_partition" {
+  source "chaos_all_columns" {
+    row_count = 5
+  }
+}
+EOF
+
+  # Run tailpipe collect with a pattern that won't match any partitions
+  run tailpipe collect chaos_all_columns.non_matching_* --progress=false
+  echo $output
+
+  # Verify that the output contains the correct error message
+  assert_output --partial "Error: failed to get partition config: partition not found: chaos_all_columns.non_matching_*"
+
+  # Verify that no data was collected
+  run tailpipe query "select count(*) as count from chaos_all_columns" --output csv
+  echo $output
+
+  # Should show warning that no data has been collected
+  assert_output --partial "Warning: query 1 of 1 failed: no data has been collected for table chaos_all_columns"
+
+  # Clean up config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/no_match_test.tpc
+}
+
+@test "verify multiple matching partitions are collected correctly" {
+  # Create multiple test partition configurations
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/wildcard_test.tpc
+partition "chaos_all_columns" "wildcard_test_1" {
+  source "chaos_all_columns" {
+    row_count = 5
+  }
+}
+
+partition "chaos_all_columns" "wildcard_test_2" {
+  source "chaos_all_columns" {
+    row_count = 5
+  }
+}
+
+partition "chaos_all_columns" "wildcard_test_3" {
+  source "chaos_all_columns" {
+    row_count = 5
+  }
+}
+EOF
+
+  # Run tailpipe collect with wildcard pattern
+  run tailpipe collect chaos_all_columns.wildcard_test_* --progress=false
+  echo $output
+
+  # Verify that all partitions were collected successfully
+  assert_output --partial "Collecting logs for chaos_all_columns.wildcard_test_1"
+  assert_output --partial "Collecting logs for chaos_all_columns.wildcard_test_2"
+  assert_output --partial "Collecting logs for chaos_all_columns.wildcard_test_3"
+
+  # Verify the total row count across all partitions
+  run tailpipe query "select count(*) as count from chaos_all_columns" --output csv
+  echo $output
+
+  # Should be 15 rows total (5 rows per partition)
+  assert_equal "$output" "count
+15"
+
+  # Clean up config file
+  rm -rf $TAILPIPE_INSTALL_DIR/config/wildcard_test.tpc
+}
 
 function teardown() {
   rm -rf $TAILPIPE_INSTALL_DIR/data
