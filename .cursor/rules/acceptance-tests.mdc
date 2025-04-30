@@ -17,6 +17,7 @@ Acceptance tests are located in the [tests/acceptance/test_files/](mdc:tailpipe/
 - **Framework:** All tests use [BATS](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tailpipe/tailpipe/tailpipe/https:/github.com/bats-core/bats-core) for shell-based testing.
 - **CI/CD Integration:** After adding new test files, update the test matrix in [.github/workflows/11-test-acceptance.yaml](mdc:tailpipe/.github/workflows/11-test-acceptance.yaml) to include the new test file in the acceptance test suite.
 - **Command Dependencies:** When adding new tests that require additional shell commands or tools, update the `required_commands` array in `run.sh` to include the new dependencies. This ensures proper dependency checking in CI environments.
+- **Test Verification:** Always run the test using `./tests/acceptance/run.sh filename.bats` after adding or modifying a test file to verify it works as expected.
 
 ## Running Tests
 
@@ -37,6 +38,7 @@ For example:
 - [partition_invalid_filter.bats](mdc:tailpipe/tests/acceptance/test_files/partition_invalid_filter.bats): Example of checking for clear error messages on invalid input.
 - [partition_duplicate.bats](mdc:tailpipe/tests/acceptance/test_files/partition_duplicate.bats): Example of handling duplicate resource errors.
 - [partition_invalid_source.bats](mdc:tailpipe/tests/acceptance/test_files/partition_invalid_source.bats): Example of handling references to non-existent resources.
+- [partition_delete.bats](mdc:tailpipe/tests/acceptance/test_files/partition_delete.bats): Example of testing partition deletion and error handling for non-existent partitions.
 
 Use these examples as templates for new acceptance tests, adapting the structure and best practices for other features and scenarios.
 

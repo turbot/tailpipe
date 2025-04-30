@@ -41,6 +41,19 @@ EOF
   rm -rf $TAILPIPE_INSTALL_DIR/config/delete_test.tpc
 }
 
+@test "verify deletion of non-existent partition fails gracefully" {
+  # Attempt to delete a partition that doesn't exist
+  run tailpipe partition delete chaos_all_columns.non_existent_partition --force
+  echo $output
+
+  # Verify the command failed with appropriate error message
+  assert_failure
+  assert_output --partial "partition not found"
+  
+  # Verify the error message is user-friendly and clear
+  assert_output --partial "chaos_all_columns.non_existent_partition"
+}
+
 function teardown() {
   rm -rf $TAILPIPE_INSTALL_DIR/data
 } 
