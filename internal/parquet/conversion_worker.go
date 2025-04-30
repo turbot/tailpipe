@@ -17,6 +17,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/tailpipe/internal/resmon"
 )
 
 type parquetJob struct {
@@ -42,7 +43,7 @@ type conversionWorker struct {
 	maxMemoryMb      int
 }
 
-func newParquetConversionWorker(converter *Converter, maxMemoryMb int) (*conversionWorker, error) {
+func newConversionWorker(converter *Converter, maxMemoryMb int) (*conversionWorker, error) {
 	w := &conversionWorker{
 		jobChan:          converter.jobChan,
 		sourceDir:        converter.sourceDir,
@@ -95,8 +96,6 @@ func (w *conversionWorker) close() {
 
 // createDuckDbConnection creates a new DuckDB connection, setting the max memory limit
 func (w *conversionWorker) createDuckDbConnection() error {
-	// TODO HACK
-	//w.maxMemoryMb = 1024
 	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions), database.WithMaxMemoryMb(w.maxMemoryMb))
 	if err != nil {
 		return fmt.Errorf("failed to reopen DuckDB connection: %w", err)
@@ -105,10 +104,15 @@ func (w *conversionWorker) createDuckDbConnection() error {
 	return nil
 }
 
-// close existing connection and create a new database connection
-func (w *conversionWorker) reopenConnection() error {
-	w.close()
-	return w.createDuckDbConnection()
+func (w *conversionWorker) forceMemoryRelease() error {
+	if _, err := w.db.Exec("PRAGMA memory_limit='64MB';"); err != nil {
+		return fmt.Errorf("memory flush failed: %w", err)
+	}
+	_, err := w.db.Exec(fmt.Sprintf("PRAGMA memory_limit='%dMB';", w.maxMemoryMb))
+	if err != nil {
+		return fmt.Errorf("memory reset failed: %w", err)
+	}
+	return nil
 }
 
 func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
@@ -140,9 +144,16 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 // convert the given jsonl file to parquet
 func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error) {
 	t := time.Now()
-	slog.Debug("starting conversion", "file", jsonlFilePath)
+	slog.Info("starting conversion", "file", jsonlFilePath)
+
+	monCtx, cancel := context.WithCancel(context.Background())
+	monInterval := 250 * time.Millisecond
+	paths := []string{fmt.Sprintf("%s/*.tmp", w.db.GetTempDir())}
+	monChan := resmon.MonitorResourceUsage(monCtx, monInterval, paths)
 	defer func() {
-		slog.Info("conversion complete", "file", jsonlFilePath, "duration (s)", time.Since(t).Seconds())
+		cancel()
+		monRes := <-monChan
+		slog.Info("conversion complete", "file", jsonlFilePath, "duration (s)", time.Since(t).Seconds(), "memory (MB)", monRes.MaxMemoryUsageMb, "disk (MB)", monRes.MaxDiskUsageMb)
 	}()
 
 	// verify the jsonl file has a .jsonl extension
@@ -163,6 +174,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	defer func() {
 		// TODO benchmark whether dropping the table actually makes any difference to memory pressure
 		//  or can we rely on the drop if exists?
+		// TODO or other extreme is to close and reopen the connection each time
 		// validateRows creates the table temp_data - the cleanupQuery drops it
 		_, tempTableError := w.db.Exec("drop table if exists temp_data;")
 		if tempTableError != nil {
@@ -244,14 +256,15 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 		rowCount, err := w.doConversionForBatch(jsonlFilePath, rowOffset, rowsInBatch)
 		if err != nil {
 			if conversionRanOutOfMemory(err) {
-				// If out of memory, reduce batch size and retry
-				if err := w.reopenConnection(); err != nil {
+				// If out of memory, fluish memory, reopen the connection, and retry with fewer partitions
+				if err := w.forceMemoryRelease(); err != nil {
 					return totalRowCount, err
 				}
 				partitionsPerConversion /= 2
 				if partitionsPerConversion < 1 {
 					return totalRowCount, fmt.Errorf("failed to convert batch - partition count reduced to 0")
 				}
+				slog.Debug("restarting conversion with fewer partitions", "file", jsonlFilePath, "partitions", partitionsPerConversion)
 				continue
 			}
 			return totalRowCount, err

@@ -26,8 +26,11 @@ func handleConversionError(err error, path string) error {
 		logArgs = append(logArgs, "rows_affected", rows)
 	}
 
-	// log error
-	slog.Error("parquet conversion failed", logArgs...)
+	// log error (if this is NOT a memory error
+	// memory errors are handles separately and retried
+	if !conversionRanOutOfMemory(err) {
+		slog.Error("parquet conversion failed", logArgs...)
+	}
 
 	// return wrapped error
 	return NewConversionError(err, rows, path)

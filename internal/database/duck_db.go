@@ -101,6 +101,14 @@ func (d *DuckDb) ExecContext(ctx context.Context, query string, args ...interfac
 	})
 }
 
+// GetTempDir returns the temporary directory configured for DuckDB operations
+func (d *DuckDb) GetTempDir() string {
+	if d.tempDir == "" {
+		return filepaths.EnsureCollectionTempDir()
+	}
+	return d.tempDir
+}
+
 func (d *DuckDb) installAndLoadExtensions() error {
 	if d.DB == nil {
 		return fmt.Errorf("db is nil")

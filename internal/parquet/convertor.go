@@ -14,10 +14,11 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-const defaultParquetWorkerCount = 5
+// TODO HACK
+const defaultParquetWorkerCount = 1 // 5
 const chunkBufferLength = 1000
-const defaultWorkerMemoryMb = 4000
-const minWorkerMemoryMb = 2000
+const defaultWorkerMemoryMb = 4096
+const minWorkerMemoryMb = 4096
 
 // Converter struct executes all the conversions for a single collection
 // it therefore has a unique execution id, and will potentially convert of multiple JSONL files
@@ -255,7 +256,7 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 
 	// if no memory limit is set, calculate based on default worker count and min memory per worker
 	if maxMemoryMb == 0 {
-		maxMemoryMb = (defaultParquetWorkerCount + 1) * defaultWorkerMemoryMb
+		maxMemoryMb = defaultParquetWorkerCount * defaultWorkerMemoryMb
 	}
 
 	// calculate memory per worker and adjust worker count if needed
@@ -263,13 +264,17 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 	// - if calculated memory per worker is less than minimum required:
 	//   - reduce worker count to ensure each worker has minimum required memory
 	//   - ensure at least 1 worker remains
-	memoryPerWorkerMb := maxMemoryMb/defaultParquetWorkerCount + 1
+	memoryPerWorkerMb := maxMemoryMb / defaultParquetWorkerCount
 	workerCount := defaultParquetWorkerCount
 	if memoryPerWorkerMb < minWorkerMemoryMb {
 		// reduce worker count to ensure minimum memory per worker
-		workerCount = maxMemoryMb/minWorkerMemoryMb - 1
+		workerCount = maxMemoryMb / minWorkerMemoryMb
 		if workerCount < 1 {
 			workerCount = 1
+		}
+		memoryPerWorkerMb = maxMemoryMb / workerCount
+		if memoryPerWorkerMb < minWorkerMemoryMb {
+			return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", 2*minWorkerMemoryMb)
 		}
 	}
 
@@ -278,7 +283,7 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 
 	// start the workers
 	for i := 0; i < workerCount; i++ {
-		wk, err := newParquetConversionWorker(w, memoryPerWorkerMb)
+		wk, err := newConversionWorker(w, memoryPerWorkerMb)
 		if err != nil {
 			return fmt.Errorf("failed to create worker: %w", err)
 		}
