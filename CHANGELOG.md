@@ -1,3 +1,7 @@
+## v0.3.3 [tbd]
+_Bug fixes_
+* Fix issue where tailpipe was mentioning steampipe in one of the error messages. ([#389](https://github.com/turbot/tailpipe/issues/389))
+
 ## v0.3.2 [2025-04-25]
 _What's new_
 * Update `MinCorePluginVersion` to v0.2.2.
