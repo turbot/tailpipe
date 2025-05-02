@@ -14,11 +14,12 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-// TODO HACK
-const defaultParquetWorkerCount = 1 // 5
+const defaultParquetWorkerCount = 5
 const chunkBufferLength = 1000
 const defaultWorkerMemoryMb = 4096
-const minWorkerMemoryMb = 4096
+
+// the minimum memory to assign to each worker -
+const minWorkerMemoryMb = 1024
 
 // Converter struct executes all the conversions for a single collection
 // it therefore has a unique execution id, and will potentially convert of multiple JSONL files
@@ -242,6 +243,11 @@ func (w *Converter) updateRowCount(count int64) {
 	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount))
 }
 
+// updateCompletionCount atomically increments the completion count
+func (w *Converter) updateCompletionCount(count int32) {
+	atomic.AddInt32(&w.completionCount, count)
+}
+
 // createWorkers initializes and starts parquet conversion workers based on configured memory limits
 // It calculates the optimal number of workers and memory allocation per worker using the following logic:
 // - If no memory limit is set, uses defaultParquetWorkerCount workers with defaultWorkerMemoryMb per worker
@@ -274,9 +280,11 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 		}
 		memoryPerWorkerMb = maxMemoryMb / workerCount
 		if memoryPerWorkerMb < minWorkerMemoryMb {
-			return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", 2*minWorkerMemoryMb)
+			return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", minWorkerMemoryMb)
 		}
 	}
+
+	slog.Info("Work memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
 
 	// create the job channel
 	w.jobChan = make(chan *parquetJob, workerCount*2)

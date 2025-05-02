@@ -14,8 +14,11 @@ func configDefaults(cmd *cobra.Command) map[string]any {
 		// global general options
 		pconstants.ArgUpdateCheck: true,
 
-		// memory
+		// memory - 32Gb
 		pconstants.ArgMemoryMaxMb: 32 * 1024,
+
+		// temp cache - JSONL files - 256 Gb
+		pconstants.ArgMaxTempCacheMb: 256 * 1024,
 	}
 
 	cmdSpecificDefaults, ok := cmdSpecificDefaults()[cmd.Name()]

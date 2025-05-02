@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/marcboeker/go-duckdb/v2"
@@ -17,7 +16,6 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/resmon"
 )
 
 type parquetJob struct {
@@ -38,25 +36,68 @@ type conversionWorker struct {
 	destDir string
 
 	// helper struct which provides unique filename roots
-	fileRootProvider *FileRootProvider
-	db               *database.DuckDb
-	maxMemoryMb      int
+	fileRootProvider              *FileRootProvider
+	db                            *database.DuckDb
+	maxMemoryMb                   int
+	maxPartitionKeysPerConversion int
 }
 
 func newConversionWorker(converter *Converter, maxMemoryMb int) (*conversionWorker, error) {
+
 	w := &conversionWorker{
-		jobChan:          converter.jobChan,
-		sourceDir:        converter.sourceDir,
-		destDir:          converter.destDir,
-		fileRootProvider: converter.fileRootProvider,
-		converter:        converter,
-		maxMemoryMb:      maxMemoryMb,
+		jobChan:                       converter.jobChan,
+		sourceDir:                     converter.sourceDir,
+		destDir:                       converter.destDir,
+		fileRootProvider:              converter.fileRootProvider,
+		converter:                     converter,
+		maxMemoryMb:                   maxMemoryMb,
+		maxPartitionKeysPerConversion: getMaxPartitionsPerConversion(maxMemoryMb),
 	}
 
+	if err := w.validate(); err != nil {
+		return nil, err
+	}
 	if err := w.createDuckDbConnection(); err != nil {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
+
 	return w, nil
+}
+
+func getMaxPartitionsPerConversion(maxMemoryMb int) int {
+	// 8Gb mem -> 500
+	// 4Gb mem -> 250
+
+	// scale the number of partitions inversely with memory size
+	// use 8GB as the baseline (1000 partitions)
+	baselineMemoryMb := 8 * 1024
+	baselinePartitions := 500
+
+	// calculate scaled partitions (more memory = fewer partitions)
+	scaledPartitions := baselinePartitions * baselineMemoryMb / maxMemoryMb
+
+	defer slog.Info("getMaxPartitionsPerConversion", "worker max memory (mb)", maxMemoryMb, "max hive partition keys per conversion", scaledPartitions)
+
+	// ensure we stay within reasonable bounds
+	minPartitions := 100
+	maxPartitions := 1000
+
+	if scaledPartitions < minPartitions {
+		return minPartitions
+	}
+	if scaledPartitions > maxPartitions {
+		return maxPartitions
+	}
+	return scaledPartitions
+}
+
+// validate our params
+func (w *conversionWorker) validate() error {
+	maxAllowedMemoryMB := 256 * 1024 // 256GB in MB
+	if w.maxMemoryMb < 0 || w.maxMemoryMb > maxAllowedMemoryMB {
+		return fmt.Errorf("memory must be between 0 and %d MB, got %d", maxAllowedMemoryMB, w.maxMemoryMb)
+	}
+	return nil
 }
 
 // this is the worker function run by all workers, which all read from the ParquetJobPool channel
@@ -84,7 +125,7 @@ func (w *conversionWorker) start(ctx context.Context) {
 				continue
 			}
 			// atomically increment the completion count on our converter
-			atomic.AddInt32(&w.converter.completionCount, 1)
+			w.converter.updateCompletionCount(1)
 
 		}
 	}
@@ -105,14 +146,21 @@ func (w *conversionWorker) createDuckDbConnection() error {
 }
 
 func (w *conversionWorker) forceMemoryRelease() error {
-	if _, err := w.db.Exec("PRAGMA memory_limit='64MB';"); err != nil {
+	// we need to flush the memory to release it - do this by setting a low memory limit then the full one
+	// NOTE: do not set the memory to zero as we have temp table data
+	const minMemoryMb = 64
+
+	// Set to minimum memory - note the use of ? parameter
+	if _, err := w.db.Exec("PRAGMA memory_limit=?", minMemoryMb); err != nil {
 		return fmt.Errorf("memory flush failed: %w", err)
 	}
-	_, err := w.db.Exec(fmt.Sprintf("PRAGMA memory_limit='%dMB';", w.maxMemoryMb))
-	if err != nil {
+
+	// Reset to configured memory limit
+	if _, err := w.db.Exec("PRAGMA memory_limit=?", w.maxMemoryMb); err != nil {
 		return fmt.Errorf("memory reset failed: %w", err)
 	}
 	return nil
+
 }
 
 func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
@@ -125,10 +173,7 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 	jsonFilePath := filepath.Join(w.sourceDir, jsonFileName)
 
 	// process the ParquetJobPool
-	rowCount, err := w.convertFile(jsonFilePath)
-	// if we have an error, return it below
-	// update the row count
-	w.converter.updateRowCount(rowCount)
+	err := w.convertFile(jsonFilePath)
 
 	// delete JSON file (configurable?)
 	if removeErr := os.Remove(jsonFilePath); removeErr != nil {
@@ -142,43 +187,29 @@ func (w *conversionWorker) doJSONToParquetConversion(chunkNumber int32) error {
 }
 
 // convert the given jsonl file to parquet
-func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error) {
-	t := time.Now()
-	slog.Info("starting conversion", "file", jsonlFilePath)
-
-	monCtx, cancel := context.WithCancel(context.Background())
-	monInterval := 250 * time.Millisecond
-	paths := []string{fmt.Sprintf("%s/*.tmp", w.db.GetTempDir())}
-	monChan := resmon.MonitorResourceUsage(monCtx, monInterval, paths)
-	defer func() {
-		cancel()
-		monRes := <-monChan
-		slog.Info("conversion complete", "file", jsonlFilePath, "duration (s)", time.Since(t).Seconds(), "memory (MB)", monRes.MaxMemoryUsageMb, "disk (MB)", monRes.MaxDiskUsageMb)
-	}()
-
+func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 	// verify the jsonl file has a .jsonl extension
 	if filepath.Ext(jsonlFilePath) != ".jsonl" {
-		return 0, NewConversionError(errors.New("invalid file type - conversionWorker only supports .jsonl files"), 0, jsonlFilePath)
+		return NewConversionError(errors.New("invalid file type - conversionWorker only supports .jsonl files"), 0, jsonlFilePath)
 	}
 	// verify file exists
 	if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
-		return 0, NewConversionError(errors.New("file does not exist"), 0, jsonlFilePath)
+		return NewConversionError(errors.New("file does not exist"), 0, jsonlFilePath)
 	}
 
 	// copy the data from the jsonl file to a temp table
 	if err := w.copyChunkToTempTable(jsonlFilePath); err != nil {
 		// copyChunkToTempTable will already have called handleSchemaChangeError anf handleConversionError
-		return 0, err
+		return err
 	}
 	// defer the cleanup of the temp table
 	defer func() {
 		// TODO benchmark whether dropping the table actually makes any difference to memory pressure
 		//  or can we rely on the drop if exists?
-		// TODO or other extreme is to close and reopen the connection each time
 		// validateRows creates the table temp_data - the cleanupQuery drops it
 		_, tempTableError := w.db.Exec("drop table if exists temp_data;")
 		if tempTableError != nil {
-			slog.Error("failed to drop temp table", "error", err)
+			slog.Error("failed to drop temp table", "error", tempTableError)
 			// if we do not already have an error return this error
 			if err == nil {
 				err = tempTableError
@@ -190,7 +221,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	if validateRowsError := w.validateRows(jsonlFilePath); err != nil {
 		// if the error is NOT RowValidationError, just return it
 		if !errors.Is(validateRowsError, &RowValidationError{}) {
-			return 0, handleConversionError(validateRowsError, jsonlFilePath)
+			return handleConversionError(validateRowsError, jsonlFilePath)
 		}
 
 		// so it IS a row validation error - the invalid rows will have been removed from the temp table
@@ -214,13 +245,13 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 	// ok now we can do the copy query to write the data in the temp table to parquet files
 	// we limit the number of partitions we create per copy query to avoid excessive memory usage
 	// TODO consider dynamically changing the number of partitions to process based on column count
-	const defaultMaxPartitionsPerConversion = 500
-	partitionsPerConversion := defaultMaxPartitionsPerConversion
+
+	partitionsPerConversion := w.maxPartitionKeysPerConversion
 
 	// get row counts for each distinct partition
 	partitionRowCounts, err := w.getPartitionRowCounts()
 	if err != nil {
-		return 0, handleConversionError(err, jsonlFilePath)
+		return handleConversionError(err, jsonlFilePath)
 	}
 	slog.Debug("found partition combinations", "count", len(partitionRowCounts))
 
@@ -258,73 +289,29 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (_ int64, err error
 			if conversionRanOutOfMemory(err) {
 				// If out of memory, fluish memory, reopen the connection, and retry with fewer partitions
 				if err := w.forceMemoryRelease(); err != nil {
-					return totalRowCount, err
+					return err
 				}
 				partitionsPerConversion /= 2
 				if partitionsPerConversion < 1 {
-					return totalRowCount, fmt.Errorf("failed to convert batch - partition count reduced to 0")
+					return fmt.Errorf("failed to convert batch - partition count reduced to 0")
 				}
 				slog.Debug("restarting conversion with fewer partitions", "file", jsonlFilePath, "partitions", partitionsPerConversion)
 				continue
 			}
-			return totalRowCount, err
+			return err
 		}
 
 		// Update counters and advance to the next batch
 		totalRowCount += rowCount
 		rowOffset += rowsInBatch
 		partitionRowCounts = partitionRowCounts[batchSize:]
+		// if we have an error, return it below
+		// update the row count
+		w.converter.updateRowCount(rowCount)
+
 	}
 
-	return totalRowCount, nil
-
-	// we need to perform validation if:
-	// 1. the table schema was partial (i.e. this is a custom table with RowMappings defined)
-	// 2. this is a directly converted artifact
-	// 3. any required columns have transforms
-
-	//selectQuery, cleanupQuery, rowValidationError = w.validateRows(jsonlFilePath, selectQuery, columnsToValidate)
-	//
-	//if cleanupQuery != "" {
-	//	defer func() {
-	//		// TODO benchmark whether dropping the table actually makes any difference to memory pressure
-	//		//  or can we rely on the drop if exists?
-	//		// validateRows creates the table temp_data - the cleanupQuery drops it
-	//		_, tempTableError := w.db.Exec(cleanupQuery)
-	//		if tempTableError != nil {
-	//			slog.Error("failed to drop temp table", "error", err)
-	//			// if we do not already have an error return this error
-	//			if err == nil {
-	//				err = tempTableError
-	//			}
-	//		}
-	//	}()
-	//}
-	//// did validation fail
-	//if rowValidationError != nil {
-	//	// if no select query was returned, we cannot proceed - just return the error
-	//	if selectQuery == "" {
-	//		return 0, rowValidationError
-	//	}
-	//	// so we have a validation error - but we DID return an updated select query - that indicates we should
-	//	// continue and just report the row validation errors
-	//
-	//	// ensure that we return the row validation error, merged with any other error we receive
-	//	defer func() {
-	//		if err == nil {
-	//			err = rowValidationError
-	//		} else {
-	//			var conversionError *ConversionError
-	//			if errors.As(rowValidationError, &conversionError) {
-	//				// we have a conversion error - we need to set the row count to 0
-	//				// so we can report the error
-	//				conversionError.Merge(err)
-	//			}
-	//			err = conversionError
-	//		}
-	//	}()
-	//}
-
+	return nil
 }
 
 // conversionRanOutOfMemory checks if the error is an out-of-memory error from DuckDB
@@ -349,20 +336,20 @@ func (w *conversionWorker) copyChunkToTempTable(jsonlFilePath string) error {
 	// - Create a new temp table by reading from the JSONL file
 	// - Add a row ID (row_number) for stable ordering and chunking
 	// - Wrap the original select query to allow dot-notation filtering on nested structs later
-	// - Sort the data by partition key columns (tp_table, tp_partition, tp_index, tp_date) so that:
-	//   - Full partitions can be selected using only row offsets (because partitions are stored contiguously)
+	// - Sort the data by partition key columns (only tp_index, tp_date - there will only be a single table and partition)
+	// so that full partitions can be selected using only row offsets (because partitions are stored contiguously)
 	queryBuilder.WriteString(fmt.Sprintf(`
 drop table if exists temp_data;
 
 create temp table temp_data as
 select
-  row_number() over (order by tp_table, tp_partition, tp_index, tp_date) as rowid,
+  row_number() over (order by tp_index, tp_date) as rowid,
   *
 from (
   %s
 )
 order by
-  tp_table, tp_partition, tp_index, tp_date;
+  tp_index, tp_date;
 `, selectQuery))
 	_, err := w.db.Exec(queryBuilder.String())
 	if err != nil {
@@ -501,6 +488,11 @@ func (w *conversionWorker) getColumnsToValidate() []string {
 	var res []string
 	// if the format is one which requires a direct conversion we must validate all required columns
 	formatSupportsDirectConversion := w.converter.Partition.FormatSupportsDirectConversion()
+
+	// Added nil check protection
+	if w.converter.conversionSchema == nil {
+		return res
+	}
 
 	// otherwise validate required columns which have a transform
 	for _, col := range w.converter.conversionSchema.Columns {

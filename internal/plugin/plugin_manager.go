@@ -16,8 +16,10 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb/v2"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
@@ -105,6 +107,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
 		FromTime:            timestamppb.New(fromTime),
+		MaxJsonlSizeMb:      viper.GetInt64(pconstants.ArgMaxTempCacheMb),
 	}
 
 	if partition.Source.Connection != nil {
