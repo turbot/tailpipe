@@ -1,0 +1,6 @@
+id,status,value,description
+1,active,42,normal value
+2,inactive,0,zero value
+3,active,-1,negative value
+4,active,2,empty value
+5,active,999,special value 

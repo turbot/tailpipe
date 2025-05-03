@@ -1,0 +1,3 @@
+2024-05-01T10:30:45Z [INFO] [AWS] RequestID: req-1234, Service: s3, Operation: ListBuckets, Duration: 150ms
+2024-05-01T10:31:00Z [ERROR] [AWS] RequestID: req-5678, Service: ec2, Operation: DescribeInstances, Error: {"code": "InvalidInstanceID", "message": "The instance ID 'i-1234567890abcdef0' does not exist"}
+2024-05-01T10:32:15Z [DEBUG] [AWS] RequestID: req-9012, Service: lambda, Operation: Invoke, Duration: 45ms 

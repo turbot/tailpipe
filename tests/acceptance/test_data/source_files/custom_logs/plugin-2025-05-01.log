@@ -1,0 +1,13 @@
+2025-04-28 15:16:35.733 UTC [DEBUG] steampipe-plugin-aws.plugin: [DEBUG] 1744125262935: retrying request Lambda/ListFunctions, attempt 8
+2025-04-28 15:16:35.733 UTC [INFO]  steampipe-plugin-aws.plugin: [INFO]  1744125273258: BackoffDelay: attempt=8, retryTime=2m55.50675s, err=https response error StatusCode: 0, RequestID: , request send failed, Get "https://lambda.ap-northeast-1.amazonaws.com/2015-03-31/functions?MaxItems=10000": lookup lambda.ap-northeast-1.amazonaws.com on 192.168.1.254:53: read udp 192.168.1.204:57677->192.168.1.254:53: i/o timeout
+2025-04-28 15:16:36.033 UTC [DEBUG] steampipe-plugin-aws.plugin: [DEBUG] 1744125262935: retrying request Lambda/ListFunctions, attempt 8
+2025-04-28 15:16:36.033 UTC [INFO]  steampipe-plugin-aws.plugin: [INFO]  1744125273258: BackoffDelay: attempt=8, retryTime=2m16.14075s, err=https response error StatusCode: 0, RequestID: , request send failed, Get "https://lambda.ap-southeast-2.amazonaws.com/2015-03-31/functions?MaxItems=10000": lookup lambda.ap-southeast-2.amazonaws.com on 192.168.1.254:53: read udp 192.168.1.204:54718->192.168.1.254:53: i/o timeout
+2025-04-28 15:16:38.463 UTC [DEBUG] steampipe-plugin-aws.plugin: [DEBUG] 1744125262935: retrying request Lambda/ListFunctions, attempt 8
+2025-04-28 15:16:38.464 UTC [INFO]  steampipe-plugin-aws.plugin: [INFO]  1744125273258: BackoffDelay: attempt=8, retryTime=2m44.025s, err=https response error StatusCode: 0, RequestID: , request send failed, Get "https://lambda.ap-northeast-3.amazonaws.com/2015-03-31/functions?MaxItems=10000": lookup lambda.ap-northeast-3.amazonaws.com on 192.168.1.254:53: read udp 192.168.1.204:55845->192.168.1.254:53: i/o timeout
+2025-04-28 15:16:58.442 UTC [INFO]  PluginManager Shutdown
+2025-04-28 15:16:58.442 UTC [INFO]  PluginManager closing pool
+2025-04-28 15:16:58.442 UTC [INFO]  Kill plugin hub.steampipe.io/plugins/turbot/terraform@latest (0xc00092e100)
+2025-04-28 15:16:58.442 UTC [DEBUG] PluginManager killPlugin start
+2025-04-28 15:16:58.442 UTC [INFO]  PluginManager killing plugin hub.steampipe.io/plugins/turbot/terraform@latest (81771)
+2025-04-28 15:16:58.456 UTC [DEBUG] stdio: received EOF, stopping recv loop: err="rpc error: code = Unavailable desc = error reading from server: EOF"
+2025-04-28 15:16:58.460 UTC [INFO]  plugin process exited: plugin=/Users/jsmyth/.steampipe/plugins/hub.steampipe.io/plugins/turbot/terraform@latest/steampipe-plugin-terraform.plugin id=81771
