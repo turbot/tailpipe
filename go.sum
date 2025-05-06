@@ -765,13 +765,12 @@ github.com/tklauser/numcpus v0.6.1 h1:ng9scYS7az0Bk4OZLvrNXNSAO2Pxr1XXRAPyjhIx+F
 github.com/tklauser/numcpus v0.6.1/go.mod h1:1XfjsgE2zo8GVw7POkMbHENHzVg3GzmoZ9fESEdAacY=
 github.com/tkrajina/go-reflector v0.5.8 h1:yPADHrwmUbMq4RGEyaOUpz2H90sRsETNVpjzo3DLVQQ=
 github.com/tkrajina/go-reflector v0.5.8/go.mod h1:ECbqLgccecY5kPmPmXg1MrHW585yMcDkVl6IvJe64T4=
-github.com/turbot/go-kit v1.2.0 h1:4pBDu2LGoqF2y6ypL4xJjqlDW0BkUw3IIDlyHkU0O88=
-github.com/turbot/go-kit v1.2.0/go.mod h1:1xmRuQ0cn/10QUMNLNOAFIqN8P6Rz5s3VLT8mkN3nF8=
+github.com/turbot/go-kit v1.3.0 h1:6cIYPAO5hO9fG7Zd5UBC4Ch3+C6AiiyYS0UQnrUlTV0=
+github.com/turbot/go-kit v1.3.0/go.mod h1:piKJMYCF8EYmKf+D2B78Csy7kOHGmnQVOWingtLKWWQ=
 github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50 h1:zs87uA6QZsYLk4RRxDOIxt8ro/B2V6HzoMWm05Lo7ao=
 github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50/go.mod h1:vFnjEGDIIA/Lib7giyE4E9c50Lvl8j0S+7FVlAwDAVw=
-github.com/turbot/pipe-fittings/v2 v2.4.0-rc.0 h1:eGbr11jImjLg04nGS38yrsFdYyxVOqwAZpdhrfJbpb0=
-github.com/turbot/pipe-fittings/v2 v2.4.0-rc.0/go.mod h1:X2R1AnkbXCmvtMrIhuArybN45Fj/+ZGPUilGeZDDXXs=
-github.com/turbot/pipe-fittings/v2 v2.4.0-rc.1/go.mod h1:X2R1AnkbXCmvtMrIhuArybN45Fj/+ZGPUilGeZDDXXs=
+github.com/turbot/pipe-fittings/v2 v2.4.0-rc.3 h1:g6Zb9V1nB32ZvW7QLM5Ph6blX5vAV2A4KvH3IkJO3WQ=
+github.com/turbot/pipe-fittings/v2 v2.4.0-rc.3/go.mod h1:szte433cBDCaZcGe5zMVGG7uTl9HMaEYaQmuvzZRYIQ=
 github.com/turbot/pipes-sdk-go v0.12.0 h1:esbbR7bALa5L8n/hqroMPaQSSo3gNM/4X0iTmHa3D6U=
 github.com/turbot/pipes-sdk-go v0.12.0/go.mod h1:Mb+KhvqqEdRbz/6TSZc2QWDrMa5BN3E4Xw+gPt2TRkc=
 github.com/turbot/tailpipe-plugin-core v0.2.2 h1:Tud/YzAt0RgfbR3jgwqu4vZKqU+ODbcvIu0DSrPRVZU=
