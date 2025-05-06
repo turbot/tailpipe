@@ -11,12 +11,12 @@ import (
 )
 
 // TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
-func buildViewQuery(tableSchema *schema.ConversionSchema) string {
+func (w *Converter) buildViewQuery() string {
 	var tpIndexMapped, tpTimestampMapped bool
 
 	// first build the select clauses - use the table def columns
 	var selectClauses []string
-	for _, column := range tableSchema.Columns {
+	for _, column := range w.conversionSchema.Columns {
 
 		var selectClause string
 		switch column.ColumnName {
@@ -50,15 +50,22 @@ func buildViewQuery(tableSchema *schema.ConversionSchema) string {
 	}
 
 	// build column definitions - these will be passed to the read_json function
-	columnDefinitions := getReadJSONColumnDefinitions(tableSchema.SourceColumns)
+	columnDefinitions := getReadJSONColumnDefinitions(w.conversionSchema.SourceColumns)
 
-	return fmt.Sprintf(`select
+	var whereClause string
+	if w.Partition.Filter != "" {
+		whereClause = fmt.Sprintf("\nwhere %s", w.Partition.Filter)
+	}
+
+	res := fmt.Sprintf(`select
 %s
 from
 	read_ndjson(
 		'%%s',
 	%s
-	)`, strings.Join(selectClauses, ",\n"), helpers.Tabify(columnDefinitions, "\t"))
+	)%s`, strings.Join(selectClauses, ",\n"), helpers.Tabify(columnDefinitions, "\t"), whereClause)
+
+	return res
 }
 
 // return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function

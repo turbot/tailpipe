@@ -202,10 +202,13 @@ func (w *Converter) scheduler(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case w.jobChan <- &parquetJob{chunkNumber: chunk}:
+			slog.Debug("scheduler - sent job to worker", "chunk", chunk)
 		}
 	}
 }
 
+// TODO currently this _does not_ process the chunks in order as this is more efficient from a buffer handling perspective
+// however we may decide we wish to process chunks in order in the interest of restartability/tracking progress
 func (w *Converter) getNextChunk() (int32, bool) {
 	w.chunkLock.Lock()
 	defer w.chunkLock.Unlock()

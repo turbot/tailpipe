@@ -448,37 +448,6 @@ func (w *conversionWorker) doConversionForBatch(jsonlFilePath string, startRowId
 	return exportedRowCount, err
 }
 
-func (w *conversionWorker) buildSelectClause(partitionKeys []map[string]interface{}) string {
-
-	var whereConditions []string
-	for _, keyMap := range partitionKeys {
-		var conditions []string
-		for col, val := range keyMap {
-			if val == nil {
-				conditions = append(conditions, fmt.Sprintf("%s is null", col))
-			} else {
-				conditions = append(conditions, fmt.Sprintf("%s = %v", col, val))
-			}
-		}
-		if len(conditions) > 0 {
-			whereConditions = append(whereConditions, "("+strings.Join(conditions, " and ")+")")
-		}
-	}
-	selectQuery := fmt.Sprintf("select * from temp_data")
-	if len(whereConditions) > 0 {
-		selectQuery += " where " + strings.Join(whereConditions, " or ")
-	}
-
-	if w.converter.Partition.Filter != "" {
-		if len(whereConditions) > 0 {
-			selectQuery += fmt.Sprintf(" and %s", w.converter.Partition.Filter)
-		} else {
-			selectQuery += fmt.Sprintf(" where %s", w.converter.Partition.Filter)
-		}
-	}
-	return selectQuery
-}
-
 // getColumnsToValidate returns the list of columns which need to be validated at this staghe
 // normally, required columns are validated in the plugin, however there are a couple of exceptions:
 // 1. if the format is one which supports direct artifact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
