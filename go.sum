@@ -771,6 +771,7 @@ github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50 h1:
 github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50/go.mod h1:vFnjEGDIIA/Lib7giyE4E9c50Lvl8j0S+7FVlAwDAVw=
 github.com/turbot/pipe-fittings/v2 v2.4.0-rc.0 h1:eGbr11jImjLg04nGS38yrsFdYyxVOqwAZpdhrfJbpb0=
 github.com/turbot/pipe-fittings/v2 v2.4.0-rc.0/go.mod h1:X2R1AnkbXCmvtMrIhuArybN45Fj/+ZGPUilGeZDDXXs=
+github.com/turbot/pipe-fittings/v2 v2.4.0-rc.1/go.mod h1:X2R1AnkbXCmvtMrIhuArybN45Fj/+ZGPUilGeZDDXXs=
 github.com/turbot/pipes-sdk-go v0.12.0 h1:esbbR7bALa5L8n/hqroMPaQSSo3gNM/4X0iTmHa3D6U=
 github.com/turbot/pipes-sdk-go v0.12.0/go.mod h1:Mb+KhvqqEdRbz/6TSZc2QWDrMa5BN3E4Xw+gPt2TRkc=
 github.com/turbot/tailpipe-plugin-core v0.2.2 h1:Tud/YzAt0RgfbR3jgwqu4vZKqU+ODbcvIu0DSrPRVZU=

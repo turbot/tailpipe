@@ -19,7 +19,7 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.2.0
-	github.com/turbot/pipe-fittings/v2 v2.4.0-rc.0
+	github.com/turbot/pipe-fittings/v2 v2.4.0-rc.1
 	github.com/turbot/tailpipe-plugin-sdk v0.5.0-rc.0
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c

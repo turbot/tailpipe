@@ -119,6 +119,7 @@ func (w *conversionWorker) start(ctx context.Context) {
 				// we are done
 				return
 			}
+			slog.Debug("worker got job", "chunk_number", job.chunkNumber)
 			if err := w.doJSONToParquetConversion(job.chunkNumber); err != nil {
 				// send the error to the converter
 				w.converter.addJobErrors(err)
@@ -351,6 +352,7 @@ from (
 order by
   tp_index, tp_date;
 `, selectQuery))
+
 	_, err := w.db.Exec(queryBuilder.String())
 	if err != nil {
 		return w.handleSchemaChangeError(err, jsonlFilePath)

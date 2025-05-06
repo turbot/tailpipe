@@ -132,7 +132,7 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 			// err will be returned by the parent function
 			return
 		}
-		w.viewQueryFormat = buildViewQuery(w.conversionSchema)
+		w.viewQueryFormat = w.buildViewQuery()
 	})
 	if err != nil {
 		return fmt.Errorf("failed to infer schema: %w", err)
