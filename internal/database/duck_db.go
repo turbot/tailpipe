@@ -119,13 +119,13 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	// set the extension directory
-	if _, err := d.DB.Exec("SET extension_directory = ?;", pf.EnsurePipesDuckDbExtensionsDir()); err != nil {
+	if _, err := d.DB.Exec("set extension_directory = ?;", pf.EnsurePipesDuckDbExtensionsDir()); err != nil {
 		return fmt.Errorf("failed to set extension_directory: %w", err)
 	}
 
 	// install and load the extensions
 	for _, extension := range constants.DuckDbExtensions {
-		if _, err := d.DB.Exec("INSTALL ?; LOAD ?;", extension, extension); err != nil {
+		if _, err := d.DB.Exec(fmt.Sprintf("INSTALL '%s'; LOAD '%s';", extension, extension)); err != nil {
 			return fmt.Errorf("failed to install and load extension %s: %s", extension, err.Error())
 		}
 	}
