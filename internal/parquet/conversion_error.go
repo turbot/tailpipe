@@ -2,7 +2,6 @@ package parquet
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,11 +26,14 @@ func handleConversionError(err error, path string) error {
 		logArgs = append(logArgs, "rows_affected", rows)
 	}
 
-	// log error
-	slog.Error("parquet conversion failed", logArgs...)
+	// log error (if this is NOT a memory error
+	// memory errors are handles separately and retried
+	if !conversionRanOutOfMemory(err) {
+		slog.Error("parquet conversion failed", logArgs...)
+	}
 
 	// return wrapped error
-	return NewConversionError(err.Error(), rows, path)
+	return NewConversionError(err, rows, path)
 }
 
 func countLines(filename string) (int64, error) {
@@ -65,12 +67,12 @@ type ConversionError struct {
 	displayError string
 }
 
-func NewConversionError(msg string, rowsAffected int64, path string) *ConversionError {
+func NewConversionError(err error, rowsAffected int64, path string) *ConversionError {
 	return &ConversionError{
 		SourceFile:   filepath.Base(path),
-		BaseError:    errors.New(msg),
+		BaseError:    err,
 		RowsAffected: rowsAffected,
-		displayError: strings.Split(msg, "\n")[0],
+		displayError: strings.Split(err.Error(), "\n")[0],
 	}
 }
 
@@ -81,4 +83,8 @@ func (c *ConversionError) Error() string {
 // Merge adds a second error to the conversion error message.
 func (c *ConversionError) Merge(err error) {
 	c.BaseError = fmt.Errorf("%s\n%s", c.BaseError.Error(), err.Error())
+}
+
+func (c *ConversionError) Unwrap() error {
+	return c.BaseError
 }

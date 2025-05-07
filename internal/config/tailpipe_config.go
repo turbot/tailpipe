@@ -5,8 +5,11 @@ import (
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
+	"github.com/spf13/viper"
+	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
 )
 
@@ -72,6 +75,10 @@ func (c *TailpipeConfig) InitPartitions(versionMap *versionfile.PluginVersionFil
 		// if the plugin is not set, infer it from the table
 		if partition.Plugin == nil {
 			partition.Plugin = plugin.NewPlugin(partition.InferPluginName(versionMap))
+			// set memory limit on plugin struct
+			if viper.IsSet(constants.ArgMemoryMaxMbPlugin) {
+				partition.Plugin.MemoryMaxMb = utils.ToPointer(viper.GetInt(constants.ArgMemoryMaxMbPlugin))
+			}
 		}
 	}
 }

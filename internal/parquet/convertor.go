@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/spf13/viper"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -12,8 +14,12 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-const parquetWorkerCount = 5
+const defaultParquetWorkerCount = 5
 const chunkBufferLength = 1000
+const defaultWorkerMemoryMb = 4096
+
+// the minimum memory to assign to each worker -
+const minWorkerMemoryMb = 1024
 
 // Converter struct executes all the conversions for a single collection
 // it therefore has a unique execution id, and will potentially convert of multiple JSONL files
@@ -82,7 +88,6 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		id:               executionId,
 		chunks:           make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
 		Partition:        partition,
-		jobChan:          make(chan *parquetJob, parquetWorkerCount*2),
 		cancel:           cancel,
 		sourceDir:        sourceDir,
 		destDir:          destDir,
@@ -93,18 +98,12 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	// create the condition variable using the same lock
 	w.chunkSignal = sync.NewCond(&w.chunkLock)
 
+	// initialise the workers
+	if err := w.createWorkers(ctx); err != nil {
+		return nil, fmt.Errorf("failed to create workers: %w", err)
+	}
 	// start the goroutine to schedule the jobs
 	go w.scheduler(ctx)
-
-	// start the workers
-	for range parquetWorkerCount {
-		wk, err := newParquetConversionWorker(w)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create worker: %w", err)
-		}
-		// start the worker
-		go wk.start(ctx)
-	}
 
 	// done
 	return w, nil
@@ -133,7 +132,7 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 			// err will be returned by the parent function
 			return
 		}
-		w.viewQueryFormat = buildViewQuery(w.conversionSchema)
+		w.viewQueryFormat = w.buildViewQuery()
 	})
 	if err != nil {
 		return fmt.Errorf("failed to infer schema: %w", err)
@@ -203,10 +202,13 @@ func (w *Converter) scheduler(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case w.jobChan <- &parquetJob{chunkNumber: chunk}:
+			slog.Debug("scheduler - sent job to worker", "chunk", chunk)
 		}
 	}
 }
 
+// TODO currently this _does not_ process the chunks in order as this is more efficient from a buffer handling perspective
+// however we may decide we wish to process chunks in order in the interest of restartability/tracking progress
 func (w *Converter) getNextChunk() (int32, bool) {
 	w.chunkLock.Lock()
 	defer w.chunkLock.Unlock()
@@ -242,4 +244,62 @@ func (w *Converter) updateRowCount(count int64) {
 	atomic.AddInt64(&w.rowCount, count)
 	// call the status function with the new row count
 	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount))
+}
+
+// updateCompletionCount atomically increments the completion count
+func (w *Converter) updateCompletionCount(count int32) {
+	atomic.AddInt32(&w.completionCount, count)
+}
+
+// createWorkers initializes and starts parquet conversion workers based on configured memory limits
+// It calculates the optimal number of workers and memory allocation per worker using the following logic:
+// - If no memory limit is set, uses defaultParquetWorkerCount workers with defaultWorkerMemoryMb per worker
+// - If memory limit is set, ensures each worker gets at least minWorkerMemoryMb, reducing worker count if needed
+// - Reserves memory for the main process by dividing total memory by (workerCount + 1)
+// - Creates and starts the calculated number of workers, each with their allocated memory
+// Returns error if worker creation fails
+func (w *Converter) createWorkers(ctx context.Context) error {
+	// determine the number of workers to start
+	// see if there was a memory limit
+	maxMemoryMb := viper.GetInt(pconstants.ArgMemoryMaxMb)
+
+	// if no memory limit is set, calculate based on default worker count and min memory per worker
+	if maxMemoryMb == 0 {
+		maxMemoryMb = defaultParquetWorkerCount * defaultWorkerMemoryMb
+	}
+
+	// calculate memory per worker and adjust worker count if needed
+	// - reserve memory for main process by dividing maxMemory by (workerCount + 1)
+	// - if calculated memory per worker is less than minimum required:
+	//   - reduce worker count to ensure each worker has minimum required memory
+	//   - ensure at least 1 worker remains
+	memoryPerWorkerMb := maxMemoryMb / defaultParquetWorkerCount
+	workerCount := defaultParquetWorkerCount
+	if memoryPerWorkerMb < minWorkerMemoryMb {
+		// reduce worker count to ensure minimum memory per worker
+		workerCount = maxMemoryMb / minWorkerMemoryMb
+		if workerCount < 1 {
+			workerCount = 1
+		}
+		memoryPerWorkerMb = maxMemoryMb / workerCount
+		if memoryPerWorkerMb < minWorkerMemoryMb {
+			return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", minWorkerMemoryMb)
+		}
+	}
+
+	slog.Info("Work memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
+
+	// create the job channel
+	w.jobChan = make(chan *parquetJob, workerCount*2)
+
+	// start the workers
+	for i := 0; i < workerCount; i++ {
+		wk, err := newConversionWorker(w, memoryPerWorkerMb)
+		if err != nil {
+			return fmt.Errorf("failed to create worker: %w", err)
+		}
+		// start the worker
+		go wk.start(ctx)
+	}
+	return nil
 }
