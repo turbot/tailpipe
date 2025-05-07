@@ -79,7 +79,9 @@ func getMaxPartitionsPerConversion(maxMemoryMb int) int {
 	defer slog.Info("getMaxPartitionsPerConversion", "worker max memory (mb)", maxMemoryMb, "max hive partition keys per conversion", scaledPartitions)
 
 	// ensure we stay within reasonable bounds
-	minPartitions := 100
+	// note: we do not actually need to enforce min partitions as the min memory of 1Gb will enforce this for us
+	// - but it is nice to be clear of the bounds in the code - and the min memory is defined elsewhere and could be changed
+	minPartitions := 50
 	maxPartitions := 1000
 
 	if scaledPartitions < minPartitions {

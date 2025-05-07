@@ -3,6 +3,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"log"
 	"log/slog"
 	"math/rand/v2"
 	"os"
@@ -327,21 +328,21 @@ func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*grpc.PluginClient
 func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
 	pluginName := tp.Alias
 
-	pluginPath, err := pfilepaths.GetPluginPath(tp.Plugin, tp.Alias)
-	if err != nil {
-		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
-	}
-
 	// create the plugin map
 	pluginMap := map[string]goplugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
+	}
+
+	cmd, err := p.getPluginCommand(tp)
+	if err != nil {
+		return nil, err
 	}
 
 	pluginStartTimeout := p.getPluginStartTimeout()
 	c := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		Plugins:          pluginMap,
-		Cmd:              exec.Command("sh", "-c", pluginPath),
+		Cmd:              cmd,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		// send plugin stderr (logging) to our stderr
 		Stderr: os.Stderr,
@@ -360,6 +361,24 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 	p.Plugins[tp.Plugin] = client
 
 	return client, nil
+}
+
+func (p *PluginManager) getPluginCommand(tp *pplugin.Plugin) (*exec.Cmd, error) {
+	pluginPath, err := pfilepaths.GetPluginPath(tp.Plugin, tp.Alias)
+	if err != nil {
+		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
+	}
+
+	cmd := exec.Command("sh", "-c", pluginPath)
+
+	// set the max memory for the plugin (if specified)
+	maxMemoryBytes := tp.GetMaxMemoryBytes()
+	if maxMemoryBytes != 0 {
+		log.Printf("[INFO] Setting max memory for plugin '%s' to %d Mb", tp.Alias, maxMemoryBytes)
+		// set GOMEMLIMIT for the plugin command env
+		cmd.Env = append(os.Environ(), fmt.Sprintf("GOMEMLIMIT=%d", maxMemoryBytes))
+	}
+	return cmd, nil
 }
 
 // for debug purposes, plugin start timeout can be set via an environment variable TAILPIPE_PLUGIN_START_TIMEOUT

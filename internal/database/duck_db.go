@@ -50,12 +50,13 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 	if tempDir == "" {
 		tempDir = filepaths.EnsureCollectionTempDir()
 	}
-	if _, err := db.Exec(fmt.Sprintf("set temp_directory = '%s';", tempDir)); err != nil {
+
+	if _, err := db.Exec("set temp_directory = ?;", tempDir); err != nil {
 		_ = w.Close()
 		return nil, fmt.Errorf("failed to set temp_directory: %w", err)
 	}
 	if w.maxMemoryMb > 0 {
-		if _, err := db.Exec(fmt.Sprintf("set max_memory = '%dMB';", w.maxMemoryMb)); err != nil {
+		if _, err := db.Exec("set max_memory = ? || 'MB';", w.maxMemoryMb); err != nil {
 			_ = w.Close()
 			return nil, fmt.Errorf("failed to set max_memory: %w", err)
 		}
@@ -118,13 +119,13 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	// set the extension directory
-	if _, err := d.DB.Exec(fmt.Sprintf("SET extension_directory = '%s';", pf.EnsurePipesDuckDbExtensionsDir())); err != nil {
+	if _, err := d.DB.Exec("SET extension_directory = ?;", pf.EnsurePipesDuckDbExtensionsDir()); err != nil {
 		return fmt.Errorf("failed to set extension_directory: %w", err)
 	}
 
 	// install and load the extensions
 	for _, extension := range constants.DuckDbExtensions {
-		if _, err := d.DB.Exec(fmt.Sprintf("INSTALL '%s'; LOAD '%s';", extension, extension)); err != nil {
+		if _, err := d.DB.Exec("INSTALL ?; LOAD ?;", extension, extension); err != nil {
 			return fmt.Errorf("failed to install and load extension %s: %s", extension, err.Error())
 		}
 	}
