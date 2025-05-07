@@ -55,7 +55,7 @@ func envMappings() map[string]cmdconfig.EnvMapping {
 		app_specific.EnvConfigPath:        {ConfigVar: []string{pconstants.ArgConfigPath}, VarType: cmdconfig.EnvVarTypeString},
 		app_specific.EnvQueryTimeout:      {ConfigVar: []string{pconstants.ArgDatabaseQueryTimeout}, VarType: cmdconfig.EnvVarTypeInt},
 		app_specific.EnvMemoryMaxMbPlugin: {ConfigVar: []string{pconstants.ArgMemoryMaxMbPlugin}, VarType: cmdconfig.EnvVarTypeInt},
-		app_specific.EnvMemoryMaxMbPlugin: {ConfigVar: []string{pconstants.ArgMaxTempCacheMb}, VarType: cmdconfig.EnvVarTypeInt},
+		app_specific.EnvMaxTempCacheMb:    {ConfigVar: []string{pconstants.ArgMaxTempCacheMb}, VarType: cmdconfig.EnvVarTypeInt},
 		constants.EnvPluginStartTimeout:   {ConfigVar: []string{pconstants.ArgPluginStartTimeout}, VarType: cmdconfig.EnvVarTypeInt},
 	}
 }
