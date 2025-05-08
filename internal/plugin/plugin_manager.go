@@ -108,7 +108,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
 		FromTime:            timestamppb.New(fromTime),
-		MaxJsonlSizeMb:      viper.GetInt64(pconstants.ArgMaxTempCacheMb),
+		TempDirMaxMb:        viper.GetInt64(pconstants.ArgTempDirMaxMb),
 	}
 
 	if partition.Source.Connection != nil {
