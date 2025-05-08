@@ -20,7 +20,7 @@ func configDefaults(cmd *cobra.Command) map[string]any {
 		pconstants.ArgMemoryMaxMbPlugin: 32 * 1024,
 		// The collection temp folder (JSONL files) - 256 Gb
 		// TODO: currently we do not limit the size of downloaded source files
-		pconstants.ArgMaxTempCacheMb: 256 * 1024,
+		pconstants.ArgTempDirMaxMb: 256 * 1024,
 	}
 
 	cmdSpecificDefaults, ok := cmdSpecificDefaults()[cmd.Name()]
@@ -55,7 +55,7 @@ func envMappings() map[string]cmdconfig.EnvMapping {
 		app_specific.EnvConfigPath:        {ConfigVar: []string{pconstants.ArgConfigPath}, VarType: cmdconfig.EnvVarTypeString},
 		app_specific.EnvQueryTimeout:      {ConfigVar: []string{pconstants.ArgDatabaseQueryTimeout}, VarType: cmdconfig.EnvVarTypeInt},
 		app_specific.EnvMemoryMaxMbPlugin: {ConfigVar: []string{pconstants.ArgMemoryMaxMbPlugin}, VarType: cmdconfig.EnvVarTypeInt},
-		app_specific.EnvMaxTempCacheMb:    {ConfigVar: []string{pconstants.ArgMaxTempCacheMb}, VarType: cmdconfig.EnvVarTypeInt},
+		app_specific.EnvTempDirMaxMb:      {ConfigVar: []string{pconstants.ArgTempDirMaxMb}, VarType: cmdconfig.EnvVarTypeInt},
 		constants.EnvPluginStartTimeout:   {ConfigVar: []string{pconstants.ArgPluginStartTimeout}, VarType: cmdconfig.EnvVarTypeInt},
 	}
 }
