@@ -52,11 +52,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	error_helpers.FailOnError(ew.Error)
 
 	// pump in the initial set of logs (AFTER we have loaded the config, which may specify log level)
-	// this will also write out the Execution ID - enabling easy filtering of logs for a single execution
-	// we need to do this since all instances will log to a single file and logs will be interleaved
-	slog.Info("Tailpipe CLI",
-		"app version", viper.GetString("main.version"),
-		"log level", os.Getenv(app_specific.EnvLogLevel))
+	displayStartupLog()
 
 	// runScheduledTasks skips running tasks if this instance is the plugin manager
 	waitForTasksChannel = runScheduledTasks(ctx, cmd, args)
@@ -65,6 +61,18 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	setMemoryLimit()
 
 	return nil
+}
+
+func displayStartupLog() {
+	slog.Info("Tailpipe CLI",
+		"app version", viper.GetString("main.version"),
+		"log level", os.Getenv(app_specific.EnvLogLevel))
+
+	// log resource limits
+	slog.Info("Resource limits",
+		"max CLI memory (mb)", viper.GetInt64(pconstants.ArgMemoryMaxMb),
+		"max plugin memory (mb)", viper.GetInt64(pconstants.ArgMemoryMaxMbPlugin),
+		"max temp dir size (mb)", viper.GetInt64(pconstants.ArgTempDirMaxMb))
 }
 
 // postRunHook is a function that is executed after the PostRun of every command handler
@@ -88,6 +96,7 @@ func postRunHook(_ *cobra.Command, _ []string) error {
 func setMemoryLimit() {
 	maxMemoryBytes := viper.GetInt64(pconstants.ArgMemoryMaxMb) * 1024 * 1024
 	if maxMemoryBytes > 0 {
+		slog.Info("Setting CLI memory limit", "max memory (mb)", maxMemoryBytes/(1024*1024))
 		// set the max memory
 		debug.SetMemoryLimit(maxMemoryBytes)
 	}

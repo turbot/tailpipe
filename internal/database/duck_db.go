@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -48,7 +49,15 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 	//   where temporary files for data collection are stored)
 	tempDir := w.tempDir
 	if tempDir == "" {
-		tempDir = filepaths.EnsureCollectionTempDir()
+		baseDir := filepaths.EnsureCollectionTempDir()
+		// Create a unique subdirectory with 'duckdb-' prefix
+		// it is important to use a unique directory for each DuckDB instance as otherwise temp files from
+		// different instances can conflict with each other, causing memory swapping issues
+		uniqueTempDir, err := os.MkdirTemp(baseDir, "duckdb-")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create unique temp directory: %w", err)
+		}
+		tempDir = uniqueTempDir
 	}
 
 	if _, err := db.Exec("set temp_directory = ?;", tempDir); err != nil {

@@ -3,7 +3,6 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"math/rand/v2"
 	"os"
@@ -374,7 +373,7 @@ func (p *PluginManager) getPluginCommand(tp *pplugin.Plugin) (*exec.Cmd, error) 
 	// set the max memory for the plugin (if specified)
 	maxMemoryBytes := tp.GetMaxMemoryBytes()
 	if maxMemoryBytes != 0 {
-		log.Printf("[INFO] Setting max memory for plugin '%s' to %d Mb", tp.Alias, maxMemoryBytes)
+		slog.Info("Setting max memory for plugin", "plugin", tp.Alias, "max memory (mb)", maxMemoryBytes/(1024*1024))
 		// set GOMEMLIMIT for the plugin command env
 		cmd.Env = append(os.Environ(), fmt.Sprintf("GOMEMLIMIT=%d", maxMemoryBytes))
 	}
