@@ -19,7 +19,7 @@ const chunkBufferLength = 1000
 const defaultWorkerMemoryMb = 4096
 
 // the minimum memory to assign to each worker -
-const minWorkerMemoryMb = 1024
+const minWorkerMemoryMb = 512
 
 // Converter struct executes all the conversions for a single collection
 // it therefore has a unique execution id, and will potentially convert of multiple JSONL files
@@ -287,14 +287,14 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 		}
 	}
 
-	slog.Info("Work memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
+	slog.Info("Worker memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
 
 	// create the job channel
 	w.jobChan = make(chan *parquetJob, workerCount*2)
 
 	// start the workers
 	for i := 0; i < workerCount; i++ {
-		wk, err := newConversionWorker(w, memoryPerWorkerMb)
+		wk, err := newConversionWorker(w, memoryPerWorkerMb, i)
 		if err != nil {
 			return fmt.Errorf("failed to create worker: %w", err)
 		}

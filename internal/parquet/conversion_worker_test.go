@@ -62,8 +62,6 @@ import (
 //	}
 //}
 
-// TODO KAI FIX
-//func TestBuildViewQuery(t *testing.T) {
 //	// set the version explicitly here since version is set during build time
 //	// then set the app specific constants needed for the tests
 //	viper.Set("main.version", "0.0.1")
