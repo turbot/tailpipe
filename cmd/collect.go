@@ -83,7 +83,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	var fromTime time.Time
 	if viper.IsSet(pconstants.ArgFrom) {
 		var err error
-		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom), time.Hour*24)
+		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom))
 		if err != nil {
 			return err
 		}
@@ -271,21 +271,22 @@ func setExitCodeForCollectError(err error) {
 	exitCode = 1
 }
 
-// parse the from time, validating the granularity
-// for example, if the from arg is T-4H and the granularity is 1 day, that is an error
-func parseFromTime(fromArg string, granularity time.Duration) (time.Time, error) {
+// parse the from time
+// validate the from time is no later than midnight today
+func parseFromTime(fromArg string) (time.Time, error) {
 	now := time.Now()
 
 	fromTime, err := parse.ParseTime(fromArg, now)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse 'from' argument: %w", err)
 	}
-	// ensure the from time passed is more than the granularity away from now
-	// and truncate to the granularity
-	if time.Since(fromTime) < granularity {
-		return time.Time{}, fmt.Errorf("'from' time must be at least %s in the past", formatDuration(granularity))
+	// ensure the from time is ont after midnight today
+	if fromTime.After(now.Truncate(time.Hour * 24)) {
+		return time.Time{}, fmt.Errorf("'from' time must be no later than 00:00 today")
 	}
-	return fromTime.Truncate(granularity), nil
+
+	// truncate to the start of the day
+	return fromTime.Truncate(time.Hour * 24), nil
 }
 
 // HumanizeDuration converts a time.Duration into a human-readable string
