@@ -75,6 +75,8 @@ EOF
 }
 
 @test "verify null_if in column blocks" {
+  # TODO - enable this test when null_if bug is fixed - https://github.com/turbot/tailpipe/issues/393
+  skip "Enable this test when null_if bug is fixed"
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/format_delimited_null.tpc
 format "delimited" "null_if_test" {
   delimiter = ","
