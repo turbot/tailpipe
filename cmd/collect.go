@@ -280,10 +280,6 @@ func parseFromTime(fromArg string) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, fmt.Errorf("failed to parse 'from' argument: %w", err)
 	}
-	// ensure the from time is ont after midnight today
-	if fromTime.After(now.Truncate(time.Hour * 24)) {
-		return time.Time{}, fmt.Errorf("'from' time must be no later than 00:00 today")
-	}
 
 	// truncate to the start of the day
 	return fromTime.Truncate(time.Hour * 24), nil
