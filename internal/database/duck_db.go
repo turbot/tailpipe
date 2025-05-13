@@ -20,6 +20,7 @@ type DuckDb struct {
 	extensions     []string
 	dataSourceName string
 	tempDir        string
+	maxMemoryMb    int
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
@@ -49,11 +50,17 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 	if tempDir == "" {
 		tempDir = filepaths.EnsureCollectionTempDir()
 	}
-	if _, err := db.Exec(fmt.Sprintf("SET temp_directory = '%s';", tempDir)); err != nil {
+
+	if _, err := db.Exec("set temp_directory = ?;", tempDir); err != nil {
 		_ = w.Close()
 		return nil, fmt.Errorf("failed to set temp_directory: %w", err)
 	}
-
+	if w.maxMemoryMb > 0 {
+		if _, err := db.Exec("set max_memory = ? || 'MB';", w.maxMemoryMb); err != nil {
+			_ = w.Close()
+			return nil, fmt.Errorf("failed to set max_memory: %w", err)
+		}
+	}
 	return w, nil
 }
 
@@ -95,6 +102,14 @@ func (d *DuckDb) ExecContext(ctx context.Context, query string, args ...interfac
 	})
 }
 
+// GetTempDir returns the temporary directory configured for DuckDB operations
+func (d *DuckDb) GetTempDir() string {
+	if d.tempDir == "" {
+		return filepaths.EnsureCollectionTempDir()
+	}
+	return d.tempDir
+}
+
 func (d *DuckDb) installAndLoadExtensions() error {
 	if d.DB == nil {
 		return fmt.Errorf("db is nil")
@@ -104,7 +119,7 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	// set the extension directory
-	if _, err := d.DB.Exec(fmt.Sprintf("SET extension_directory = '%s';", pf.EnsurePipesDuckDbExtensionsDir())); err != nil {
+	if _, err := d.DB.Exec("set extension_directory = ?;", pf.EnsurePipesDuckDbExtensionsDir()); err != nil {
 		return fmt.Errorf("failed to set extension_directory: %w", err)
 	}
 

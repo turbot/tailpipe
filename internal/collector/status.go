@@ -9,7 +9,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/logging"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/parquet"
@@ -40,8 +39,8 @@ func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTim
 }
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
-func (s *status) UpdateWithPluginStatus(event *proto.EventStatus) {
-	s.Status = *events.StatusFromProto(event)
+func (s *status) UpdateWithPluginStatus(event *events.Status) {
+	s.Status = *event
 }
 
 // UpdateConversionStatus updates the status with rows converted, rows the conversion failed on, and any errors

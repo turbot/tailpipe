@@ -28,4 +28,13 @@ func WithTempDir(dir string) DuckDbOpt {
 	return func(d *DuckDb) {
 		d.tempDir = dir
 	}
+
+}
+
+// WithMaxMemoryMb sets the maximum memory limit for DuckDB.
+// This can be used to control the memory usage of DuckDB operations.
+func WithMaxMemoryMb(maxMemoryMb int) DuckDbOpt {
+	return func(d *DuckDb) {
+		d.maxMemoryMb = maxMemoryMb
+	}
 }

@@ -13,8 +13,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
-	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
@@ -26,14 +26,18 @@ import (
 const eventBufferSize = 100
 
 type Collector struct {
-	Events chan *proto.Event
+	// this buffered channel is used to asynchronously process events from the plugin
+	// our Notify function will send events to this channel
+	Events chan events.Event
 
+	// the plugin manager is responsible for managing the plugin lifecycle and brokering
+	// communication between the plugin and the collector
 	pluginManager *plugin.PluginManager
 	// the partition to collect
 	partition *config.Partition
-	// the execution
+	// the execution is used to manage the state of the collection
 	execution *execution
-
+	// the parquet convertor is used to convert the JSONL files to parquet
 	parquetConvertor *parquet.Converter
 
 	// the current plugin status - used to update the spinner
@@ -44,7 +48,7 @@ type Collector struct {
 	// the subdirectory of ~/.tailpipe/internal which will be used to store all file data for this collection
 	// this will have the form ~/.tailpipe/internal/collection/<profile>/<pid>
 	collectionTempDir string
-
+	// the path to the JSONL files - the plugin will write to this path
 	sourcePath string
 
 	// bubble tea app
@@ -52,15 +56,18 @@ type Collector struct {
 	cancel context.CancelFunc
 }
 
+// New creates a new collector
 func New(pluginManager *plugin.PluginManager, partition *config.Partition, cancel context.CancelFunc) (*Collector, error) {
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	// first clear out any old collection temp dirs
 	filepaths.CleanupCollectionTempDirs()
+	// then create a new collection temp dir
 	collectionTempDir := filepaths.EnsureCollectionTempDir()
 
+	// create the collector
 	c := &Collector{
-		Events:            make(chan *proto.Event, eventBufferSize),
+		Events:            make(chan events.Event, eventBufferSize),
 		pluginManager:     pluginManager,
 		collectionTempDir: collectionTempDir,
 		partition:         partition,
@@ -80,6 +87,11 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	return c, nil
 }
 
+// Close closes the collector
+// - closes the events channel
+// - closes the parquet convertor
+// - removes the JSONL path
+// - removes the collection temp dir
 func (c *Collector) Close() {
 	close(c.Events)
 
@@ -94,6 +106,13 @@ func (c *Collector) Close() {
 	_ = os.RemoveAll(c.collectionTempDir)
 }
 
+// Collect asynchronously starts the collection process
+// - creates a new execution
+// - tells the plugin manager to start collecting
+// - validates the schema returned by the plugin
+// - starts the collection UI
+// - creates a parquet writer, which will process the JSONL files as they are written
+// - starts listening to plugin events
 func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
@@ -108,7 +127,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		}
 	}()
 
-	// create the execution _before_ calling the plugin to ensure it is ready to receive the started event
+	// create the execution
+	// NOTE: create _before_ calling the plugin to ensure it is ready to receive the started event
 	c.execution = newExecution(c.partition)
 
 	// tell plugin to start collecting
@@ -117,8 +137,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		return err
 	}
 
-	resolvedFromTime := collectResponse.FromTime
-	// now set the execution id
+	// _now_ set the execution id
 	c.execution.id = collectResponse.ExecutionId
 
 	// validate the schema returned by the plugin
@@ -130,6 +149,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 		// and return error
 		return err
 	}
+	// determine the time to start collecting from
+	resolvedFromTime := collectResponse.FromTime
 
 	// display the progress UI
 	err = c.showCollectionStatus(resolvedFromTime)
@@ -150,20 +171,21 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	}
 	c.parquetConvertor = parquetConvertor
 
-	// start listening to plugin event
-	c.listenToEventsAsync(ctx)
+	// start listening to plugin events asynchronously
+	go c.listenToEvents(ctx)
 
 	return nil
 }
 
 // Notify implements observer.Observer
 // send an event down the channel to be picked up by the handlePluginEvent goroutine
-func (c *Collector) Notify(event *proto.Event) {
+func (c *Collector) Notify(_ context.Context, event events.Event) error {
 	// only send the event if the execution is not complete - this is to handle the case where it has
 	// terminated with an error, causing the collector to close, closing the channel
 	if !c.execution.complete() {
 		c.Events <- event
 	}
+	return nil
 }
 
 // WaitForCompletion waits for our execution to have state ExecutionState_COMPLETE
@@ -174,7 +196,8 @@ func (c *Collector) WaitForCompletion(ctx context.Context) error {
 	return c.execution.waitForCompletion(ctx)
 }
 
-// Compact compacts the parquet files
+// Compact compacts the parquet files so that for each date folder
+// (the lowest level of the partition) there is only one parquet file
 func (c *Collector) Compact(ctx context.Context) error {
 	slog.Info("Compacting parquet files")
 
@@ -203,31 +226,31 @@ func (c *Collector) Completed() {
 
 	// if we suppressed progress display, we should write the summary
 	if !viper.GetBool(pconstants.ArgProgress) {
-		fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // we are writing to stdout
+		_, _ = fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // UI output
 	}
 }
 
 // handlePluginEvent handles an event from a plugin
-func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
+func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 	// handlePluginEvent the event
 	// switch based on the struct of the event
-	switch e.GetEvent().(type) {
-	case *proto.Event_StartedEvent:
-		slog.Info("Event_StartedEvent", "execution", e.GetStartedEvent().ExecutionId)
+	switch ev := e.(type) {
+	case *events.Started:
+		slog.Info("Started event", "execution", ev.ExecutionId)
 		c.execution.state = ExecutionState_STARTED
-	case *proto.Event_StatusEvent:
+	case *events.Status:
 		c.statusLock.Lock()
 		defer c.statusLock.Unlock()
-		c.status.UpdateWithPluginStatus(e.GetStatusEvent())
+		c.status.UpdateWithPluginStatus(ev)
 		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
-	case *proto.Event_ChunkWrittenEvent:
-		ev := e.GetChunkWrittenEvent()
+	case *events.Chunk:
+
 		executionId := ev.ExecutionId
 		chunkNumber := ev.ChunkNumber
 
 		// log every 100 chunks
 		if ev.ChunkNumber%100 == 0 {
-			slog.Debug("Event_ChunkWrittenEvent", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
+			slog.Debug("Chunk event", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
 		}
 
 		err := c.parquetConvertor.AddChunk(executionId, chunkNumber)
@@ -235,33 +258,33 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e *proto.Event) {
 			slog.Error("failed to add chunk to parquet writer", "error", err)
 			c.execution.done(err)
 		}
-	case *proto.Event_CompleteEvent:
-		completedEvent := e.GetCompleteEvent()
-		slog.Info("handlePluginEvent received Event_CompleteEvent", "execution", completedEvent.ExecutionId)
+	case *events.Complete:
+		slog.Info("Complete event", "execution", ev.ExecutionId)
 
 		// was there an error?
-		if completedEvent.Error != "" {
-			slog.Error("execution error", "execution", completedEvent.ExecutionId, "error", completedEvent.Error)
-			// retrieve the execution
-			c.execution.done(fmt.Errorf("plugin error: %s", completedEvent.Error))
+		if ev.Err != nil {
+			slog.Error("execution error", "execution", ev.ExecutionId, "error", ev.Err)
+			// update the execution
+			c.execution.done(ev.Err)
+			return
 		}
 		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
 		// we then combine the parquet files into a single file
 
 		// start thread waiting for conversion to complete
 		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
+		slog.Info("handlePluginEvent - waiting for conversions to complete")
 		go func() {
-			slog.Info("handlePluginEvent - waiting for conversions to complete", "execution", completedEvent.ExecutionId)
-			err := c.waitForConversions(ctx, completedEvent)
+			err := c.waitForConversions(ctx, ev)
 			if err != nil {
 				slog.Error("error waiting for execution to complete", "error", err)
 				c.execution.done(err)
 			} else {
-				slog.Info("handlePluginEvent - conversions all complete", "execution", completedEvent.ExecutionId)
+				slog.Info("handlePluginEvent - conversions all complete")
 			}
 		}()
 
-	case *proto.Event_ErrorEvent:
+	case *events.Error:
 		// TODO #errors error events are deprecated an will only be sent for plugins not using sdk > v0.2.0
 		// TODO #errors decide what (if anything) we should do with error events from old plugins https://github.com/turbot/tailpipe/issues/297
 		//ev := e.GetErrorEvent()
@@ -291,31 +314,35 @@ func (c *Collector) createTableView(ctx context.Context) error {
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
 	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime)
 
+	// if the progress flag is set, start the tea app to display the progress
 	if viper.GetBool(pconstants.ArgProgress) {
-		return c.showTeaAppAsync()
+		// start the tea app asynchronously
+		go c.showTeaApp()
+		return nil
 	}
-
-	return c.showMinimalCollectionStatus()
+	// otherwise, just show a simple initial message - we will show a simple summary tat the end
+	return c.showMinimalCollectionStartMessage()
 }
 
-func (c *Collector) showTeaAppAsync() error {
+// showTeaApp starts the tea app to display the collection progress
+func (c *Collector) showTeaApp() {
+	// create the tea app
 	c.app = tea.NewProgram(newCollectionModel(c.status))
-
-	go func() {
-		model, err := c.app.Run()
-		if model.(collectionModel).cancelled {
-			slog.Info("Collection UI returned cancelled")
-			c.doCancel()
-		}
-		if err != nil {
-			slog.Warn("Collection UI returned error", "error", err)
-			c.doCancel()
-		}
-	}()
-	return nil
+	// and start it
+	model, err := c.app.Run()
+	if model.(collectionModel).cancelled {
+		slog.Info("Collection UI returned cancelled")
+		c.doCancel()
+	}
+	if err != nil {
+		slog.Warn("Collection UI returned error", "error", err)
+		c.doCancel()
+	}
 }
 
-func (c *Collector) showMinimalCollectionStatus() error {
+// showMinimalCollectionStartMessage displays a simple status message to indicate that the collection has started
+// this is used when the progress flag is not set
+func (c *Collector) showMinimalCollectionStartMessage() error {
 	// display initial message
 	initMsg := c.status.CollectionHeader()
 	_, err := fmt.Print(initMsg) //nolint:forbidigo //desired output
@@ -350,53 +377,45 @@ func (c *Collector) StatusString() string {
 
 // waitForConversions waits for the parquet writer to complete the conversion of the JSONL files to parquet
 // it then sets the execution state to ExecutionState_COMPLETE
-func (c *Collector) waitForConversions(ctx context.Context, ce *proto.EventComplete) (err error) {
-	slog.Info("waitForConversions - waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunkCount, "rows", ce.RowCount)
+func (c *Collector) waitForConversions(ctx context.Context, ce *events.Complete) (err error) {
+	slog.Info("waitForConversions - waiting for execution to complete", "execution", ce.ExecutionId, "chunks", ce.ChunksWritten, "rows", ce.RowCount)
 
-	if ce.ChunkCount == 0 && ce.RowCount == 0 {
-		slog.Debug("waitForConversions - no chunks/rows to write", "execution", ce.ExecutionId)
-		var err error
-		if ce.Error != "" {
-			slog.Warn("waitForConversions - plugin execution returned error", "execution", ce.ExecutionId, "error", ce.Error)
-			err = errors.New(ce.Error)
-		}
-		// mark execution as done, passing any error
+	// ensure we mark the execution as done
+	defer func() {
 		c.execution.done(err)
+	}()
+
+	// if there are no chunks or rows to write, we can just return
+	// (note: we know that the Complete event wil not have an error as that is handled before calling this function)
+	if ce.ChunksWritten == 0 && ce.RowCount == 0 {
+		slog.Debug("waitForConversions - no chunks/rows to write", "execution", ce.ExecutionId)
 		return nil
 	}
 
-	// so there was no plugin error - wait for the conversions to complete
+	// wait for the conversions to complete
 	c.parquetConvertor.WaitForConversions(ctx)
 
+	// create or update the table view for ths table being collected
 	if err := c.createTableView(ctx); err != nil {
 		slog.Error("error creating table view", "error", err)
-		c.execution.done(err)
 		return err
 	}
 
-	// mark execution as complete and record the end time
-	c.execution.done(err)
+	slog.Info("handlePluginEvent - conversions all complete")
 
-	// if there was an error, return it
-	if err != nil {
-		return err
-	}
-
-	// notify the writer that the collection is complete
 	return nil
 }
 
-func (c *Collector) listenToEventsAsync(ctx context.Context) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case event := <-c.Events:
-				c.handlePluginEvent(ctx, event)
-			}
+// listenToEvents listens to the events channel and handles events
+func (c *Collector) listenToEvents(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event := <-c.Events:
+			c.handlePluginEvent(ctx, event)
 		}
-	}()
+	}
 }
 
 func (c *Collector) doCancel() {

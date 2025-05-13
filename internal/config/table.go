@@ -26,6 +26,7 @@ type Table struct {
 	Columns []Column `hcl:"column,block" cty:"columns"`
 
 	// should we include ALL source fields in addition to any defined columns, or ONLY include the columns defined
+	// default to automap ALL source fields (*)
 	MapFields []string `hcl:"map_fields,optional" cty:"map_fields"`
 	// the default null value for the table (may be overridden for specific columns)
 	NullIf string `hcl:"null_if,optional" cty:"null_if"`
