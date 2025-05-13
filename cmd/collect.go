@@ -284,32 +284,3 @@ func parseFromTime(fromArg string) (time.Time, error) {
 	// truncate to the start of the day
 	return fromTime.Truncate(time.Hour * 24), nil
 }
-
-// HumanizeDuration converts a time.Duration into a human-readable string
-func formatDuration(d time.Duration) string {
-	if d.Hours() >= 24 {
-		days := int(d.Hours() / 24)
-		if days == 1 {
-			return "1 day"
-		}
-		return fmt.Sprintf("%d days", days)
-	} else if d.Hours() >= 1 {
-		hours := int(d.Hours())
-		if hours == 1 {
-			return "1 hour"
-		}
-		return fmt.Sprintf("%d hours", hours)
-	} else if d.Minutes() >= 1 {
-		minutes := int(d.Minutes())
-		if minutes == 1 {
-			return "1 minute"
-		}
-		return fmt.Sprintf("%d minutes", minutes)
-	} else {
-		seconds := int(d.Seconds())
-		if seconds == 1 {
-			return "1 second"
-		}
-		return fmt.Sprintf("%d seconds", seconds)
-	}
-}
