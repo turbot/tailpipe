@@ -95,6 +95,8 @@ jobs:
           - "partition_tests"
           - "file_source"
           - "partition_delete"
+          - "core_formats"
+          - "table_block"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout

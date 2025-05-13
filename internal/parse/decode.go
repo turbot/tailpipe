@@ -215,11 +215,6 @@ func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAtt
 	var diags hcl.Diagnostics
 	unknown := &config.HclBytes{}
 
-	// First, include the block's own range
-	hclBytes := parseCtx.FileData[block.DefRange.Filename]
-	blockRange := hclhelpers.BlockRangeWithLabels(block)
-	unknown.Merge(config.HclBytesForLines(hclBytes, blockRange))
-
 	for _, attr := range unknownAttrs {
 		//	get the hcl bytes for the file
 		hclBytes := parseCtx.FileData[block.DefRange.Filename]
