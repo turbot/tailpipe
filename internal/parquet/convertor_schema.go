@@ -54,7 +54,9 @@ func (w *Converter) buildViewQuery() string {
 
 	var whereClause string
 	if w.Partition.Filter != "" {
-		whereClause = fmt.Sprintf("\nwhere %s", w.Partition.Filter)
+		// we need to escape the % in the filter, as it is passed to the fmt.Sprintf function
+		filter := strings.ReplaceAll(w.Partition.Filter, "%", "%%")
+		whereClause = fmt.Sprintf("\nwhere %s", filter)
 	}
 
 	res := fmt.Sprintf(`select
