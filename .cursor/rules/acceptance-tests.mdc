@@ -1,0 +1,44 @@
+---
+description: 
+globs: tests/acceptance/**
+alwaysApply: false
+---
+# Acceptance Tests Structure and Best Practices
+
+Acceptance tests are located in the [tests/acceptance/test_files/](mdc:tailpipe/tests/acceptance/test_files) directory. Each test case should be isolated in its own file for clarity and maintainability.
+
+## Guidelines for Acceptance Tests
+
+- **Test Isolation:** Each test should be in a separate file and use unique resource/config names to avoid conflicts.
+- **Setup and Teardown:** Use `setup` and `teardown` functions to clean up config and data before and after each test, ensuring a clean environment.
+- **Error Handling:** Focus assertions on user-facing error messages and observable outcomes, not on internal or debug messages that may change.
+- **Clarity:** Use descriptive test names and comments to explain the purpose and expected outcome of each test.
+- **Execution:** Tests should be runnable individually or in batches using the `run.sh` script from the `test_files` directory.
+- **Framework:** All tests use [BATS](mdc:tailpipe/tailpipe/tailpipe/tailpipe/tailpipe/tailpipe/tailpipe/https:/github.com/bats-core/bats-core) for shell-based testing.
+- **CI/CD Integration:** After adding new test files, update the test matrix in [.github/workflows/11-test-acceptance.yaml](mdc:tailpipe/.github/workflows/11-test-acceptance.yaml) to include the new test file in the acceptance test suite.
+- **Command Dependencies:** When adding new tests that require additional shell commands or tools, update the `required_commands` array in `run.sh` to include the new dependencies. This ensures proper dependency checking in CI environments.
+- **Test Verification:** Always run the test using `./tests/acceptance/run.sh filename.bats` after adding or modifying a test file to verify it works as expected.
+
+## Running Tests
+
+Tests must be run from the tailpipe root directory using the following command format:
+```bash
+./tests/acceptance/run.sh filename.bats
+```
+
+For example:
+```bash
+./tests/acceptance/run.sh partition_delete.bats
+```
+
+## Example Test Files
+
+- [partition_row_count.bats](mdc:tailpipe/tests/acceptance/test_files/partition_row_count.bats): Example of verifying a specific row count.
+- [partition_filter.bats](mdc:tailpipe/tests/acceptance/test_files/partition_filter.bats): Example of verifying filter functionality.
+- [partition_invalid_filter.bats](mdc:tailpipe/tests/acceptance/test_files/partition_invalid_filter.bats): Example of checking for clear error messages on invalid input.
+- [partition_duplicate.bats](mdc:tailpipe/tests/acceptance/test_files/partition_duplicate.bats): Example of handling duplicate resource errors.
+- [partition_invalid_source.bats](mdc:tailpipe/tests/acceptance/test_files/partition_invalid_source.bats): Example of handling references to non-existent resources.
+- [partition_delete.bats](mdc:tailpipe/tests/acceptance/test_files/partition_delete.bats): Example of testing partition deletion and error handling for non-existent partitions.
+
+Use these examples as templates for new acceptance tests, adapting the structure and best practices for other features and scenarios.
+

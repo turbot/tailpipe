@@ -36,6 +36,10 @@ func NewTailpipeConfig() *TailpipeConfig {
 func (c *TailpipeConfig) Add(resource modconfig.HclResource) error {
 	switch t := resource.(type) {
 	case *Partition:
+		// Check if a partition with the same name already exists
+		if _, exists := c.Partitions[t.GetUnqualifiedName()]; exists {
+			return fmt.Errorf("partition %s already exists for table %s", t.ShortName, t.TableName)
+		}
 		c.Partitions[t.GetUnqualifiedName()] = t
 		return nil
 	case *TailpipeConnection:

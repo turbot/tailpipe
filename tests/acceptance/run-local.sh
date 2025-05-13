@@ -24,8 +24,8 @@ set -e
 echo "Installation complete at $TAILPIPE_INSTALL_DIR"
 
 # install chaos plugin
-tailpipe plugin install chaos
-echo "Installed CHAOS plugin"
+tailpipe plugin install chaos aws
+echo "Installed CHAOS and AWS plugins"
 
 if [ $# -eq 0 ]; then
   # Run all test files

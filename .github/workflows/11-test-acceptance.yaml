@@ -92,6 +92,9 @@ jobs:
           - "all_column_types"
           - "from_and_to"
           - "introspection"
+          - "partition_tests"
+          - "file_source"
+          - "partition_delete"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
@@ -134,7 +137,7 @@ jobs:
 
       - name: Install Tailpipe and plugins
         run: |
-          tailpipe plugin install chaos
+          tailpipe plugin install chaos aws
 
       - name: Run Test Suite
         id: run-test-suite

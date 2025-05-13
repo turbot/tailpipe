@@ -2,9 +2,10 @@ package parse
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/hcl/v2"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
-	"strings"
 )
 
 // reimplement this as the pipe fittings version raises an internal error
@@ -31,6 +32,11 @@ func HclDiagsToError(prefix string, diags hcl.Diagnostics) error {
 		prefixStr := ""
 		if prefix != "" {
 			prefixStr = prefix + ": "
+		}
+		// If the error string contains range information on a new line, move it to the same line
+		if strings.Contains(res, "\n(") {
+			parts := strings.SplitN(res, "\n(", 2)
+			res = fmt.Sprintf("%s (%s", parts[0], parts[1])
 		}
 		return fmt.Errorf("%s%s", prefixStr, res)
 	}
