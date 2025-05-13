@@ -1,7 +1,7 @@
 load "$LIB_BATS_ASSERT/load.bash"
 load "$LIB_BATS_SUPPORT/load.bash"
 
-@test "verify cloudtrail logs count" {
+@test "verify file source logs count" {
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/cloudtrail_logs.tpc
 partition "aws_cloudtrail_log" "fs" {
   source "file" {
@@ -22,7 +22,7 @@ EOF
 
   # We expect at least some records from the two files
   assert_output --regexp 'count
-"200,000"'
+200000'
 
   # remove the config file
   rm -rf $TAILPIPE_INSTALL_DIR/config/cloudtrail_logs.tpc
@@ -53,7 +53,7 @@ EOF
 
   # We expect double the records since we're reading from two identical directories
   assert_output --regexp 'count
-"400,000"'
+400000'
 
   # remove the config file and test directory
   rm -rf $TAILPIPE_INSTALL_DIR/config/multi_path.tpc
@@ -81,7 +81,7 @@ EOF
 
   # We expect the same number of records as the basic test
   assert_output --regexp 'count
-"200,000"'
+200000'
 
   # remove the config file
   rm -rf $TAILPIPE_INSTALL_DIR/config/custom_layout.tpc
@@ -111,7 +111,7 @@ EOF
 
   # We expect the same number of records as the basic test
   assert_output --regexp 'count
-"200,000"'
+200000'
 
   # remove the config file
   rm -rf $TAILPIPE_INSTALL_DIR/config/custom_patterns.tpc
