@@ -139,7 +139,7 @@ EOF
   echo $output
 
   assert_equal "$output" "server_id,cpu_usage,memory_used,is_healthy
-srv-001,75.5,\"8,192\",true"
+srv-001,75.5,8192,true"
 
   # Cleanup
   rm -rf $TAILPIPE_INSTALL_DIR/config/format_jsonl.tpc
