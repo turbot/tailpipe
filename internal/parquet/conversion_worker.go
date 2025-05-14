@@ -18,6 +18,9 @@ import (
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
+// limit tha max partitions to convert
+const maxPartitionsPerConversion = 1000
+
 type parquetJob struct {
 	chunkNumber int32
 }
@@ -36,22 +39,24 @@ type conversionWorker struct {
 	destDir string
 
 	// helper struct which provides unique filename roots
-	fileRootProvider              *FileRootProvider
-	db                            *database.DuckDb
-	maxMemoryMb                   int
-	maxPartitionKeysPerConversion int
+	fileRootProvider           *FileRootProvider
+	db                         *database.DuckDb
+	maxMemoryMb                int
+	partitionKeysPerConversion int
+	// the worker id - a zero based index - used for logging
+	id int
 }
 
-func newConversionWorker(converter *Converter, maxMemoryMb int) (*conversionWorker, error) {
-
+func newConversionWorker(converter *Converter, maxMemoryMb int, id int) (*conversionWorker, error) {
 	w := &conversionWorker{
-		jobChan:                       converter.jobChan,
-		sourceDir:                     converter.sourceDir,
-		destDir:                       converter.destDir,
-		fileRootProvider:              converter.fileRootProvider,
-		converter:                     converter,
-		maxMemoryMb:                   maxMemoryMb,
-		maxPartitionKeysPerConversion: getMaxPartitionsPerConversion(maxMemoryMb),
+		id:                         id,
+		jobChan:                    converter.jobChan,
+		sourceDir:                  converter.sourceDir,
+		destDir:                    converter.destDir,
+		fileRootProvider:           converter.fileRootProvider,
+		converter:                  converter,
+		maxMemoryMb:                maxMemoryMb,
+		partitionKeysPerConversion: maxPartitionsPerConversion,
 	}
 
 	if err := w.validate(); err != nil {
@@ -62,35 +67,6 @@ func newConversionWorker(converter *Converter, maxMemoryMb int) (*conversionWork
 	}
 
 	return w, nil
-}
-
-func getMaxPartitionsPerConversion(maxMemoryMb int) int {
-	// 8Gb mem -> 500
-	// 4Gb mem -> 250
-
-	// scale the number of partitions inversely with memory size
-	// use 8GB as the baseline (1000 partitions)
-	baselineMemoryMb := 8 * 1024
-	baselinePartitions := 500
-
-	// calculate scaled partitions (more memory = fewer partitions)
-	scaledPartitions := baselinePartitions * baselineMemoryMb / maxMemoryMb
-
-	defer slog.Info("getMaxPartitionsPerConversion", "worker max memory (mb)", maxMemoryMb, "max hive partition keys per conversion", scaledPartitions)
-
-	// ensure we stay within reasonable bounds
-	// note: we do not actually need to enforce min partitions as the min memory of 1Gb will enforce this for us
-	// - but it is nice to be clear of the bounds in the code - and the min memory is defined elsewhere and could be changed
-	minPartitions := 50
-	maxPartitions := 1000
-
-	if scaledPartitions < minPartitions {
-		return minPartitions
-	}
-	if scaledPartitions > maxPartitions {
-		return maxPartitions
-	}
-	return scaledPartitions
 }
 
 // validate our params
@@ -140,7 +116,9 @@ func (w *conversionWorker) close() {
 
 // createDuckDbConnection creates a new DuckDB connection, setting the max memory limit
 func (w *conversionWorker) createDuckDbConnection() error {
-	db, err := database.NewDuckDb(database.WithDuckDbExtensions(constants.DuckDbExtensions), database.WithMaxMemoryMb(w.maxMemoryMb))
+	db, err := database.NewDuckDb(
+		database.WithDuckDbExtensions(constants.DuckDbExtensions),
+		database.WithMaxMemoryMb(w.maxMemoryMb))
 	if err != nil {
 		return fmt.Errorf("failed to reopen DuckDB connection: %w", err)
 	}
@@ -154,12 +132,12 @@ func (w *conversionWorker) forceMemoryRelease() error {
 	const minMemoryMb = 64
 
 	// Set to minimum memory - note the use of ? parameter
-	if _, err := w.db.Exec("PRAGMA memory_limit=?", minMemoryMb); err != nil {
+	if _, err := w.db.Exec("set max_memory = ? || 'MB';", minMemoryMb); err != nil {
 		return fmt.Errorf("memory flush failed: %w", err)
 	}
 
 	// Reset to configured memory limit
-	if _, err := w.db.Exec("PRAGMA memory_limit=?", w.maxMemoryMb); err != nil {
+	if _, err := w.db.Exec("set max_memory = ? || 'MB';", w.maxMemoryMb); err != nil {
 		return fmt.Errorf("memory reset failed: %w", err)
 	}
 	return nil
@@ -247,9 +225,8 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 
 	// ok now we can do the copy query to write the data in the temp table to parquet files
 	// we limit the number of partitions we create per copy query to avoid excessive memory usage
-	// TODO consider dynamically changing the number of partitions to process based on column count
 
-	partitionsPerConversion := w.maxPartitionKeysPerConversion
+	partitionsPerConversion := w.partitionKeysPerConversion
 
 	// get row counts for each distinct partition
 	partitionRowCounts, err := w.getPartitionRowCounts()
@@ -290,7 +267,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 		rowCount, err := w.doConversionForBatch(jsonlFilePath, rowOffset, rowsInBatch)
 		if err != nil {
 			if conversionRanOutOfMemory(err) {
-				// If out of memory, fluish memory, reopen the connection, and retry with fewer partitions
+				// If out of memory, flush memory, reopen the connection, and retry with fewer partitions
 				if err := w.forceMemoryRelease(); err != nil {
 					return err
 				}
@@ -298,7 +275,9 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 				if partitionsPerConversion < 1 {
 					return fmt.Errorf("failed to convert batch - partition count reduced to 0")
 				}
-				slog.Debug("restarting conversion with fewer partitions", "file", jsonlFilePath, "partitions", partitionsPerConversion)
+				slog.Info("JSONL-parquet conversion failed with out of memory - retrying with fewer partitions", "file", jsonlFilePath, "failed partitions", partitionsPerConversion*2, "partitions", partitionsPerConversion, "worker", w.id)
+				// update partitionKeysPerConversion so the next conversion with this worker uses the new value
+				w.partitionKeysPerConversion = partitionsPerConversion
 				continue
 			}
 			return err
