@@ -3,10 +3,9 @@ package display
 import (
 	"context"
 	"fmt"
-	"github.com/iancoleman/strcase"
-	"github.com/turbot/tailpipe-plugin-sdk/types"
 
 	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -26,24 +25,27 @@ func (r *SourceResource) GetShowData() *printers.RowData {
 		printers.NewFieldValue("Description", r.Description),
 	}
 	if len(r.Properties) > 0 {
-		args := map[string]string{}
-
-		for k, v := range r.Properties {
-			propertyString := v.Type
-			if v.Description != "" {
-				propertyString += ": " + v.Description
-			}
-			if v.Required {
-				propertyString += " (required)"
-			}
-			// convert field-name to camel case for pretty display
-			name := strcase.ToCamel(k)
-			args[name] = propertyString
-		}
-		allProperties = append(allProperties, printers.NewFieldValue("Properties", args))
+		allProperties = append(allProperties, printers.NewFieldValue("Properties", r.propertyShowMap()))
 	}
 	res := printers.NewRowData(allProperties...)
 	return res
+}
+
+// GetShowData builds a map of property descriptions to pass to NewFieldValue
+func (r *SourceResource) propertyShowMap() map[string]string {
+	args := map[string]string{}
+
+	for k, v := range r.Properties {
+		propertyString := v.Type
+		if v.Required {
+			propertyString += " (required)"
+		}
+		if v.Description != "" {
+			propertyString += "\n    " + v.Description
+		}
+		args[k] = propertyString
+	}
+	return args
 }
 
 // GetListData implements the printers.Listable interface
