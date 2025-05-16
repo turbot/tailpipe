@@ -13,14 +13,6 @@ func configDefaults(cmd *cobra.Command) map[string]any {
 	defs := map[string]any{
 		// global general options
 		pconstants.ArgUpdateCheck: true,
-
-		// memory - 32Gb
-		pconstants.ArgMemoryMaxMb: 32 * 1024,
-		// plugin memory - 32 Gb
-		pconstants.ArgMemoryMaxMbPlugin: 32 * 1024,
-		// The collection temp folder (JSONL files) - 256 Gb
-		// TODO: currently we do not limit the size of downloaded source files
-		pconstants.ArgTempDirMaxMb: 256 * 1024,
 	}
 
 	cmdSpecificDefaults, ok := cmdSpecificDefaults()[cmd.Name()]
