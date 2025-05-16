@@ -2,8 +2,8 @@
 _What's new_
 * Add support for memory and temp storage limits for CLI and plugins. ([#396](https://github.com/turbot/tailpipe/issues/396), [#397](https://github.com/turbot/tailpipe/issues/397))
   * `memory_max_mb` controls CLI memory usage and conversion worker count and memory allocation.
-  * `plugin_max_memory_mb` controls a per-plugin soft memory cap.
-  * `max_temp_dir_mb` limits size of temp data written to disk during a conversion.
+  * `plugin_memory_max_mb` controls a per-plugin soft memory cap.
+  * `temp_dir_max_mb` limits size of temp data written to disk during a conversion.
   * conversion worker count is now based on memory limit, if set.
   * JSONL to Parquet conversion is now executed in multiple passes, limiting the number of distinct partition keys per conversion.
 * Detect and report when a plugin crashes. ([#341](https://github.com/turbot/tailpipe/issues/341))
