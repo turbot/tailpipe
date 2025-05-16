@@ -16,7 +16,6 @@ import (
 
 const defaultParquetWorkerCount = 5
 const chunkBufferLength = 1000
-const defaultWorkerMemoryMb = 4096
 
 // the minimum memory to assign to each worker -
 const minWorkerMemoryMb = 512
