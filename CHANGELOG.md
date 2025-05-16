@@ -1,6 +1,5 @@
 ## v0.4.0 [2025-05-16]
 _What's new_
- 
 * Add support for memory and temp storage limits for CLI and plugins. ([#396](https://github.com/turbot/tailpipe/issues/396), [#397](https://github.com/turbot/tailpipe/issues/397))
   * `memory_max_mb` controls CLI memory usage and conversion worker count and memory allocation.
   * `plugin_max_memory_mb` controls a per-plugin soft memory cap.
@@ -9,6 +8,9 @@ _What's new_
   * JSONL to Parquet conversion is now executed in multiple passes, limiting the number of distinct partition keys per conversion.
 * Detect and report when a plugin crashes. ([#341](https://github.com/turbot/tailpipe/issues/341))
 * Update `show source` output to include source properties. ([#388](https://github.com/turbot/tailpipe/issues/388))
+
+_Bug fixes_
+* Fix issue where tailpipe was mentioning steampipe in one of the error messages. ([#389](https://github.com/turbot/tailpipe/issues/389))
 
 ## v0.3.2 [2025-04-25]
 _What's new_
