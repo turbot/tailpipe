@@ -773,10 +773,10 @@ github.com/turbot/pipe-fittings/v2 v2.4.1 h1:HncLdttMSjEyx7E8xTQ9xBfbz9JLoycp3YS
 github.com/turbot/pipe-fittings/v2 v2.4.1/go.mod h1:szte433cBDCaZcGe5zMVGG7uTl9HMaEYaQmuvzZRYIQ=
 github.com/turbot/pipes-sdk-go v0.12.0 h1:esbbR7bALa5L8n/hqroMPaQSSo3gNM/4X0iTmHa3D6U=
 github.com/turbot/pipes-sdk-go v0.12.0/go.mod h1:Mb+KhvqqEdRbz/6TSZc2QWDrMa5BN3E4Xw+gPt2TRkc=
-github.com/turbot/tailpipe-plugin-core v0.2.3 h1:sGudz4NkEO7xRMPl9wwlI4e+8H95sLfwnS2MkZ5la3g=
-github.com/turbot/tailpipe-plugin-core v0.2.3/go.mod h1:cxp0nuMLznlDaZDNo52RYw07EKTgP/yGClm+waELBE0=
-github.com/turbot/tailpipe-plugin-sdk v0.5.1 h1:DV/91pe7iqhlcT7Tta8Nfgla32EoI4OVugZ92McqivI=
-github.com/turbot/tailpipe-plugin-sdk v0.5.1/go.mod h1:is7Hh1u0yZS2nJ2HXwV9BpDMpuDycIt/gJtE10ufMss=
+github.com/turbot/tailpipe-plugin-core v0.2.4 h1:dy7a0uAweiBWO4dfr2DOgEA74iF5kZ68rcSph9/2Jsg=
+github.com/turbot/tailpipe-plugin-core v0.2.4/go.mod h1:i+ysfoJmknsp1/3l5XvEn28Y3K84Y8lxWDej4/4IUIk=
+github.com/turbot/tailpipe-plugin-sdk v0.6.0 h1:WL1I4pwVr0AeCaYJ7HPsva5SumO3D5ZhcEcVAFBSjNs=
+github.com/turbot/tailpipe-plugin-sdk v0.6.0/go.mod h1:is7Hh1u0yZS2nJ2HXwV9BpDMpuDycIt/gJtE10ufMss=
 github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 h1:qDMxFVd8Zo0rIhnEBdCIbR+T6WgjwkxpFZMN8zZmmjg=
 github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7/go.mod h1:5hzpfalEjfcJWp9yq75/EZoEu2Mzm34eJAPm3HOW2tw=
 github.com/ulikunitz/xz v0.5.10 h1:t92gobL9l3HE202wg3rlk19F6X+JOxl9BBrCCMYEYd8=
