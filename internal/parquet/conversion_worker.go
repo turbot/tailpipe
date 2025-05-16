@@ -116,9 +116,15 @@ func (w *conversionWorker) close() {
 
 // createDuckDbConnection creates a new DuckDB connection, setting the max memory limit
 func (w *conversionWorker) createDuckDbConnection() error {
-	db, err := database.NewDuckDb(
+	opts := []database.DuckDbOpt{
 		database.WithDuckDbExtensions(constants.DuckDbExtensions),
-		database.WithMaxMemoryMb(w.maxMemoryMb))
+	}
+	// if a memory limit is set, use it
+	if w.maxMemoryMb > 0 {
+		opts = append(opts, database.WithMaxMemoryMb(w.maxMemoryMb))
+	}
+	db, err := database.NewDuckDb(opts...)
+
 	if err != nil {
 		return fmt.Errorf("failed to reopen DuckDB connection: %w", err)
 	}
