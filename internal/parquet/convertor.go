@@ -262,32 +262,29 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 	// determine the number of workers to start
 	// see if there was a memory limit
 	maxMemoryMb := viper.GetInt(pconstants.ArgMemoryMaxMb)
-
-	// if no memory limit is set, calculate based on default worker count and min memory per worker
-	if maxMemoryMb == 0 {
-		maxMemoryMb = defaultParquetWorkerCount * defaultWorkerMemoryMb
-	}
-
-	// calculate memory per worker and adjust worker count if needed
-	// - reserve memory for main process by dividing maxMemory by (workerCount + 1)
-	// - if calculated memory per worker is less than minimum required:
-	//   - reduce worker count to ensure each worker has minimum required memory
-	//   - ensure at least 1 worker remains
 	memoryPerWorkerMb := maxMemoryMb / defaultParquetWorkerCount
-	workerCount := defaultParquetWorkerCount
-	if memoryPerWorkerMb < minWorkerMemoryMb {
-		// reduce worker count to ensure minimum memory per worker
-		workerCount = maxMemoryMb / minWorkerMemoryMb
-		if workerCount < 1 {
-			workerCount = 1
-		}
-		memoryPerWorkerMb = maxMemoryMb / workerCount
-		if memoryPerWorkerMb < minWorkerMemoryMb {
-			return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", minWorkerMemoryMb)
-		}
-	}
 
-	slog.Info("Worker memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
+	workerCount := defaultParquetWorkerCount
+	if maxMemoryMb > 0 {
+		// calculate memory per worker and adjust worker count if needed
+		// - reserve memory for main process by dividing maxMemory by (workerCount + 1)
+		// - if calculated memory per worker is less than minimum required:
+		//   - reduce worker count to ensure each worker has minimum required memory
+		//   - ensure at least 1 worker remains
+
+		if memoryPerWorkerMb < minWorkerMemoryMb {
+			// reduce worker count to ensure minimum memory per worker
+			workerCount = maxMemoryMb / minWorkerMemoryMb
+			if workerCount < 1 {
+				workerCount = 1
+			}
+			memoryPerWorkerMb = maxMemoryMb / workerCount
+			if memoryPerWorkerMb < minWorkerMemoryMb {
+				return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", minWorkerMemoryMb)
+			}
+		}
+		slog.Info("Worker memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
+	}
 
 	// create the job channel
 	w.jobChan = make(chan *parquetJob, workerCount*2)
