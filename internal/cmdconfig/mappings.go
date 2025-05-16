@@ -13,9 +13,6 @@ func configDefaults(cmd *cobra.Command) map[string]any {
 	defs := map[string]any{
 		// global general options
 		pconstants.ArgUpdateCheck: true,
-
-		// memory
-		pconstants.ArgMemoryMaxMb: 1024,
 	}
 
 	cmdSpecificDefaults, ok := cmdSpecificDefaults()[cmd.Name()]
@@ -50,6 +47,7 @@ func envMappings() map[string]cmdconfig.EnvMapping {
 		app_specific.EnvConfigPath:        {ConfigVar: []string{pconstants.ArgConfigPath}, VarType: cmdconfig.EnvVarTypeString},
 		app_specific.EnvQueryTimeout:      {ConfigVar: []string{pconstants.ArgDatabaseQueryTimeout}, VarType: cmdconfig.EnvVarTypeInt},
 		app_specific.EnvMemoryMaxMbPlugin: {ConfigVar: []string{pconstants.ArgMemoryMaxMbPlugin}, VarType: cmdconfig.EnvVarTypeInt},
+		app_specific.EnvTempDirMaxMb:      {ConfigVar: []string{pconstants.ArgTempDirMaxMb}, VarType: cmdconfig.EnvVarTypeInt},
 		constants.EnvPluginStartTimeout:   {ConfigVar: []string{pconstants.ArgPluginStartTimeout}, VarType: cmdconfig.EnvVarTypeInt},
 	}
 }

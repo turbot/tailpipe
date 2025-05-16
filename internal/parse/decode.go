@@ -2,8 +2,9 @@ package parse
 
 import (
 	"fmt"
-	"github.com/zclconf/go-cty/cty/gocty"
 	"strings"
+
+	"github.com/zclconf/go-cty/cty/gocty"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -213,6 +214,7 @@ func decodeConnection(block *hcl.Block, parseCtx *ConfigParseContext, resource m
 func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAttrs []*hcl.Attribute, unknownBlocks []*hcl.Block) (*config.HclBytes, hcl.Diagnostics) {
 	var diags hcl.Diagnostics
 	unknown := &config.HclBytes{}
+
 	for _, attr := range unknownAttrs {
 		//	get the hcl bytes for the file
 		hclBytes := parseCtx.FileData[block.DefRange.Filename]
@@ -456,8 +458,7 @@ func resourceForBlock(block *hcl.Block) (modconfig.HclResource, hcl.Diagnostics)
 			Severity: hcl.DiagError,
 			Summary:  fmt.Sprintf("resourceForBlock called for unsupported block type %s", block.Type),
 			Subject:  hclhelpers.BlockRangePointer(block),
-		},
-		}
+		}}
 	}
 
 	name := fmt.Sprintf("%s.%s", block.Type, strings.Join(block.Labels, "."))

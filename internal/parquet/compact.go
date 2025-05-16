@@ -86,6 +86,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	}
 	return nil
 }
+
 func traverseAndCompact(ctx context.Context, db *database.DuckDb, dirPath string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	// if this is the partition folder, check if it matches the patterns before descending further
 	if table, partition, ok := getPartitionFromPath(dirPath); ok {
@@ -206,7 +207,6 @@ func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles 
 
 // renameCompactedFiles renames all parquet files to add a .compacted extension
 func renameCompactedFiles(parquetFiles []string) error {
-
 	var renamedFiles []string
 	for _, file := range parquetFiles {
 		newFile := file + ".compacted"

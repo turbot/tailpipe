@@ -83,7 +83,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	var fromTime time.Time
 	if viper.IsSet(pconstants.ArgFrom) {
 		var err error
-		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom), time.Hour*24)
+		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom))
 		if err != nil {
 			return err
 		}
@@ -109,12 +109,14 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	for _, partition := range partitions {
 		// if a from time is set, clear the partition data from that time forward
 		if !fromTime.IsZero() {
+			slog.Info("Deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
 			_, err := parquet.DeleteParquetFiles(partition, fromTime)
 			if err != nil {
 				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "from", fromTime, "error", err)
 				errList = append(errList, err)
 				continue
 			}
+			slog.Info("Completed deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
 		}
 		// do the collection
 		err = collectPartition(ctx, cancel, partition, fromTime, pluginManager)
@@ -269,10 +271,12 @@ func setExitCodeForCollectError(err error) {
 	exitCode = 1
 }
 
-// parse the from time, validating the granularity
-// for example, if the from arg is T-4H and the granularity is 1 day, that is an error
-func parseFromTime(fromArg string, granularity time.Duration) (time.Time, error) {
+// parse the from time
+func parseFromTime(fromArg string) (time.Time, error) {
 	now := time.Now()
+
+	// validate the granularity
+	granularity := time.Hour * 24
 
 	fromTime, err := parse.ParseTime(fromArg, now)
 	if err != nil {

@@ -1,0 +1,3 @@
+{"timestamp": "2024-05-01T10:30:45Z", "server_id": "srv-001", "cpu_usage": 75.5, "memory_used": 8192, "is_healthy": true}
+{"timestamp": "2024-05-01T10:31:00Z", "server_id": "srv-002", "cpu_usage": 90.2, "memory_used": 16384, "is_healthy": false}
+{"timestamp": "2024-05-01T10:32:15Z", "server_id": "srv-003", "cpu_usage": 45.8, "memory_used": 4096, "is_healthy": true} 

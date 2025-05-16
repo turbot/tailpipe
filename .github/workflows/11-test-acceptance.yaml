@@ -19,20 +19,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           path: tailpipe
           ref: ${{ github.event.ref }}
 
       - name: Checkout Pipe Fittings Components repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: turbot/pipe-fittings
           path: pipe-fittings
           ref: develop
 
       - name: Checkout Tailpipe plugin SDK repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: turbot/tailpipe-plugin-sdk
           path: tailpipe-plugin-sdk
@@ -40,7 +40,7 @@ jobs:
           ref: develop
 
       - name: Checkout Tailpipe Core Plugin repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: turbot/tailpipe-plugin-core
           path: tailpipe-plugin-core
@@ -48,7 +48,7 @@ jobs:
           ref: main
 
        # this is required, check golangci-lint-action docs
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version: '1.23'
           cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
@@ -75,7 +75,7 @@ jobs:
         run: ls -l ~/artifacts
 
       - name: Save Linux Build Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: build-artifact-linux
           path: ~/artifacts/linux.tar.gz
@@ -92,16 +92,21 @@ jobs:
           - "all_column_types"
           - "from_and_to"
           - "introspection"
+          - "partition_tests"
+          - "file_source"
+          - "partition_delete"
+          - "core_formats"
+          - "table_block"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: true
           path: tailpipe
           ref: ${{ github.event.ref }}
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
           go-version: 1.22
           cache: false
@@ -112,7 +117,7 @@ jobs:
           mkdir ~/artifacts
   
       - name: Download Linux Build Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         if: ${{ matrix.platform == 'ubuntu-latest' }}
         with:
           name: build-artifact-linux
@@ -134,7 +139,7 @@ jobs:
 
       - name: Install Tailpipe and plugins
         run: |
-          tailpipe plugin install chaos
+          tailpipe plugin install chaos aws
 
       - name: Run Test Suite
         id: run-test-suite
@@ -171,13 +176,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Clean up Linux Build
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
           name: build-artifact-linux
           failOnError: true
 
       - name: Clean up Darwin Build
-        uses: geekyeggo/delete-artifact@v5
+        uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
           name: build-artifact-darwin
           failOnError: true

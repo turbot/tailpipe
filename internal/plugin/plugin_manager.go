@@ -9,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,8 +16,10 @@ import (
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb/v2"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
@@ -27,9 +28,11 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe-plugin-core/core"
+	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
+	"github.com/turbot/tailpipe-plugin-sdk/observable"
 	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -44,8 +47,10 @@ type PluginManager struct {
 	// map of running plugins, keyed by plugin name
 	Plugins     map[string]*grpc.PluginClient
 	pluginMutex sync.RWMutex
-	obs         Observer
-	pluginPath  string
+	// the observer to notify of events
+	// (this will be the collector)
+	obs        observable.Observer
+	pluginPath string
 }
 
 func NewPluginManager() *PluginManager {
@@ -57,7 +62,7 @@ func NewPluginManager() *PluginManager {
 
 // AddObserver adds a
 // n observer to the plugin manager
-func (p *PluginManager) AddObserver(o Observer) {
+func (p *PluginManager) AddObserver(o observable.Observer) {
 	p.obs = o
 }
 
@@ -102,6 +107,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
 		FromTime:            timestamppb.New(fromTime),
+		TempDirMaxMb:        viper.GetInt64(pconstants.ArgTempDirMaxMb),
 	}
 
 	if partition.Source.Connection != nil {
@@ -117,6 +123,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// set on req (may be nil - this is fine)
 	req.SourcePlugin = sourcePluginReattach
 
+	// start a goroutine to monitor the plugins
 	// populate the custom table
 	if partition.CustomTable != nil {
 		req.CustomTableSchema = partition.CustomTable.ToProto()
@@ -139,7 +146,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// start a goroutine to read the eventStream and listen to file events
 	// this will loop until it hits an error or the stream is closed
-	go p.readCollectionEvents(ctx, eventStream)
+	go p.readCollectionEvents(ctx, executionID, eventStream)
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
@@ -320,21 +327,21 @@ func (p *PluginManager) getPlugin(pluginDef *pplugin.Plugin) (*grpc.PluginClient
 func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, error) {
 	pluginName := tp.Alias
 
-	pluginPath, err := pfilepaths.GetPluginPath(tp.Plugin, tp.Alias)
-	if err != nil {
-		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
-	}
-
 	// create the plugin map
 	pluginMap := map[string]goplugin.Plugin{
 		pluginName: &shared.TailpipeGRPCPlugin{},
+	}
+
+	cmd, err := p.getPluginCommand(tp)
+	if err != nil {
+		return nil, err
 	}
 
 	pluginStartTimeout := p.getPluginStartTimeout()
 	c := goplugin.NewClient(&goplugin.ClientConfig{
 		HandshakeConfig:  shared.Handshake,
 		Plugins:          pluginMap,
-		Cmd:              exec.Command("sh", "-c", pluginPath),
+		Cmd:              cmd,
 		AllowedProtocols: []goplugin.Protocol{goplugin.ProtocolGRPC},
 		// send plugin stderr (logging) to our stderr
 		Stderr: os.Stderr,
@@ -355,6 +362,24 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 	return client, nil
 }
 
+func (p *PluginManager) getPluginCommand(tp *pplugin.Plugin) (*exec.Cmd, error) {
+	pluginPath, err := pfilepaths.GetPluginPath(tp.Plugin, tp.Alias)
+	if err != nil {
+		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
+	}
+
+	cmd := exec.Command("sh", "-c", pluginPath)
+
+	// set the max memory for the plugin (if specified)
+	maxMemoryBytes := tp.GetMaxMemoryBytes()
+	if maxMemoryBytes != 0 {
+		slog.Info("Setting max memory for plugin", "plugin", tp.Alias, "max memory (mb)", maxMemoryBytes/(1024*1024))
+		// set GOMEMLIMIT for the plugin command env
+		cmd.Env = append(os.Environ(), fmt.Sprintf("GOMEMLIMIT=%d", maxMemoryBytes))
+	}
+	return cmd, nil
+}
+
 // for debug purposes, plugin start timeout can be set via an environment variable TAILPIPE_PLUGIN_START_TIMEOUT
 func (p *PluginManager) getPluginStartTimeout() time.Duration {
 	pluginStartTimeout := 1 * time.Minute
@@ -369,54 +394,69 @@ func (p *PluginManager) getPluginStartTimeout() time.Duration {
 	return pluginStartTimeout
 }
 
-func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream proto.TailpipePlugin_AddObserverClient) {
-	pluginEventChan := make(chan *proto.Event)
-	errChan := make(chan error)
+func (p *PluginManager) readCollectionEvents(ctx context.Context, executionId string, pluginStream proto.TailpipePlugin_AddObserverClient) {
+	pluginEventChan := make(chan events.Event)
 
+	slog.Info("starting to read plugin events")
 	// goroutine to read the plugin event stream and send the events down the event channel
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				errChan <- helpers.ToError(r)
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, helpers.ToError(r))
 			}
+			// ensure
+			close(pluginEventChan)
 		}()
 
 		for {
-			e, err := pluginStream.Recv()
+			pe, err := pluginStream.Recv()
 			if err != nil {
-				errChan <- err
+				slog.Error("error reading from plugin stream", "error", err)
+				// clean up the error
+				err = cleanupPluginError(err)
+				// send a completion event with an error
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, err)
 				return
 			}
+			e, err := events.EventFromProto(pe)
+			if err != nil {
+				slog.Info("error converting plugin event to proto", "error", err)
+				// send a completion event with an error
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, err)
+				return
+			}
+
 			pluginEventChan <- e
+			// if this is a completion event , stop polling
+			if pe.GetCompleteEvent() != nil {
+				slog.Info("got completion event - stop polling and close plugin event channel")
+				return
+			}
 		}
 	}()
 
-	// loop until the context is cancelled
+	// loop until either:
+	// - the context is cancelled
+	// - there is an error reading from the plugin stream
+	// - the pluginEventChan is closed (following a completion event)
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case err := <-errChan:
-			if err != nil {
-				// TODO #error handle error
-				// ignore EOF errors
-				if !strings.Contains(err.Error(), "EOF") {
-					fmt.Printf("Error reading from plugin stream: %s\n", err.Error()) //nolint:forbidigo// TODO #error
-				}
-				return
-			}
-		case protoEvent := <-pluginEventChan:
+
+		case ev := <-pluginEventChan:
 			// convert the protobuf event to an observer event
 			// and send it to the observer
-			if protoEvent == nil {
-				// TODO #error unexpected - raise an error - send error to observers
+			if ev == nil {
+				// channel is closed
 				return
 			}
-			p.obs.Notify(protoEvent)
-			// TODO #error should we stop polling if we get an error event?
-			// if this is a completion event (or other error event???), stop polling
-			if protoEvent.GetCompleteEvent() != nil {
-				close(pluginEventChan)
+			err := p.obs.Notify(ctx, ev)
+			if err != nil {
+				// if notify fails, send a completion event with the error
+				if err = p.obs.Notify(ctx, events.NewCompletedEvent(executionId, 0, 0, err)); err != nil {
+					slog.Error("error notifying observer of error", "error", err)
+				}
 				return
 			}
 		}
@@ -424,7 +464,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, pluginStream p
 
 }
 
-// determineSourcePlugin determines plugin which provides trhe given source type for the given partition
+// determineSourcePlugin determines plugin which provides the given source type for the given partition
 // try to use the source information registered in the version file
 // if older plugins are installed which did not register the source type, then fall back to deducing the plugin name
 func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*pplugin.Plugin, error) {

@@ -98,6 +98,15 @@ func (c *Partition) CollectionStatePath(collectionDir string) string {
 func (c *Partition) Validate() hcl.Diagnostics {
 	var diags hcl.Diagnostics
 
+	// validate source block is present
+	if c.Source.Type == "" {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition '%s' is missing required source block", c.GetUnqualifiedName()),
+			Subject:  c.ConfigRange.HclRange().Ptr(),
+		})
+	}
+
 	// validate filter
 	if c.Filter != "" {
 		diags = append(diags, c.validateFilter()...)

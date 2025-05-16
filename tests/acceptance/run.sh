@@ -10,6 +10,7 @@ export BATS_PATH=$MY_PATH/lib/bats/bin/bats
 export LIB_BATS_ASSERT=$MY_PATH/lib/bats-assert
 export LIB_BATS_SUPPORT=$MY_PATH/lib/bats-support
 export TEST_DATA_DIR=$MY_PATH/test_data/templates
+export SOURCE_FILES_DIR=$MY_PATH/test_data/source_files
 
 # Must have these commands for the test suite to run
 declare -a required_commands=("sed" "tailpipe" $BATS_PATH "rm" "mv" "cp" "mkdir" "cd" "node" "npm" "npx" "head" "wc" "find" "basename" "dirname")
@@ -52,5 +53,12 @@ if [ $# -eq 0 ]; then
   # Run all test files
   $BATS_PATH --tap $MY_PATH/test_files
 else
-  $BATS_PATH --tap $MY_PATH/test_files/${1}
+  # Handle each argument
+  for arg in "$@"; do
+    # If the path is relative, make it absolute relative to the test files directory
+    if [[ "$arg" != /* ]]; then
+      arg="$MY_PATH/test_files/$arg"
+    fi
+    $BATS_PATH --tap "$arg"
+  done
 fi
