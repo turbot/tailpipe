@@ -1,3 +1,7 @@
+## v0.4.1 [2025-05-19]
+* Update core plugin to v0.2.5
+  * Update checkJsonlSize to skip check if no min size is set. ([#204](https://github.com/turbot/tailpipe-plugin-sdk/issues/204))
+
 ## v0.4.0 [2025-05-16]
 _What's new_
 * Add support for memory and temp storage limits for CLI and plugins. ([#396](https://github.com/turbot/tailpipe/issues/396), [#397](https://github.com/turbot/tailpipe/issues/397))
