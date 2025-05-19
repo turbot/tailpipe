@@ -1,6 +1,7 @@
 ## v0.4.1 [2025-05-19]
-* Update core plugin to v0.2.5
-  * Update checkJsonlSize to skip check if no min size is set. ([#204](https://github.com/turbot/tailpipe-plugin-sdk/issues/204))
+_Bug fixes_
+* Update `MinCorePluginVersion` to v0.2.5.
+* Fix issue where the core plugin was incorrectly throttling the downloads if no temp size limit was specified. ([#204](https://github.com/turbot/tailpipe-plugin-sdk/issues/204))
 
 ## v0.4.0 [2025-05-16]
 _What's new_
