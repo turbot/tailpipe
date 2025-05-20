@@ -113,7 +113,7 @@ func (c *Collector) Close() {
 // - starts the collection UI
 // - creates a parquet writer, which will process the JSONL files as they are written
 // - starts listening to plugin events
-func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
+func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
@@ -132,7 +132,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	c.execution = newExecution(c.partition)
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, c.collectionTempDir)
+	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, toTime, c.collectionTempDir)
 	if err != nil {
 		return err
 	}
