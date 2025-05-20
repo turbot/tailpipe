@@ -192,7 +192,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	var fromStr string
 	if viper.IsSet(pconstants.ArgFrom) {
 		var err error
-		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom))
+		fromTime, err = parseFromToTime(viper.GetString(pconstants.ArgFrom))
 		error_helpers.FailOnError(err)
 		fromStr = fmt.Sprintf(" from %s", fromTime.Format(time.DateOnly))
 	}
