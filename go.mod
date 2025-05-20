@@ -8,7 +8,7 @@ replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
 // github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
 //github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-//github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
