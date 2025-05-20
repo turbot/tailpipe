@@ -67,7 +67,7 @@ func (p *PluginManager) AddObserver(o observable.Observer) {
 }
 
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) (*CollectResponse, error) {
+func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time, toTime time.Time, collectionTempDir string) (*CollectResponse, error) {
 	// start plugin if needed
 	tablePlugin := partition.Plugin
 	tablePluginClient, err := p.getPlugin(tablePlugin)
@@ -107,6 +107,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
 		FromTime:            timestamppb.New(fromTime),
+		ToTime:              timestamppb.New(toTime),
 		TempDirMaxMb:        viper.GetInt64(pconstants.ArgTempDirMaxMb),
 	}
 

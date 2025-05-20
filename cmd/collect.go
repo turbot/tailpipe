@@ -48,6 +48,7 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 	cmdconfig.OnCmd(cmd).
 		AddBoolFlag(pconstants.ArgCompact, true, "Compact the parquet files after collection").
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
+		AddStringFlag(pconstants.ArgTo, "", "Collect days older than a relative or absolute date (defaulting to now if not specified)").
 		AddBoolFlag(pconstants.ArgProgress, true, "Show active progress of collection, set to false to disable")
 
 	return cmd
@@ -80,10 +81,16 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) error {
 	// arg `from` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
 	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
-	var fromTime time.Time
+	var fromTime, toTime time.Time
+	var err error
 	if viper.IsSet(pconstants.ArgFrom) {
-		var err error
-		fromTime, err = parseFromTime(viper.GetString(pconstants.ArgFrom))
+		fromTime, err = parseFromToTime(viper.GetString(pconstants.ArgFrom))
+		if err != nil {
+			return err
+		}
+	}
+	if viper.IsSet(pconstants.ArgTo) {
+		toTime, err = parseFromToTime(viper.GetString(pconstants.ArgTo))
 		if err != nil {
 			return err
 		}
@@ -97,7 +104,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	for _, partition := range partitions {
 		partitionNames = append(partitionNames, partition.FullName)
 	}
-	slog.Info("Starting collection", "partition(s)", partitionNames, "from", fromTime)
+	slog.Info("Starting collection", "partition(s)", partitionNames, "from", fromTime, "to", toTime)
 	// now we have the partitions, we can start collecting
 
 	// start the plugin manager
@@ -119,7 +126,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 			slog.Info("Completed deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
 		}
 		// do the collection
-		err = collectPartition(ctx, cancel, partition, fromTime, pluginManager)
+		err = collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
 		}
@@ -133,14 +140,14 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	return nil
 }
 
-func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, pluginManager *plugin.PluginManager) (err error) {
+func collectPartition(ctx context.Context, cancel context.CancelFunc, partition *config.Partition, fromTime time.Time, toTime time.Time, pluginManager *plugin.PluginManager) (err error) {
 	c, err := collector.New(pluginManager, partition, cancel)
 	if err != nil {
 		return fmt.Errorf("failed to create collector: %w", err)
 	}
 	defer c.Close()
 
-	if err = c.Collect(ctx, fromTime); err != nil {
+	if err = c.Collect(ctx, fromTime, toTime); err != nil {
 		return err
 	}
 
@@ -272,15 +279,15 @@ func setExitCodeForCollectError(err error) {
 }
 
 // parse the from time
-func parseFromTime(fromArg string) (time.Time, error) {
+func parseFromToTime(arg string) (time.Time, error) {
 	now := time.Now()
 
 	// validate the granularity
 	granularity := time.Hour * 24
 
-	fromTime, err := parse.ParseTime(fromArg, now)
+	fromTime, err := parse.ParseTime(arg, now)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("failed to parse 'from' argument: %w", err)
+		return time.Time{}, fmt.Errorf("failed to parse '%s' argument: %w", arg, err)
 	}
 
 	return fromTime.Truncate(granularity), nil
