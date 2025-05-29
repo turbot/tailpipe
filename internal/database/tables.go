@@ -6,12 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/tailpipe/internal/helpers"
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
@@ -123,18 +123,7 @@ func getColumnNames(ctx context.Context, parquetPath string, db *DuckDb) ([]stri
 	}
 
 	// Sort column names alphabetically but with tp_ fields on the end
-	tpPrefix := "tp_"
-	slices.SortFunc(columns, func(a, b string) int {
-		isPrefixedA, isPrefixedB := strings.HasPrefix(a, tpPrefix), strings.HasPrefix(b, tpPrefix)
-		switch {
-		case isPrefixedA && !isPrefixedB:
-			return 1 // a > b
-		case !isPrefixedA && isPrefixedB:
-			return -1 // a < b
-		default:
-			return strings.Compare(a, b) // standard alphabetical sort
-		}
-	})
+	columns = helpers.SortColumnsAlphabetically(columns)
 
 	return columns, nil
 }
