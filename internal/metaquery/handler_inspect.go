@@ -3,10 +3,11 @@ package metaquery
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/plugin"
 	"slices"
-	"sort"
 	"strings"
+
+	"github.com/turbot/tailpipe/internal/helpers"
+	"github.com/turbot/tailpipe/internal/plugin"
 
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
@@ -60,7 +61,9 @@ func listViewSchema(ctx context.Context, input *HandlerInput, viewName string) e
 	for column := range schema {
 		cols = append(cols, column)
 	}
-	sort.Strings(cols)
+
+	// Sort column names alphabetically but with tp_ fields on the end
+	cols = helpers.SortColumnsAlphabetically(cols)
 
 	for _, col := range cols {
 		rows = append(rows, []string{col, strings.ToLower(schema[col])})
