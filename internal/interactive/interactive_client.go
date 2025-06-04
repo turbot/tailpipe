@@ -477,6 +477,9 @@ func (c *InteractiveClient) queryCompleter(d prompt.Document) []prompt.Suggest {
 	case isFirstWord(text):
 		suggestions := c.getFirstWordSuggestions(text)
 		s = append(s, suggestions...)
+	case isDuckDbMetaQuery(text):
+		tableSuggestions := c.getTableSuggestions(lastWord(text))
+		s = append(s, tableSuggestions...)
 	case metaquery.IsMetaQuery(text):
 		suggestions := metaquery.Complete(&metaquery.CompleterInput{
 			Query:           text,
@@ -497,8 +500,15 @@ func (c *InteractiveClient) getFirstWordSuggestions(word string) []prompt.Sugges
 
 	var s []prompt.Suggest
 	// add all we know that can be the first words
-	// "select", "with"
-	s = append(s, prompt.Suggest{Text: "select", Output: "select"}, prompt.Suggest{Text: "with", Output: "with"})
+	// "select", "with", "describe", "show", "summarize"
+	s = append(s,
+		prompt.Suggest{Text: "select", Output: "select"},
+		prompt.Suggest{Text: "with", Output: "with"},
+		prompt.Suggest{Text: "describe", Output: "describe"},
+		prompt.Suggest{Text: "show", Output: "show"},
+		prompt.Suggest{Text: "summarize", Output: "summarize"},
+		prompt.Suggest{Text: "explain", Output: "explain"},
+	)
 	// metaqueries
 	s = append(s, metaquery.PromptSuggestions()...)
 	return s

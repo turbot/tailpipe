@@ -76,6 +76,21 @@ func lastWord(text string) string {
 	return text[strings.LastIndex(text, " "):]
 }
 
+// isDuckDbMetaQuery returns true if the input string equals 'describe', 'show', or 'summarize'
+func isDuckDbMetaQuery(s string) bool {
+	ts := strings.ToLower(strings.TrimSpace(s))
+	switch {
+	case ts == "describe":
+		return true
+	case ts == "show":
+		return true
+	case ts == "summarize":
+		return true
+	default:
+		return false
+	}
+}
+
 //
 // keeping this around because we may need
 // to revisit exit on non-darwin platforms.
