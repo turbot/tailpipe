@@ -1,6 +1,13 @@
+## v0.4.2 [2025-06-05]
+_What's new_
+* Enabled support for collecting only today's logs during log collection. ([#394](https://github.com/turbot/tailpipe/issues/394))
+* Show available table names in autocomplete for DuckDB meta queries in interactive prompt. ([#357](https://github.com/turbot/tailpipe/issues/357))
+* `.inspect` meta-command now shows `tp_` columns at the end. ([#401](https://github.com/turbot/tailpipe/issues/401))
+
 ## v0.4.1 [2025-05-19]
-* Update core plugin to v0.2.5
-  * Update checkJsonlSize to skip check if no min size is set. ([#204](https://github.com/turbot/tailpipe-plugin-sdk/issues/204))
+_Bug fixes_
+* Update `MinCorePluginVersion` to v0.2.5.
+* Fix issue where the core plugin was incorrectly throttling the downloads if no temp size limit was specified. ([#204](https://github.com/turbot/tailpipe-plugin-sdk/issues/204))
 
 ## v0.4.0 [2025-05-16]
 _What's new_

@@ -15,4 +15,5 @@ const (
 	CmdClear        = ".clear"        // clear the console
 	CmdHelp         = ".help"         // list all meta commands
 	CmdAutoComplete = ".autocomplete" // enable or disable auto complete
+	TpPrefix        = "tp_"           // tailpipe prefix for tailpipe specific columns
 )
