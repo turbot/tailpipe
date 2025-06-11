@@ -12,58 +12,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/spf13/viper"
+	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 )
-
-type CompactionStatus struct {
-	Source      int
-	Dest        int
-	Uncompacted int
-}
-
-func (total *CompactionStatus) Update(counts CompactionStatus) {
-	total.Source += counts.Source
-	total.Dest += counts.Dest
-	total.Uncompacted += counts.Uncompacted
-}
-
-func (total *CompactionStatus) VerboseString() string {
-	if total.Source == 0 && total.Dest == 0 && total.Uncompacted == 0 {
-		return "No files to compact."
-	}
-
-	uncompactedString := ""
-	if total.Uncompacted > 0 {
-		uncompactedString = fmt.Sprintf("%d files did not need compaction.", total.Uncompacted)
-	}
-
-	// if nothing was compacated, just print the uncompacted string
-	if total.Source == 0 {
-		return fmt.Sprintf("%s\n\n", uncompactedString)
-	}
-
-	// add brackets around the uncompacted string (if needed)
-	if len(uncompactedString) > 0 {
-		uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
-	}
-
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
-}
-
-func (total *CompactionStatus) BriefString() string {
-	if total.Source == 0 {
-		return ""
-	}
-
-	uncompactedString := ""
-	if total.Uncompacted > 0 {
-		uncompactedString = fmt.Sprintf(" (%d files did not need compaction.)", total.Uncompacted)
-	}
-
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
-}
 
 func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), patterns ...PartitionPattern) error {
 	// get the root data directory
@@ -76,10 +30,20 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	}
 	defer db.Close()
 
+	// if the flag was provided, migrate the tp_index files
+	if viper.GetBool(constants.ArgMigrateIndex) {
+		// traverse the directory and migrate files
+		if err := migrateTpIndex(ctx, db, baseDir, updateFunc, patterns); err != nil {
+			return err
+		}
+	}
+
 	// traverse the directory and compact files
 	if err := traverseAndCompact(ctx, db, baseDir, updateFunc, patterns); err != nil {
 		return err
 	}
+
+	// now delete any invalid parquet files that match the patterns
 	invalidDeleteErr := deleteInvalidParquetFiles(config.GlobalWorkspaceProfile.GetDataDir(), patterns)
 	if invalidDeleteErr != nil {
 		slog.Warn("Failed to delete invalid parquet files", "error", invalidDeleteErr)
@@ -151,6 +115,7 @@ func getPartitionFromPath(dirPath string) (string, string, bool) {
 	return "", "", false
 }
 
+// compactParquetFiles compacts the given parquet files into a single file in the specified inputPath.
 func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles []string, inputPath string) (err error) {
 	now := time.Now()
 	compactedFileName := fmt.Sprintf("snap_%s_%06d.parquet", now.Format("20060102150405"), now.Nanosecond()/1000)
@@ -187,7 +152,7 @@ func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles 
 	}
 
 	// rename all parquet files to add a .compacted extension
-	err = renameCompactedFiles(parquetFiles)
+	renamedSourceFiles, err := addExtensionToFiles(parquetFiles, ".compacted")
 	if err != nil {
 		// delete the temp file
 		_ = os.Remove(tempOutputFile)
@@ -200,16 +165,16 @@ func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles 
 	}
 
 	// finally, delete renamed source parquet files
-	err = deleteCompactedFiles(ctx, parquetFiles)
+	err = deleteFilesConcurrently(ctx, renamedSourceFiles, config.GlobalWorkspaceProfile.GetDataDir())
 
 	return nil
 }
 
-// renameCompactedFiles renames all parquet files to add a .compacted extension
-func renameCompactedFiles(parquetFiles []string) error {
+// addExtensionToFiles renames all given files to add a the provided extension
+func addExtensionToFiles(fileNames []string, suffix string) ([]string, error) {
 	var renamedFiles []string
-	for _, file := range parquetFiles {
-		newFile := file + ".compacted"
+	for _, file := range fileNames {
+		newFile := file + suffix
 		renamedFiles = append(renamedFiles, newFile)
 		if err := os.Rename(file, newFile); err != nil {
 			// try to rename all files we have already renamed back to their original names
@@ -220,45 +185,107 @@ func renameCompactedFiles(parquetFiles []string) error {
 					slog.Warn("Failed to rename parquet file back to original name", "file", renamedFile, "error", err)
 				}
 			}
+			return nil, fmt.Errorf("failed to rename parquet file %s to %s: %w", file, newFile, err)
+		}
+	}
+	return renamedFiles, nil
+}
+
+// removeExtensionFromFiles renames all given files to remove the provided extension
+func removeExtensionFromFiles(fileNames []string, suffix string) error {
+	var renamedFiles []string
+	for _, file := range fileNames {
+		if !strings.HasSuffix(file, suffix) {
+			continue // skip files that do not have the suffix
+		}
+		newFile := strings.TrimSuffix(file, suffix)
+		renamedFiles = append(renamedFiles, newFile)
+		if err := os.Rename(file, newFile); err != nil {
+			// try to rename all files we have already renamed back to their original names
+			for _, renamedFile := range renamedFiles {
+				if err := os.Rename(renamedFile, renamedFile+suffix); err != nil {
+					slog.Warn("Failed to rename parquet file back to original name", "file", renamedFile, "error", err)
+				}
+			}
 			return fmt.Errorf("failed to rename parquet file %s to %s: %w", file, newFile, err)
 		}
 	}
 	return nil
 }
 
-// deleteCompactedFiles deletes all parquet files with a .compacted extension
-func deleteCompactedFiles(ctx context.Context, parquetFiles []string) error {
+// deleteFilesConcurrently deletes the given parquet files concurrently, ensuring that empty parent directories are
+// also cleaned recursively up to the baseDir.
+func deleteFilesConcurrently(ctx context.Context, parquetFiles []string, baseDir string) error {
 	const maxConcurrentDeletions = 5
 	sem := semaphore.NewWeighted(int64(maxConcurrentDeletions))
 	var wg sync.WaitGroup
 	var failures int32
+
+	dirSet := make(map[string]struct{})
+	var dirMu sync.Mutex
 
 	for _, file := range parquetFiles {
 		wg.Add(1)
 		go func(file string) {
 			defer wg.Done()
 
-			// Acquire a slot in the semaphore
 			if err := sem.Acquire(ctx, 1); err != nil {
 				atomic.AddInt32(&failures, 1)
 				return
 			}
 			defer sem.Release(1)
 
-			newFile := file + ".compacted"
-			if err := os.Remove(newFile); err != nil {
+			if err := os.Remove(file); err != nil {
 				atomic.AddInt32(&failures, 1)
+				return
 			}
+
+			// Collect parent directory for cleanup
+			parentDir := filepath.Dir(file)
+			dirMu.Lock()
+			dirSet[parentDir] = struct{}{}
+			dirMu.Unlock()
 		}(file)
 	}
 
-	// Wait for all deletions to complete
 	wg.Wait()
 
-	// Check failure count atomically
-	failureCount := atomic.LoadInt32(&failures)
-	if failureCount > 0 {
-		return fmt.Errorf("failed to delete %d parquet %s", failureCount, utils.Pluralize("file", int(failureCount)))
+	// Recursively delete empty parent dirs up to baseDir
+	for startDir := range dirSet {
+		deleteEmptyParentsUpTo(startDir, baseDir)
+	}
+
+	if atomic.LoadInt32(&failures) > 0 {
+		return fmt.Errorf("failed to delete %d parquet %s", failures, utils.Pluralize("file", int(failures)))
 	}
 	return nil
+}
+
+// deleteEmptyParentsUpTo deletes empty directories upward from startDir up to (but not including) baseDir.
+func deleteEmptyParentsUpTo(startDir, baseDir string) {
+	baseDirAbs, err := filepath.Abs(baseDir)
+	if err != nil {
+		return // fail-safe: don't recurse without a valid base
+	}
+	current := startDir
+
+	for {
+		currentAbs, err := filepath.Abs(current)
+		if err != nil {
+			return
+		}
+
+		// Stop if we've reached or passed the baseDir
+		if currentAbs == baseDirAbs || !strings.HasPrefix(currentAbs, baseDirAbs) {
+			return
+		}
+
+		entries, err := os.ReadDir(current)
+		if err != nil || len(entries) > 0 {
+			return // non-empty or inaccessible
+		}
+
+		_ = os.Remove(current) // delete and continue upward
+		current = filepath.Dir(current)
+	}
 }

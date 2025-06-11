@@ -31,7 +31,8 @@ func compactCmd() *cobra.Command {
 	}
 
 	cmdconfig.OnCmd(cmd).
-		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partitions to compact. If not specified, all partitions will be compacted.")
+		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partitions to compact. If not specified, all partitions will be compacted.").
+		AddBoolFlag(pconstants.ArgMigrateIndex, false, "Specify whether to migrate the tp_index field to either the default or the configured value.")
 	return cmd
 }
 
@@ -86,7 +87,7 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (parquet.CompactionStatus, error) {
+func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -100,7 +101,7 @@ func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (pa
 	s.Suffix = " compacting parquet files"
 
 	// define func to update the spinner suffix with the number of files compacted
-	var status parquet.CompactionStatus
+	var status = parquet.NewCompactionStatus()
 	updateTotals := func(counts parquet.CompactionStatus) {
 		status.Update(counts)
 		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", status.Source, status.Dest)
