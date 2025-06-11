@@ -43,7 +43,9 @@ type Partition struct {
 	// the config location
 	ConfigRange hclhelpers.Range `cty:"config_range"`
 	// an option filter in the format of a SQL where clause
-	Filter string
+	Filter string `cty:"filter"`
+	// the sql expression to use to build the tp_index
+	IndexExpression string `cty:"index_expression"`
 }
 
 func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {

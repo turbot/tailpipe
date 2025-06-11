@@ -61,7 +61,7 @@ func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStat
 	}
 
 	if s.compactionStatus == nil {
-		s.compactionStatus = &parquet.CompactionStatus{}
+		s.compactionStatus = parquet.NewCompactionStatus()
 	}
 
 	s.compactionStatus.Update(*compactionStatus)
