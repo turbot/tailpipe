@@ -147,7 +147,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 			if !res.Success() {
 				return res
 			}
-			target.IndexExpression = val.AsString()
+			target.TpIndexColumn = val.AsString()
 		default:
 			unknownAttrs = append(unknownAttrs, attr.AsHCLAttribute())
 		}

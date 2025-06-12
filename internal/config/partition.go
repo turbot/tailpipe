@@ -44,8 +44,8 @@ type Partition struct {
 	ConfigRange hclhelpers.Range `cty:"config_range"`
 	// an option filter in the format of a SQL where clause
 	Filter string `cty:"filter"`
-	// the sql expression to use to build the tp_index
-	IndexExpression string `cty:"index_expression"`
+	// the sql column to use for the tp_index
+	TpIndexColumn string `cty:"tp_index_column"`
 }
 
 func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {
@@ -67,78 +67,80 @@ func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl
 	return c, nil
 }
 
-func (c *Partition) SetConfigHcl(u *HclBytes) {
+func (p *Partition) SetConfigHcl(u *HclBytes) {
 	if u == nil {
 		return
 	}
-	c.Config = u.Hcl
-	c.ConfigRange = u.Range
+	p.Config = u.Hcl
+	p.ConfigRange = u.Range
 }
 
-func (c *Partition) InferPluginName(v *versionfile.PluginVersionFile) string {
+func (p *Partition) InferPluginName(v *versionfile.PluginVersionFile) string {
 	// NOTE: we cannot call the TailpipeConfig.GetPluginForTable function as tailpipe config is not populated yet
-	if c.CustomTable != nil {
+	if p.CustomTable != nil {
 		return constants.CorePluginName
 	}
 
-	return GetPluginForTable(c.TableName, v.Plugins)
+	return GetPluginForTable(p.TableName, v.Plugins)
 }
 
-func (c *Partition) AddFilter(filter string) {
-	if c.Filter == "" {
-		c.Filter = filter
+func (p *Partition) AddFilter(filter string) {
+	if p.Filter == "" {
+		p.Filter = filter
 	} else {
-		c.Filter += " and " + filter
+		p.Filter += " and " + filter
 	}
 }
 
-func (c *Partition) CollectionStatePath(collectionDir string) string {
+func (p *Partition) CollectionStatePath(collectionDir string) string {
 	// return the path to the collection state file
-	return filepath.Join(collectionDir, fmt.Sprintf("collection_state_%s_%s.json", c.TableName, c.ShortName))
+	return filepath.Join(collectionDir, fmt.Sprintf("collection_state_%s_%s.json", p.TableName, p.ShortName))
 }
 
-func (c *Partition) Validate() hcl.Diagnostics {
+func (p *Partition) Validate() hcl.Diagnostics {
 	var diags hcl.Diagnostics
 
 	// validate source block is present
-	if c.Source.Type == "" {
+	if p.Source.Type == "" {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("Partition '%s' is missing required source block", c.GetUnqualifiedName()),
-			Subject:  c.ConfigRange.HclRange().Ptr(),
+			Summary:  fmt.Sprintf("Partition '%s' is missing required source block", p.GetUnqualifiedName()),
+			Subject:  p.ConfigRange.HclRange().Ptr(),
 		})
 	}
 
 	// validate filter
-	if c.Filter != "" {
-		diags = append(diags, c.validateFilter()...)
+	if p.Filter != "" {
+		diags = append(diags, p.validateFilter()...)
 	}
 
+	moreDiags := p.validateIndexExpression()
+	diags = append(diags, moreDiags...)
 	return diags
 }
 
 // CtyValue implements CtyValueProvider
 // (note this must be implemented by each resource, we cannot rely on the HclResourceImpl implementation as it will
 // only serialise its own properties) )
-func (c *Partition) CtyValue() (cty.Value, error) {
-	return cty_helpers.GetCtyValue(c)
+func (p *Partition) CtyValue() (cty.Value, error) {
+	return cty_helpers.GetCtyValue(p)
 }
 
-func (c *Partition) validateFilter() hcl.Diagnostics {
+func (p *Partition) validateFilter() hcl.Diagnostics {
 	var diags hcl.Diagnostics
 	// check for `;` to prevent multiple statements
-	if strings.Contains(c.Filter, ";") {
+	if strings.Contains(p.Filter, ";") {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", p.GetUnqualifiedName()),
 			Detail:   "multiple expressions are not supported in partition filters, should not contain ';'.",
 		})
 	}
 	// check for `/*`, `*/`, `--` to prevent comments
-	if strings.Contains(c.Filter, "/*") || strings.Contains(c.Filter, "*/") || strings.Contains(c.Filter, "--") {
+	if strings.Contains(p.Filter, "/*") || strings.Contains(p.Filter, "*/") || strings.Contains(p.Filter, "--") {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
-			Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", p.GetUnqualifiedName()),
 			Detail:   "comments are not supported in partition filters, should not contain  comment identifiers '/*', '*/' or '--'.",
 		})
 	}
@@ -158,13 +160,13 @@ func (c *Partition) validateFilter() hcl.Diagnostics {
 		"with ",
 	}
 
-	lower := strings.ToLower(c.Filter)
+	lower := strings.ToLower(p.Filter)
 	for _, s := range forbiddenStrings {
 		if strings.Contains(lower, s) {
 			str := strings.Trim(s, " ")
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagError,
-				Summary:  fmt.Sprintf("Partition %s contains invalid filter", c.GetUnqualifiedName()),
+				Summary:  fmt.Sprintf("Partition %s contains invalid filter", p.GetUnqualifiedName()),
 				Detail:   fmt.Sprintf("should not contain keyword '%s' in filter, unless used as a quoted identifier ('\"%s\"') to prevent unintended behavior.", str, str),
 			})
 		}
@@ -173,18 +175,69 @@ func (c *Partition) validateFilter() hcl.Diagnostics {
 	return diags
 }
 
+func (p *Partition) validateIndexExpression() hcl.Diagnostics {
+	var diags hcl.Diagnostics
+
+	if p.TpIndexColumn == "" {
+		p.TpIndexColumn = "'default'"
+		return diags
+	}
+
+	// check for `;` to prevent multiple statements
+	if strings.Contains(p.Filter, ";") {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", p.GetUnqualifiedName()),
+			Detail:   "multiple expressions are not supported in partition filters, should not contain ';'.",
+			Subject:  p.GetDeclRange(),
+		})
+	}
+	// check for `/*`, `*/`, `--` to prevent comments
+	if strings.Contains(p.Filter, "/*") || strings.Contains(p.Filter, "*/") || strings.Contains(p.Filter, "--") {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition %s contains invalid filter", p.GetUnqualifiedName()),
+			Detail:   "comments are not supported in partition filters, should not contain  comment identifiers '/*', '*/' or '--'.",
+			Subject:  p.GetDeclRange(),
+		})
+	}
+	if diags.HasErrors() {
+		return diags
+	}
+
+	// tp_index must be either a column name or  is a column name, so we need to validate it
+	// for now we ONLY support a column name as the index expression
+	if !IsColumnName(p.TpIndexColumn) {
+		diags = append(diags, &hcl.Diagnostic{
+			Severity: hcl.DiagError,
+			Summary:  fmt.Sprintf("Partition %s has an invalid tp_index expression", p.GetUnqualifiedName()),
+			Detail:   fmt.Sprintf("tp_index '%s' is not a valid column name. It should be a simple column name without any SQL expressions or functions.", p.TpIndexColumn),
+			Subject:  p.GetDeclRange(),
+		})
+		return diags
+	}
+	// wrap in double quotes
+	p.TpIndexColumn = fmt.Sprintf(`"%s"`, p.TpIndexColumn)
+
+	//// if we have passed validation so far, we can normalize the index expression
+	//// normalize the index expression to ensure it is a valid SQL expression, escape as required
+	//p.TpIndexColumn, diags = NormalizeSqlExpression(p.TpIndexColumn)
+
+	return diags
+}
+
 // GetFormat returns the format for this partition, if either the source or the custom table has one
-func (c *Partition) GetFormat() *Format {
-	var format = c.Source.Format
-	if format == nil && c.CustomTable != nil {
+func (p *Partition) GetFormat() *Format {
+	var format = p.Source.Format
+	if format == nil && p.CustomTable != nil {
 		// if the source does not provide a format, use the custom table format
-		format = c.CustomTable.DefaultSourceFormat
+		format = p.CustomTable.DefaultSourceFormat
 	}
 	return format
 }
 
-func (c *Partition) FormatSupportsDirectConversion() bool {
-	format := c.GetFormat()
+func (p *Partition) FormatSupportsDirectConversion() bool {
+	format := p.GetFormat()
 	if format == nil {
 		return false
 	}
