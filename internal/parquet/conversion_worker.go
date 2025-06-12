@@ -314,9 +314,9 @@ func conversionRanOutOfMemory(err error) bool {
 func (w *conversionWorker) copyChunkToTempTable(jsonlFilePath string) error {
 	var queryBuilder strings.Builder
 
-	// render the view query with the jsonl file path
+	// render the read JSON query with the jsonl file path
 	// - this build a select clause which selects the required data from the JSONL file (with columns types specified)
-	selectQuery := fmt.Sprintf(w.converter.viewQueryFormat, jsonlFilePath)
+	selectQuery := fmt.Sprintf(w.converter.readJsonQueryFormat, jsonlFilePath)
 
 	// Step: Prepare the temp table from JSONL input
 	//

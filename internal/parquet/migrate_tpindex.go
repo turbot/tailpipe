@@ -3,14 +3,19 @@ package parquet
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
+
 	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"strings"
 )
 
-const migrateTempTableName = "_raw_tp_data"
+const (
+	sourceFileColumnName = "__duckdb_source_file"
+	migrateTempTableName = "_raw_tp_data"
+)
 
 func migrateTpIndex(ctx context.Context, db *database.DuckDb, baseDir string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	fileRootProvider := &FileRootProvider{}
@@ -23,7 +28,7 @@ func migrateTpIndex(ctx context.Context, db *database.DuckDb, baseDir string, up
 				}
 				return fmt.Errorf("failed to migrate tp_index for partition %s: %w", partition.UnqualifiedName, err)
 			} else {
-				slog.Info("Migrated tp_index files for partition", "partition", partition.UnqualifiedName, "index_expression", partition.IndexExpression)
+				slog.Info("Migrated tp_index files for partition", "partition", partition.UnqualifiedName, "index_expression", partition.TpIndexColumn)
 			}
 		}
 	}
@@ -31,15 +36,11 @@ func migrateTpIndex(ctx context.Context, db *database.DuckDb, baseDir string, up
 }
 
 func migrateTpIndexForPartition(ctx context.Context, db *database.DuckDb, baseDir string, partition *config.Partition, fileRootProvider *FileRootProvider, updateFunc func(CompactionStatus)) error {
-	indexExpression, err := resolveIndexExpression(partition)
-	if err != nil {
-		return err
-	}
 
 	// executeMigrationQuery runs the DuckDB query to migrate the tp_index files for a given partition.
 	// it read the partition data into a temporary table, then writes the data to with the migrated tp_index
 	// to intermediate the output files (with extension .tmp) and returns the list of output files.
-	outputFiles, err := executeMigrationQuery(ctx, db, baseDir, partition, fileRootProvider, indexExpression)
+	outputFiles, err := executeMigrationQuery(ctx, db, baseDir, partition, fileRootProvider)
 	if err != nil {
 		return err
 	}
@@ -83,7 +84,7 @@ func migrateTpIndexForPartition(ctx context.Context, db *database.DuckDb, baseDi
 		MigrateSource: len(sourceFiles),
 		MigrateDest:   len(outputFiles),
 		PartitionIndexExpressions: map[string]string{
-			partition.UnqualifiedName: indexExpression,
+			partition.UnqualifiedName: partition.TpIndexColumn,
 		},
 	}
 	updateFunc(status)
@@ -91,19 +92,10 @@ func migrateTpIndexForPartition(ctx context.Context, db *database.DuckDb, baseDi
 	return nil
 }
 
-// resolveIndexExpression checks if the partition has a custom index expression and if so normalizes it.
-// otherwise, it returns the default index expression.
-func resolveIndexExpression(partition *config.Partition) (string, error) {
-	if partition.IndexExpression == "" {
-		return "'default'", nil
-	}
-	return normalizeExpression(partition.IndexExpression)
-}
-
 // executeMigrationQuery runs the DuckDB query to migrate the tp_index files for a given partition.
 // It reads the partition data into a temporary table, writes the data with the migrated tp_index
 // to intermediate output files (with .tmp extension), and returns the list of output file paths.
-func executeMigrationQuery(ctx context.Context, db *database.DuckDb, baseDir string, partition *config.Partition, fileRootProvider *FileRootProvider, indexExpression string) ([]string, error) {
+func executeMigrationQuery(ctx context.Context, db *database.DuckDb, baseDir string, partition *config.Partition, fileRootProvider *FileRootProvider) ([]string, error) {
 	// Get the file glob pattern for all files in this partition
 	fileGlob := filepaths.GetParquetFileGlobForPartition(baseDir, partition.TableName, partition.ShortName, "")
 
@@ -117,12 +109,12 @@ func executeMigrationQuery(ctx context.Context, db *database.DuckDb, baseDir str
 create or replace temp table %s as
 select
     *,
-    source_file,
-from read_parquet('%s', filename=source_file);
+    %s,
+from read_parquet('%s', filename=%s);
 
 copy (
     select
-        * exclude (tp_index, source_file),
+        * exclude (tp_index, %s),
         %s as tp_index
     from %s
 ) to '%s' (
@@ -135,8 +127,11 @@ copy (
 );
 `,
 		migrateTempTableName,                // e.g. "_raw_tp_data"
+		sourceFileColumnName,                // select filename
 		fileGlob,                            // parquet file glob path
-		indexExpression,                     // replacement tp_index expression
+		sourceFileColumnName,                // read filename column from parquet
+		sourceFileColumnName,                // exclude source file column from the copy
+		partition.TpIndexColumn,             // replacement tp_index expression
 		migrateTempTableName,                // again used in the copy
 		baseDir,                             // output path
 		strings.Join(partitionColumns, ","), // partition columns
@@ -169,7 +164,7 @@ copy (
 
 // readSourceFiles reads the source files column from the temporary table created during the tp_index migration.
 func readSourceFiles(ctx context.Context, db *database.DuckDb) ([]string, error) {
-	query := fmt.Sprintf(`select distinct source_file from %s`, migrateTempTableName)
+	query := fmt.Sprintf(`select distinct %s from %s`, sourceFileColumnName, migrateTempTableName)
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read source files from temp table: %w", err)
