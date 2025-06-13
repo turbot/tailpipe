@@ -31,7 +31,7 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	defer db.Close()
 
 	// if the flag was provided, migrate the tp_index files
-	if viper.GetBool(constants.ArgMigrateIndex) {
+	if viper.GetBool(constants.ArgReindex) {
 		// traverse the directory and migrate files
 		if err := migrateTpIndex(ctx, db, baseDir, updateFunc, patterns); err != nil {
 			return err

@@ -11,7 +11,6 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
@@ -31,12 +30,11 @@ func compactCmd() *cobra.Command {
 	}
 
 	cmdconfig.OnCmd(cmd).
-		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partitions to compact. If not specified, all partitions will be compacted.").
-		AddBoolFlag(pconstants.ArgMigrateIndex, false, "Specify whether to migrate the tp_index field to either the default or the configured value.")
+		AddBoolFlag(pconstants.ArgReindex, false, "Update the tp_index field to the currently configured value.")
 	return cmd
 }
 
-func runCompactCmd(cmd *cobra.Command, _ []string) {
+func runCompactCmd(cmd *cobra.Command, args []string) {
 	var err error
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
@@ -54,15 +52,7 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 	slog.Info("Compacting parquet files")
 
 	// if the partition flag is set, build a set of partition patterns, one per arg
-	var patterns []parquet.PartitionPattern
-	if viper.IsSet(pconstants.ArgPartition) {
-		availablePartitions := config.GlobalConfig.Partitions
-		partitionArgs := viper.GetStringSlice(pconstants.ArgPartition)
-		// Get table and partition patterns
-		patterns, err = getPartitionPatterns(partitionArgs, maps.Keys(availablePartitions))
-		error_helpers.FailOnError(err)
-		slog.Info("Build partition patterns", "patterns", patterns)
-	}
+	patterns, err := getPartitionsPatterns(args)
 
 	status, err := doCompaction(ctx, patterns...)
 	if errors.Is(err, context.Canceled) {
@@ -85,6 +75,21 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 	}
 
 	// defer block will show the error
+}
+
+// getPartitionsPatterns builds a set of partition patterns from the provided args
+func getPartitionsPatterns(partitionArgs []string) ([]parquet.PartitionPattern, error) {
+	availablePartitions := config.GlobalConfig.Partitions
+	// Get table and partition patterns
+
+	patterns, err := getPartitionPatterns(partitionArgs, maps.Keys(availablePartitions))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get partition patterns: %w", err)
+	}
+
+	slog.Info("Built partition patterns", "patterns", patterns)
+
+	return patterns, nil
 }
 
 func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
