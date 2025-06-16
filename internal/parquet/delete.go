@@ -93,8 +93,8 @@ func deletePartition(db *database.DuckDb, dataDir string, partition *config.Part
 
 	// get count of parquet files
 	query := fmt.Sprintf(`
-		select count(distinct filename)
-		from read_parquet('%s', hive_partitioning=true, filename=true)
+		select count(distinct __duckdb_source_file)
+		from read_parquet('%s', hive_partitioning=true, filename='__duckdb_source_file')
 		where tp_partition = ?
 	`, parquetGlobPath)
 
@@ -118,16 +118,6 @@ func deletePartition(db *database.DuckDb, dataDir string, partition *config.Part
 func isNoFilesFoundError(err error) bool {
 	return strings.HasPrefix(err.Error(), "IO Error: No files found")
 }
-
-//// getDeleteInvalidDate determines the date from which to delete invalid files
-//// It returns the later of the from date and the InvalidFromDate
-//func getDeleteInvalidDate(from, invalidFromDate time.Time) time.Time {
-//	deleteInvalidDate := from
-//	if invalidFromDate.After(from) {
-//		deleteInvalidDate = invalidFromDate
-//	}
-//	return deleteInvalidDate
-//}
 
 // deleteInvalidParquetFiles deletes invalid and temporary parquet files for a partition
 func deleteInvalidParquetFiles(dataDir string, patterns []PartitionPattern) error {

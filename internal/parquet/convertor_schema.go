@@ -2,17 +2,30 @@ package parquet
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
-	"github.com/turbot/tailpipe-plugin-sdk/constants"
-
 	"github.com/turbot/go-kit/helpers"
+	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
-// TODO: review this function & add comments: https://github.com/turbot/tailpipe/issues/305
-func (w *Converter) buildViewQuery() string {
-	var tpIndexMapped, tpTimestampMapped bool
+// buildViewQuery builds a format string used to construct the conversion query which reads from the source ndjson file
+/*
+select
+	<source column> as <output column>
+	...
+from
+	read_ndjson(
+		'%s',
+		columns = {
+			<source column>: '<column type>',
+	}
+	)
+where (tp_timestamp is null or tp_timestamp >= <from time>)
+*/
+func (w *Converter) buildReadJsonQueryFormat() string {
+	var tpTimestampMapped bool
 
 	// first build the select clauses - use the table def columns
 	var selectClauses []string
@@ -24,23 +37,28 @@ func (w *Converter) buildViewQuery() string {
 			// skip this column - it is derived from tp_timestamp
 			continue
 		case constants.TpIndex:
-			tpIndexMapped = true
-			selectClause = fmt.Sprintf("\tcoalesce(\"%s\", '%s') as \"%s\"", column.SourceName, schema.DefaultIndex, column.ColumnName)
+			// NOTE: we ignore tp_index in the source data and ONLY add it based ont he default or configured value
+			slog.Warn("tp_index is a reserved column name and should not be used in the source data. It will be added automatically based on the configured value.")
+			// set flag to indicate that the plugin populated the tp_index
+			// - the CLI may show a warning as plugins no longer need to do that
+			w.pluginPopulatesTpIndex = true
+			// skip this column - it will be populated manually using the partition config
+			continue
 		case constants.TpTimestamp:
 			tpTimestampMapped = true
 			// fallthrough to populate the select clasue as normal
 			fallthrough
 		default:
-			selectClause = getSelectSqlForField(column, 1)
+			selectClause = getSelectSqlForField(column)
 		}
 
 		selectClauses = append(selectClauses, selectClause)
 	}
-	// default tpIndex to 'default'
-	// (note - if tpIndex IS mapped, getSelectSqlForField will have added a coalesce statement to default to 'default'
-	if !tpIndexMapped {
-		selectClauses = append(selectClauses, fmt.Sprintf("'%s' as tp_index", schema.DefaultIndex))
-	}
+
+	// add the tp_index - this is determined by the partition - it defaults to "default" but may be overridden in the partition config
+	// NOTE: we DO NOT wrap the tp_index expression in quotes - that will have already been done as part of partition config validation
+	selectClauses = append(selectClauses, fmt.Sprintf("\t%s as \"tp_index\"", w.Partition.TpIndexColumn))
+
 	// if we have a mapping for tp_timestamp, add tp_date as well
 	if tpTimestampMapped {
 		// Add tp_date after tp_timestamp is defined
@@ -86,15 +104,13 @@ func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string
 }
 
 // Return the SQL line to select the given field
-func getSelectSqlForField(column *schema.ColumnSchema, tabs int) string {
-	// Calculate the tab spacing
-	tab := strings.Repeat("\t", tabs)
+func getSelectSqlForField(column *schema.ColumnSchema) string {
 
 	// If the column has a transform, use it
 	if column.Transform != "" {
 		// as this is going into a string format, we need to escape %
 		escapedTransform := strings.ReplaceAll(column.Transform, "%", "%%")
-		return fmt.Sprintf("%s%s as \"%s\"", tab, escapedTransform, column.ColumnName)
+		return fmt.Sprintf("\t%s as \"%s\"", escapedTransform, column.ColumnName)
 	}
 
 	// NOTE: we will have normalised column types to lower case
@@ -113,21 +129,21 @@ func getSelectSqlForField(column *schema.ColumnSchema, tabs int) string {
 				str.WriteString(",\n")
 			}
 			parentName := fmt.Sprintf("\"%s\"", column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, tabs+2))
+			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, 3))
 		}
 
 		// Close struct_pack and case
-		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
-		str.WriteString(fmt.Sprintf("%send as \"%s\"", tab, column.ColumnName))
+		str.WriteString("\n\t\t)\n")
+		str.WriteString(fmt.Sprintf("\tend as \"%s\"", column.ColumnName))
 		return str.String()
 
 	case "json":
 		// Convert the value using json()
-		return fmt.Sprintf("%sjson(\"%s\") as \"%s\"", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf("\tjson(\"%s\") as \"%s\"", column.SourceName, column.ColumnName)
 
 	default:
 		// Scalar fields
-		return fmt.Sprintf("%s\"%s\" as \"%s\"", tab, column.SourceName, column.ColumnName)
+		return fmt.Sprintf("\t\"%s\" as \"%s\"", column.SourceName, column.ColumnName)
 	}
 }
 
