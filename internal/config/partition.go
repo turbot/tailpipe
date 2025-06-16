@@ -205,8 +205,7 @@ func (p *Partition) validateIndexExpression() hcl.Diagnostics {
 		return diags
 	}
 
-	// tp_index must be either a column name or  is a column name, so we need to validate it
-	// for now we ONLY support a column name as the index expression
+	// tp_index must be a column name - validate it
 	if !IsColumnName(p.TpIndexColumn) {
 		diags = append(diags, &hcl.Diagnostic{
 			Severity: hcl.DiagError,
@@ -218,10 +217,6 @@ func (p *Partition) validateIndexExpression() hcl.Diagnostics {
 	}
 	// wrap in double quotes
 	p.TpIndexColumn = fmt.Sprintf(`"%s"`, p.TpIndexColumn)
-
-	//// if we have passed validation so far, we can normalize the index expression
-	//// normalize the index expression to ensure it is a valid SQL expression, escape as required
-	//p.TpIndexColumn, diags = NormalizeSqlExpression(p.TpIndexColumn)
 
 	return diags
 }
