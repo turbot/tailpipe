@@ -43,7 +43,7 @@ table "transform_test" {
   }
 
   column "parsed_time" {
-    type = "datetime"
+    type = "timestamp"
     transform = "strptime(CAST(custom_time AS VARCHAR), '%Y-%m-%d %H:%M:%S')"
   }
 }
@@ -88,7 +88,7 @@ table "null_if_test" {
   format = format.delimited.null_if_test
 
   column "tp_timestamp" {
-    type = "datetime"
+    type = "timestamp"
     transform = "now()"
   }
 
