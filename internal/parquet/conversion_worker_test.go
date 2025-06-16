@@ -1382,18 +1382,18 @@ import (
 //	for _, tt := range tests {
 //		t.Run(tt.name, func(t *testing.T) {
 //			conversionSchema := schema.NewConversionSchema(&tt.args.schema.TableSchema)
-//			query := buildViewQuery(conversionSchema)
+//			query := buildReadJsonQueryFormat(conversionSchema)
 //
 //			// first check the quey is as expected
 //			if query != tt.wantQuery {
-//				t.Errorf("buildViewQuery(), got:\n%s\nwant:\n%s", query, tt.wantQuery)
+//				t.Errorf("buildReadJsonQueryFormat(), got:\n%s\nwant:\n%s", query, tt.wantQuery)
 //			}
 //
 //			gotData, err := executeQuery(t, query, tt.args.json, tt.args.sqlColumn)
 //			if err != nil {
 //				t.Errorf("error executing query: %s", err)
 //			} else if !reflect.DeepEqual(gotData, tt.wantData) {
-//				t.Errorf("buildViewQuery() query returned %v, want %v", gotData, tt.wantData)
+//				t.Errorf("buildReadJsonQueryFormat() query returned %v, want %v", gotData, tt.wantData)
 //			}
 //		})
 //	}

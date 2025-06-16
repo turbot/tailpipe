@@ -53,8 +53,9 @@ type Converter struct {
 	// helper to provide unique file roots
 	fileRootProvider *FileRootProvider
 
-	// the format string for the conversion query will be the same for all chunks - build once and store
-	viewQueryFormat string
+	// the format string for the query to read the JSON chunks - thids is reused for all chunks,
+	// with just the filename being added when the query is executed
+	readJsonQueryFormat string
 
 	// the table conversionSchema - populated when the first chunk arrives if the conversionSchema is not already complete
 	conversionSchema *schema.ConversionSchema
@@ -74,6 +75,9 @@ type Converter struct {
 	Partition *config.Partition
 	// func which we call with updated row count
 	statusFunc func(int64, int64, ...error)
+	// pluginPopulatesTpIndex indicates if the plugin populates the tp_index column (which is no longer required
+	// - tp_index values set by the plugin will be ignored)
+	pluginPopulatesTpIndex bool
 }
 
 func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
@@ -131,7 +135,7 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 			// err will be returned by the parent function
 			return
 		}
-		w.viewQueryFormat = w.buildViewQuery()
+		w.readJsonQueryFormat = w.buildReadJsonQueryFormat()
 	})
 	if err != nil {
 		return fmt.Errorf("failed to infer schema: %w", err)

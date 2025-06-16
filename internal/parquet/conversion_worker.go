@@ -205,7 +205,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 	}()
 
 	// now validate the data
-	if validateRowsError := w.validateRows(jsonlFilePath); err != nil {
+	if validateRowsError := w.validateRows(jsonlFilePath); validateRowsError != nil {
 		// if the error is NOT RowValidationError, just return it
 		if !errors.Is(validateRowsError, &RowValidationError{}) {
 			return handleConversionError(validateRowsError, jsonlFilePath)
@@ -314,9 +314,9 @@ func conversionRanOutOfMemory(err error) bool {
 func (w *conversionWorker) copyChunkToTempTable(jsonlFilePath string) error {
 	var queryBuilder strings.Builder
 
-	// render the view query with the jsonl file path
+	// render the read JSON query with the jsonl file path
 	// - this build a select clause which selects the required data from the JSONL file (with columns types specified)
-	selectQuery := fmt.Sprintf(w.converter.viewQueryFormat, jsonlFilePath)
+	selectQuery := fmt.Sprintf(w.converter.readJsonQueryFormat, jsonlFilePath)
 
 	// Step: Prepare the temp table from JSONL input
 	//
@@ -437,44 +437,21 @@ func (w *conversionWorker) doConversionForBatch(jsonlFilePath string, startRowId
 	return exportedRowCount, err
 }
 
-// getColumnsToValidate returns the list of columns which need to be validated at this staghe
-// normally, required columns are validated in the plugin, however there are a couple of exceptions:
-// 1. if the format is one which supports direct artifact-JSONL conversion (i.e. jsonl, delimited) we must validate all required columns
-// 2. if any required columns have transforms, we must validate those columns as the transforms are applied at this stage
-// TODO once we have tested/benchmarked, move all validation here and do not validate in plugin even for static tables
-func (w *conversionWorker) getColumnsToValidate() []string {
-	var res []string
-	// if the format is one which requires a direct conversion we must validate all required columns
-	formatSupportsDirectConversion := w.converter.Partition.FormatSupportsDirectConversion()
-
-	// Added nil check protection
-	if w.converter.conversionSchema == nil {
-		return res
-	}
-
-	// otherwise validate required columns which have a transform
-	for _, col := range w.converter.conversionSchema.Columns {
-		if col.Required && (col.Transform != "" || formatSupportsDirectConversion) {
-			res = append(res, col.ColumnName)
-		}
-	}
-	return res
-}
-
 // validateRows copies the data from the given select query to a temp table and validates required fields are non null
 // it also validates that the schema of the chunk is the same as the inferred schema and if it is not, reports a useful error
 // the query count of invalid rows and a list of null fields
 func (w *conversionWorker) validateRows(jsonlFilePath string) error {
-	// (NOTE: if we validate we write the data to a temp table then update the select query to read from that temp table)
-	// get list of columns to validate
-	columnsToValidate := w.getColumnsToValidate()
-	if len(columnsToValidate) == 0 {
-		// no columns to validate - we are done
-		return nil
+	// build array of required columns to validate
+	var requiredColumns []string
+	for _, col := range w.converter.conversionSchema.Columns {
+		if col.Required {
+			// if the column is required, add it to the list of columns to validate
+			requiredColumns = append(requiredColumns, col.ColumnName)
+		}
 	}
 
 	// if we have no columns to validate, biuld a  validation query to return the number of invalid rows and the columns with nulls
-	validationQuery := w.buildValidationQuery(columnsToValidate)
+	validationQuery := w.buildValidationQuery(requiredColumns)
 
 	row := w.db.QueryRow(validationQuery)
 	var failedRowCount int64
@@ -491,9 +468,10 @@ func (w *conversionWorker) validateRows(jsonlFilePath string) error {
 	}
 
 	// delete invalid rows from the temp table
-	if err := w.deleteInvalidRows(columnsToValidate); err != nil {
+	if err := w.deleteInvalidRows(requiredColumns); err != nil {
 		// failed to delete invalid rows - return an error
-		return handleConversionError(err, jsonlFilePath)
+		err := handleConversionError(err, jsonlFilePath)
+		return err
 	}
 
 	// Convert the interface slice to string slice
@@ -505,7 +483,7 @@ func (w *conversionWorker) validateRows(jsonlFilePath string) error {
 	}
 
 	// we have a failure - return an error with details about which columns had nulls
-	return NewConversionError(NewRowValidationError(columnsWithNulls), failedRowCount, jsonlFilePath)
+	return NewConversionError(NewRowValidationError(failedRowCount, columnsWithNulls), failedRowCount, jsonlFilePath)
 }
 
 // handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
@@ -528,8 +506,8 @@ func (w *conversionWorker) handleSchemaChangeError(err error, jsonlFilePath stri
 // buildValidationQuery builds a query to copy the data from the select query to a temp table
 // it then validates that the required columns are not null, removing invalid rows and returning
 // the count of invalid rows and the columns with nulls
-func (w *conversionWorker) buildValidationQuery(columnsToValidate []string) string {
-	queryBuilder := strings.Builder{}
+func (w *conversionWorker) buildValidationQuery(requiredColumns []string) string {
+	var queryBuilder strings.Builder
 
 	// Build the validation query that:
 	// - Counts distinct rows that have null values in required columns
@@ -543,7 +521,7 @@ from (`)
 	// - Create a query that selects rows where this column is null
 	// - Include the column name so we know which column had the null
 	// - UNION ALL combines all these results (faster than UNION as we don't need to deduplicate)
-	for i, col := range columnsToValidate {
+	for i, col := range requiredColumns {
 		if i > 0 {
 			queryBuilder.WriteString("    union all\n")
 		}
@@ -560,26 +538,19 @@ from (`)
 }
 
 // buildNullCheckQuery builds a WHERE clause to check for null values in the specified columns
-func (w *conversionWorker) buildNullCheckQuery(columnsToValidate []string) string {
-	if len(columnsToValidate) == 0 {
-		return ""
-	}
+func (w *conversionWorker) buildNullCheckQuery(requiredColumns []string) string {
 
 	// build a slice of null check conditions
-	conditions := make([]string, len(columnsToValidate))
-	for i, col := range columnsToValidate {
+	conditions := make([]string, len(requiredColumns))
+	for i, col := range requiredColumns {
 		conditions[i] = fmt.Sprintf("%s is null", col)
 	}
 	return strings.Join(conditions, " or ")
 }
 
 // deleteInvalidRows removes rows with null values in the specified columns from the temp table
-func (w *conversionWorker) deleteInvalidRows(columnsToValidate []string) error {
-	if len(columnsToValidate) == 0 {
-		return nil
-	}
-
-	whereClause := w.buildNullCheckQuery(columnsToValidate)
+func (w *conversionWorker) deleteInvalidRows(requiredColumns []string) error {
+	whereClause := w.buildNullCheckQuery(requiredColumns)
 	query := fmt.Sprintf("delete from temp_data where %s;", whereClause)
 
 	_, err := w.db.Exec(query)

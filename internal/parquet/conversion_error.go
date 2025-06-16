@@ -82,9 +82,8 @@ func (c *ConversionError) Error() string {
 
 // Merge adds a second error to the conversion error message.
 func (c *ConversionError) Merge(err error) {
-	c.BaseError = fmt.Errorf("%s\n%s", c.BaseError.Error(), err.Error())
+	c.BaseError = fmt.Errorf("%w: %w", c.BaseError, err)
 }
-
 func (c *ConversionError) Unwrap() error {
 	return c.BaseError
 }

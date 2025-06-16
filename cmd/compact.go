@@ -11,7 +11,6 @@ import (
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
@@ -31,11 +30,11 @@ func compactCmd() *cobra.Command {
 	}
 
 	cmdconfig.OnCmd(cmd).
-		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partitions to compact. If not specified, all partitions will be compacted.")
+		AddBoolFlag(pconstants.ArgReindex, false, "Update the tp_index field to the currently configured value.")
 	return cmd
 }
 
-func runCompactCmd(cmd *cobra.Command, _ []string) {
+func runCompactCmd(cmd *cobra.Command, args []string) {
 	var err error
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
@@ -52,16 +51,14 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 
 	slog.Info("Compacting parquet files")
 
-	// if the partition flag is set, build a set of partition patterns, one per arg
-	var patterns []parquet.PartitionPattern
-	if viper.IsSet(pconstants.ArgPartition) {
-		availablePartitions := config.GlobalConfig.Partitions
-		partitionArgs := viper.GetStringSlice(pconstants.ArgPartition)
-		// Get table and partition patterns
-		patterns, err = getPartitionPatterns(partitionArgs, maps.Keys(availablePartitions))
+	// verify that the provided args resolve to at least one partition
+	if _, err := getPartitions(args); err != nil {
 		error_helpers.FailOnError(err)
-		slog.Info("Build partition patterns", "patterns", patterns)
 	}
+
+	// Get table and partition patterns
+	patterns, err := getPartitionPatterns(args, maps.Keys(config.GlobalConfig.Partitions))
+	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
 	status, err := doCompaction(ctx, patterns...)
 	if errors.Is(err, context.Canceled) {
@@ -86,7 +83,7 @@ func runCompactCmd(cmd *cobra.Command, _ []string) {
 	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (parquet.CompactionStatus, error) {
+func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -100,7 +97,7 @@ func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (pa
 	s.Suffix = " compacting parquet files"
 
 	// define func to update the spinner suffix with the number of files compacted
-	var status parquet.CompactionStatus
+	var status = parquet.NewCompactionStatus()
 	updateTotals := func(counts parquet.CompactionStatus) {
 		status.Update(counts)
 		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", status.Source, status.Dest)

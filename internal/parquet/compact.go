@@ -3,67 +3,17 @@ package parquet
 import (
 	"context"
 	"fmt"
-	"golang.org/x/sync/semaphore"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/turbot/pipe-fittings/v2/utils"
+	"github.com/spf13/viper"
+	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 )
-
-type CompactionStatus struct {
-	Source      int
-	Dest        int
-	Uncompacted int
-}
-
-func (total *CompactionStatus) Update(counts CompactionStatus) {
-	total.Source += counts.Source
-	total.Dest += counts.Dest
-	total.Uncompacted += counts.Uncompacted
-}
-
-func (total *CompactionStatus) VerboseString() string {
-	if total.Source == 0 && total.Dest == 0 && total.Uncompacted == 0 {
-		return "No files to compact."
-	}
-
-	uncompactedString := ""
-	if total.Uncompacted > 0 {
-		uncompactedString = fmt.Sprintf("%d files did not need compaction.", total.Uncompacted)
-	}
-
-	// if nothing was compacated, just print the uncompacted string
-	if total.Source == 0 {
-		return fmt.Sprintf("%s\n\n", uncompactedString)
-	}
-
-	// add brackets around the uncompacted string (if needed)
-	if len(uncompactedString) > 0 {
-		uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
-	}
-
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
-}
-
-func (total *CompactionStatus) BriefString() string {
-	if total.Source == 0 {
-		return ""
-	}
-
-	uncompactedString := ""
-	if total.Uncompacted > 0 {
-		uncompactedString = fmt.Sprintf(" (%d files did not need compaction.)", total.Uncompacted)
-	}
-
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", total.Source, total.Dest, uncompactedString)
-}
 
 func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), patterns ...PartitionPattern) error {
 	// get the root data directory
@@ -76,10 +26,20 @@ func CompactDataFiles(ctx context.Context, updateFunc func(CompactionStatus), pa
 	}
 	defer db.Close()
 
+	// if the flag was provided, migrate the tp_index files
+	if viper.GetBool(constants.ArgReindex) {
+		// traverse the directory and migrate files
+		if err := migrateTpIndex(ctx, db, baseDir, updateFunc, patterns); err != nil {
+			return err
+		}
+	}
+
 	// traverse the directory and compact files
 	if err := traverseAndCompact(ctx, db, baseDir, updateFunc, patterns); err != nil {
 		return err
 	}
+
+	// now delete any invalid parquet files that match the patterns
 	invalidDeleteErr := deleteInvalidParquetFiles(config.GlobalWorkspaceProfile.GetDataDir(), patterns)
 	if invalidDeleteErr != nil {
 		slog.Warn("Failed to delete invalid parquet files", "error", invalidDeleteErr)
@@ -137,20 +97,7 @@ func traverseAndCompact(ctx context.Context, db *database.DuckDb, dirPath string
 	return nil
 }
 
-// if this parquetFile ends with the partition segment, return the table and partition
-func getPartitionFromPath(dirPath string) (string, string, bool) {
-	// if this is a partition folder, check if it matches the patterns
-	parts := strings.Split(dirPath, "/")
-	l := len(parts)
-	if l > 1 && strings.HasPrefix(parts[l-1], "tp_partition=") && strings.HasPrefix(parts[l-2], "tp_table=") {
-
-		table := strings.TrimPrefix(parts[l-2], "tp_table=")
-		partition := strings.TrimPrefix(parts[l-1], "tp_partition=")
-		return table, partition, true
-	}
-	return "", "", false
-}
-
+// compactParquetFiles compacts the given parquet files into a single file in the specified inputPath.
 func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles []string, inputPath string) (err error) {
 	now := time.Now()
 	compactedFileName := fmt.Sprintf("snap_%s_%06d.parquet", now.Format("20060102150405"), now.Nanosecond()/1000)
@@ -187,7 +134,7 @@ func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles 
 	}
 
 	// rename all parquet files to add a .compacted extension
-	err = renameCompactedFiles(parquetFiles)
+	renamedSourceFiles, err := addExtensionToFiles(parquetFiles, ".compacted")
 	if err != nil {
 		// delete the temp file
 		_ = os.Remove(tempOutputFile)
@@ -200,65 +147,7 @@ func compactParquetFiles(ctx context.Context, db *database.DuckDb, parquetFiles 
 	}
 
 	// finally, delete renamed source parquet files
-	err = deleteCompactedFiles(ctx, parquetFiles)
+	err = deleteFilesConcurrently(ctx, renamedSourceFiles, config.GlobalWorkspaceProfile.GetDataDir())
 
-	return nil
-}
-
-// renameCompactedFiles renames all parquet files to add a .compacted extension
-func renameCompactedFiles(parquetFiles []string) error {
-	var renamedFiles []string
-	for _, file := range parquetFiles {
-		newFile := file + ".compacted"
-		renamedFiles = append(renamedFiles, newFile)
-		if err := os.Rename(file, newFile); err != nil {
-			// try to rename all files we have already renamed back to their original names
-			for _, renamedFile := range renamedFiles {
-				// remove the .compacted extension
-				originalFile := strings.TrimSuffix(renamedFile, ".compacted")
-				if err := os.Rename(renamedFile, originalFile); err != nil {
-					slog.Warn("Failed to rename parquet file back to original name", "file", renamedFile, "error", err)
-				}
-			}
-			return fmt.Errorf("failed to rename parquet file %s to %s: %w", file, newFile, err)
-		}
-	}
-	return nil
-}
-
-// deleteCompactedFiles deletes all parquet files with a .compacted extension
-func deleteCompactedFiles(ctx context.Context, parquetFiles []string) error {
-	const maxConcurrentDeletions = 5
-	sem := semaphore.NewWeighted(int64(maxConcurrentDeletions))
-	var wg sync.WaitGroup
-	var failures int32
-
-	for _, file := range parquetFiles {
-		wg.Add(1)
-		go func(file string) {
-			defer wg.Done()
-
-			// Acquire a slot in the semaphore
-			if err := sem.Acquire(ctx, 1); err != nil {
-				atomic.AddInt32(&failures, 1)
-				return
-			}
-			defer sem.Release(1)
-
-			newFile := file + ".compacted"
-			if err := os.Remove(newFile); err != nil {
-				atomic.AddInt32(&failures, 1)
-			}
-		}(file)
-	}
-
-	// Wait for all deletions to complete
-	wg.Wait()
-
-	// Check failure count atomically
-	failureCount := atomic.LoadInt32(&failures)
-	if failureCount > 0 {
-		return fmt.Errorf("failed to delete %d parquet %s", failureCount, utils.Pluralize("file", int(failureCount)))
-	}
 	return nil
 }

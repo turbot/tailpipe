@@ -13,8 +13,8 @@ import (
 // populate the ConversionSchema
 // determine if we have a full schema yet and if not infer from the chunk
 func (w *Converter) buildConversionSchema(executionID string, chunk int32) error {
-
 	// if table schema is already complete, we can skip the inference and just populate the conversionSchema
+	// complete means that we have types for all columns in the table schema, and we are not mapping any source columns
 	if w.tableSchema.Complete() {
 		w.conversionSchema = schema.NewConversionSchema(w.tableSchema)
 		return nil
