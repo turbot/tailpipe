@@ -590,8 +590,8 @@ github.com/kisielk/gotool v1.0.0/go.mod h1:XhKaO+MFFWcvkIS/tQcRk01m1F5IRFswLeQ+o
 github.com/klauspost/asmfmt v1.3.2 h1:4Ri7ox3EwapiOjCki+hw14RyKk201CN4rzyCJRFLpK4=
 github.com/klauspost/asmfmt v1.3.2/go.mod h1:AG8TuvYojzulgDAMCnYn50l/5QV3Bs/tp6j0HLHbNSE=
 github.com/klauspost/compress v1.15.11/go.mod h1:QPwzmACJjUTFsnSHH934V6woptycfrDDJnH7hvFVbGM=
-github.com/klauspost/compress v1.17.11 h1:In6xLpyWOi1+C7tXUUWv2ot1QvBjxevKAaI6IXrJmUc=
-github.com/klauspost/compress v1.17.11/go.mod h1:pMDklpSncoRMuLFrf1W9Ss9KT+0rH90U12bZKk7uwG0=
+github.com/klauspost/compress v1.18.0 h1:c/Cqfb0r+Yi+JtIEq73FWXVkRonBlf0CRNYc8Zttxdo=
+github.com/klauspost/compress v1.18.0/go.mod h1:2Pp+KzxcywXVXMr50+X0Q/Lsb43OQHYWRCY2AiWywWQ=
 github.com/klauspost/cpuid/v2 v2.2.9 h1:66ze0taIn2H33fBvCkXuv9BmCwDfafmiIVpKV9kKGuY=
 github.com/klauspost/cpuid/v2 v2.2.9/go.mod h1:rqkxqrZ1EhYM9G+hXH7YdowN5R5RGN6NK4QwQ3WMXF8=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
@@ -775,8 +775,8 @@ github.com/turbot/pipes-sdk-go v0.12.0 h1:esbbR7bALa5L8n/hqroMPaQSSo3gNM/4X0iTmH
 github.com/turbot/pipes-sdk-go v0.12.0/go.mod h1:Mb+KhvqqEdRbz/6TSZc2QWDrMa5BN3E4Xw+gPt2TRkc=
 github.com/turbot/tailpipe-plugin-core v0.2.7 h1:nLXyg1X6j6eKD6cTi+opX+tBCbkR2t1GMNuz8wCfd38=
 github.com/turbot/tailpipe-plugin-core v0.2.7/go.mod h1:bI4haOVPeqi10PM6ALKIydoTfCsNLEPrq/9Omo1Mf1g=
-github.com/turbot/tailpipe-plugin-sdk v0.7.2 h1:2V2qccwSLr9hPT7xNs9WQu1KuY2BXPQgZczlry8A3QE=
-github.com/turbot/tailpipe-plugin-sdk v0.7.2/go.mod h1:is7Hh1u0yZS2nJ2HXwV9BpDMpuDycIt/gJtE10ufMss=
+github.com/turbot/tailpipe-plugin-sdk v0.8.0-rc.0 h1:K9MaZ02LR1pgYXf6wmulMiQTuf/AXqZ6OaOwoYPrKMk=
+github.com/turbot/tailpipe-plugin-sdk v0.8.0-rc.0/go.mod h1:kpvafTVw6KUx/kpFMshbzQLuZ6ApdWMS5ZqYQzp1q/A=
 github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 h1:qDMxFVd8Zo0rIhnEBdCIbR+T6WgjwkxpFZMN8zZmmjg=
 github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7/go.mod h1:5hzpfalEjfcJWp9yq75/EZoEu2Mzm34eJAPm3HOW2tw=
 github.com/ulikunitz/xz v0.5.10 h1:t92gobL9l3HE202wg3rlk19F6X+JOxl9BBrCCMYEYd8=
