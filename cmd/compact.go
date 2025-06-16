@@ -51,8 +51,14 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 
 	slog.Info("Compacting parquet files")
 
-	// if the partition flag is set, build a set of partition patterns, one per arg
-	patterns, err := getPartitionsPatterns(args)
+	// verify that the provided args resolve to at least one partition
+	if _, err := getPartitions(args); err != nil {
+		error_helpers.FailOnError(err)
+	}
+
+	// Get table and partition patterns
+	patterns, err := getPartitionPatterns(args, maps.Keys(config.GlobalConfig.Partitions))
+	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
 	status, err := doCompaction(ctx, patterns...)
 	if errors.Is(err, context.Canceled) {
@@ -75,21 +81,6 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	}
 
 	// defer block will show the error
-}
-
-// getPartitionsPatterns builds a set of partition patterns from the provided args
-func getPartitionsPatterns(partitionArgs []string) ([]parquet.PartitionPattern, error) {
-	availablePartitions := config.GlobalConfig.Partitions
-	// Get table and partition patterns
-
-	patterns, err := getPartitionPatterns(partitionArgs, maps.Keys(availablePartitions))
-	if err != nil {
-		return nil, fmt.Errorf("failed to get partition patterns: %w", err)
-	}
-
-	slog.Info("Built partition patterns", "patterns", patterns)
-
-	return patterns, nil
 }
 
 func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
