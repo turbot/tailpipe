@@ -248,6 +248,7 @@ func Test_deleteEmptyParentsUpTo(t *testing.T) {
 					return err
 				}
 				// Create a file in the deepest directory
+				//nolint:gosec // just test code
 				if err := os.WriteFile(filepath.Join(tempDir, "a", "b", "c", "test.txt"), []byte("test"), 0644); err != nil {
 					return err
 				}
