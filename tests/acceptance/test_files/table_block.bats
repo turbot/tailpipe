@@ -14,7 +14,7 @@ table "transform_test" {
 
   column "tp_timestamp" {
     source = "timestamp"
-    type = "datetime"
+    type = "timestamp"
   }
 
   column "tp_date" {
