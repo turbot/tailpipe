@@ -80,7 +80,7 @@ func (t *Table) Validate() hcl.Diagnostics {
 	var validationErrors []string
 
 	for _, col := range t.Columns {
-		// if the table definition contains a mapping for tp_index - return a warning that this will be ignoredd
+		// if the table definition contains a mapping for tp_index - return a warning that this will be ignored
 		if col.Name == constants.TpIndex && (typehelpers.SafeString(col.Source) != "" || typehelpers.SafeString(col.Transform) != "") {
 			diags = append(diags, &hcl.Diagnostic{
 				Severity: hcl.DiagWarning,
