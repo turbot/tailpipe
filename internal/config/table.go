@@ -9,6 +9,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cty_helpers"
 	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
+	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/zclconf/go-cty/cty"
@@ -79,6 +80,15 @@ func (t *Table) Validate() hcl.Diagnostics {
 	var validationErrors []string
 
 	for _, col := range t.Columns {
+		// if the table definition contains a mapping for tp_index - return a warning that this will be ignored
+		if col.Name == constants.TpIndex && (typehelpers.SafeString(col.Source) != "" || typehelpers.SafeString(col.Transform) != "") {
+			diags = append(diags, &hcl.Diagnostic{
+				Severity: hcl.DiagWarning,
+				Summary:  fmt.Sprintf("Table '%s' contains a mapping for column 'tp_index' which will be ignored. To set the source column mapping for tp_index, set the 'tp_index' property of the partition config", t.ShortName),
+				Subject:  t.DeclRange.Ptr(),
+			})
+			continue
+		}
 		// if the column is options, a type must be specified
 		// - this is to ensure we can determine the column type in the case of the column being missing in the source data
 		// (if the column is required, the column being missing would cause an error so this problem will not arise)
@@ -113,5 +123,6 @@ func (t *Table) Validate() hcl.Diagnostics {
 			Subject:  t.DeclRange.Ptr(),
 		})
 	}
+	//
 	return diags
 }
