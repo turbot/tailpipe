@@ -3,6 +3,8 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log/slog"
 	"math/rand/v2"
 	"os"
@@ -17,7 +19,7 @@ import (
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb/v2"
 	"github.com/spf13/viper"
-	"github.com/turbot/go-kit/helpers"
+	gokithelpers "github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
@@ -36,6 +38,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/helpers"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -73,6 +76,17 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	tablePluginClient, err := p.getPlugin(tablePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
+	}
+
+	// if a 'To' time' is set, we must ensure the plugin supports time ranges
+	if !toTime.IsZero() {
+		supportedOperations, err := p.getSupportedOperations(tablePluginClient)
+		if err != nil {
+			return nil, fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
+		}
+		if !supportedOperations.TimeRanges {
+			return nil, fmt.Errorf("plugin %s does not support specifying a 'To' time - try updating the plugin", tablePluginClient.Name)
+		}
 	}
 
 	// call into the plugin to collect log rows
@@ -151,6 +165,18 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
+}
+
+func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginClient) (*proto.GetSupportedOperationsResponse, error) {
+	supportedOperations, err := tablePluginClient.GetSupportedOperations()
+	if err != nil {
+		// if the plugin does not implement GetSupportedOperations, it will return a NotImplemented error
+		// just return an empty response
+		if helpers.IsNotGRPCImplementedError(err) {
+			return &proto.GetSupportedOperationsResponse{}, nil
+		}
+	}
+	return supportedOperations, err
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
@@ -403,7 +429,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, executionId st
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, helpers.ToError(r))
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, gokithelpers.ToError(r))
 			}
 			// ensure
 			close(pluginEventChan)
@@ -600,4 +626,13 @@ func versionSatisfyVersionConstraint(ver string, pluginVersion string) (bool, er
 	}
 
 	return versionConstraint.Check(installedVer), nil
+}
+
+func IsNotImplementedError(err error) bool {
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return status.Code() == codes.Unimplemented
 }
