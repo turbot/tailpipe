@@ -1,11 +1,11 @@
-## v0.5.0 [tbd]
+## v0.5.0 [2025-06-20]
 _What's new_
-* Add `tp_index` property to partition HCL, use to specify the source column to use for the `tp_index`. ([#414](https://github.com/turbot/tailpipe/issues/414))
-* Update collection to apply the configured `tp_index`, or `default` if no `tp_index` is specified in the config. 
-* Add `--reindex` arg to `compact`. When set, compact will reindex the partition using configured `tp_index` value. ([#413](https://github.com/turbot/tailpipe/issues/413))
-  - Remove partition arg from compact and replace with positional arg
-  - Update compact cleanup to delete empty folders
-* `Collect` now always validates required columns are present. (Previously this was only done for custom tables.) ([#411](https://github.com/turbot/tailpipe/issues/411))
+* Added `tp_index` property to partition HCL. Use this to specify the source column for the `tp_index`.  ([#414](https://github.com/turbot/tailpipe/issues/414))
+* Updated collection to apply the configured `tp_index`, or `default` if no `tp_index` is specified in the config. 
+* Added `--reindex` arg to `compact`. When set, compact will reindex the partition using configured `tp_index` value. ([#413](https://github.com/turbot/tailpipe/issues/413))
+  - Removed the partition argument from compact and replaced it with a positional argument.
+  - Updated `compact` cleanup to delete empty folders.
+* `collect` now always validates required columns are present. (Previously this was only done for custom tables.) ([#411](https://github.com/turbot/tailpipe/issues/411))
   
 ## v0.4.2 [2025-06-05]
 _What's new_
