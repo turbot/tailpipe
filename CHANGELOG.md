@@ -1,3 +1,12 @@
+## v0.5.0 [2025-06-20]
+_What's new_
+* Added `tp_index` property to partition HCL. Use this to specify the source column for the `tp_index`.  ([#414](https://github.com/turbot/tailpipe/issues/414))
+* Updated collection to apply the configured `tp_index`, or `default` if no `tp_index` is specified in the config. 
+* Added `--reindex` arg to `compact`. When set, compact will reindex the partition using configured `tp_index` value. ([#413](https://github.com/turbot/tailpipe/issues/413))
+  - Removed the partition argument from compact and replaced it with a positional argument.
+  - Updated `compact` cleanup to delete empty folders.
+* `collect` now always validates required columns are present. (Previously this was only done for custom tables.) ([#411](https://github.com/turbot/tailpipe/issues/411))
+  
 ## v0.4.2 [2025-06-05]
 _What's new_
 * Enabled support for collecting only today's logs during log collection. ([#394](https://github.com/turbot/tailpipe/issues/394))

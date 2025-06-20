@@ -13,9 +13,14 @@ type CollectResponse struct {
 }
 
 func CollectResponseFromProto(resp *proto.CollectResponse) *CollectResponse {
+	// tactical - because up until sdk v0.8.0, the returned schema was not merged with the common schema,
+	// we need to merge it here
+	// otherwise the `required` property for common fields will not be set
+	s := schema.TableSchemaFromProto(resp.Schema).MergeWithCommonSchema()
+
 	return &CollectResponse{
 		ExecutionId: resp.ExecutionId,
-		Schema:      schema.TableSchemaFromProto(resp.Schema),
+		Schema:      s,
 		FromTime:    row_source.ResolvedFromTimeFromProto(resp.FromTime),
 	}
 }

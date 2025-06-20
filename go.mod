@@ -19,8 +19,8 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.3.0
-	github.com/turbot/pipe-fittings/v2 v2.5.0
-	github.com/turbot/tailpipe-plugin-sdk v0.7.2
+	github.com/turbot/pipe-fittings/v2 v2.5.1
+	github.com/turbot/tailpipe-plugin-sdk v0.8.0-rc.1
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
@@ -154,7 +154,7 @@ require (
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/karrick/gows v0.3.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
