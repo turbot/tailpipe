@@ -153,7 +153,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	resolvedFromTime := collectResponse.FromTime
 
 	// display the progress UI
-	err = c.showCollectionStatus(resolvedFromTime)
+	err = c.showCollectionStatus(resolvedFromTime, toTime)
 	if err != nil {
 		return err
 	}
@@ -311,8 +311,8 @@ func (c *Collector) createTableView(ctx context.Context) error {
 	return nil
 }
 
-func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
-	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime)
+func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime, toTime time.Time) error {
+	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime, toTime)
 
 	// if the progress flag is set, start the tea app to display the progress
 	if viper.GetBool(pconstants.ArgProgress) {

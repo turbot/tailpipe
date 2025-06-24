@@ -78,17 +78,6 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		return nil, fmt.Errorf("error starting plugin %s: %w", partition.Plugin.Alias, err)
 	}
 
-	// if a 'To' time' is set, we must ensure the plugin supports time ranges
-	if !toTime.IsZero() {
-		supportedOperations, err := p.getSupportedOperations(tablePluginClient)
-		if err != nil {
-			return nil, fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
-		}
-		if !supportedOperations.TimeRanges {
-			return nil, fmt.Errorf("plugin %s does not support specifying a 'To' time - try updating the plugin", tablePluginClient.Name)
-		}
-	}
-
 	// call into the plugin to collect log rows
 	// this returns a stream which will send events
 	// be sure to close the stream
@@ -132,12 +121,17 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// identify which plugin provides the source and if it is different from the table plugin,
 	// we need to start the source plugin, and then pass reattach info
-	sourcePluginReattach, err := p.getSourcePluginReattach(ctx, partition, tablePlugin)
+	sourcePluginClient, sourcePluginReattach, err := p.getSourcePluginReattach(ctx, partition, tablePlugin)
 	if err != nil {
 		return nil, err
 	}
 	// set on req (may be nil - this is fine)
 	req.SourcePlugin = sourcePluginReattach
+
+	err = p.verifySupportedOperations(tablePluginClient, sourcePluginClient, toTime)
+	if err != nil {
+		return nil, err
+	}
 
 	// start a goroutine to monitor the plugins
 	// populate the custom table
@@ -166,6 +160,49 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
+}
+
+func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.PluginClient, sourcePluginClient *grpc.PluginClient, toTime time.Time) error {
+	tablePluginSupportedOperations, err := p.getSupportedOperations(tablePluginClient)
+	var sourcePluginSupportedOperations *proto.GetSupportedOperationsResponse
+	if err != nil {
+		return fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
+	}
+	if sourcePluginClient != nil {
+		sourcePluginSupportedOperations, err = p.getSupportedOperations(tablePluginClient)
+		if err != nil {
+			return fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
+		}
+	}
+
+	// if the plugin does not support time ranges:
+	// - we cannot specify a 'To' time
+	// - hard code recollect to true - this is the default behaviour for plugins that do not support time ranges
+	// if a 'To' time' is set, we must ensure the plugin supports time ranges
+	if !tablePluginSupportedOperations.TimeRanges {
+		// get friendly plugin name
+		ref := pociinstaller.NewImageRef(tablePluginClient.Name)
+		pluginName := ref.GetFriendlyName()
+
+		//if !toTime.IsZero() {
+		//	return fmt.Errorf("plugin '%s' does not support specifying a 'To' time - try updating the plugin", pluginName)
+		//}
+		slog.Info("plugin does not support time ranges - setting 'Recollect' to true", "plugin", pluginName)
+		viper.Set(pconstants.ArgRecollect, true)
+	}
+
+	if sourcePluginSupportedOperations != nil && !sourcePluginSupportedOperations.TimeRanges {
+		// get friendly plugin name
+		ref := pociinstaller.NewImageRef(sourcePluginClient.Name)
+		pluginName := ref.GetFriendlyName()
+
+		if !toTime.IsZero() {
+			return fmt.Errorf("source plugin '%s' does not support specifying a 'To' time - try updating the plugin", pluginName)
+		}
+		slog.Info("source plugin does not support time ranges - setting 'Recollect' to true", "plugin", pluginName)
+		viper.Set(pconstants.ArgRecollect, true)
+	}
+	return nil
 }
 
 func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginClient) (*proto.GetSupportedOperationsResponse, error) {
@@ -299,26 +336,26 @@ func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format
 	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
 }
 
-func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*proto.SourcePluginReattach, error) {
+func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*grpc.PluginClient, *proto.SourcePluginReattach, error) {
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return nil, fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
+		return nil, nil, fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
 	}
 	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
 	// and then pass reattach info
 	if sourcePlugin.Plugin == tablePlugin.Plugin {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// so the source plugin is different from the table plugin - start if needed
 	sourcePluginClient, err := p.getPlugin(sourcePlugin)
 	if err != nil {
-		return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
+		return nil, nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
 	}
 	sourcePluginReattach := proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 
-	return sourcePluginReattach, nil
+	return sourcePluginClient, sourcePluginReattach, nil
 }
 
 // getExecutionId generates a unique id based on the current time
