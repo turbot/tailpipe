@@ -118,6 +118,7 @@ func (w *conversionWorker) close() {
 func (w *conversionWorker) createDuckDbConnection() error {
 	opts := []database.DuckDbOpt{
 		database.WithDuckDbExtensions(constants.DuckDbExtensions),
+		database.WithDuckLakeEnabled(true),
 	}
 	// if a memory limit is set, use it
 	if w.maxMemoryMb > 0 {
