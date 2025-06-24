@@ -150,7 +150,9 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	}
 	defer c.Close()
 
-	if err = c.Collect(ctx, fromTime, toTime); err != nil {
+	recollect := viper.GetBool(pconstants.ArgRecollect)
+
+	if err = c.Collect(ctx, fromTime, toTime, recollect); err != nil {
 		return err
 	}
 
