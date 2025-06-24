@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/config"
+	"log"
 	"os"
 
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
@@ -18,17 +20,28 @@ import (
 type DuckDb struct {
 	// duckDb connection
 	*sql.DB
-	extensions     []string
-	dataSourceName string
-	tempDir        string
-	maxMemoryMb    int
+	extensions      []string
+	dataSourceName  string
+	tempDir         string
+	maxMemoryMb     int
+	ducklakeEnabled bool
 }
 
-func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
+func NewDuckDb(opts ...DuckDbOpt) (ddb *DuckDb, err error) {
 	w := &DuckDb{}
 	for _, opt := range opts {
 		opt(w)
 	}
+	defer func() {
+		if err != nil {
+			// If an error occurs during initialization, close the DB connection if it was opened
+			if w.DB != nil {
+				_ = w.DB.Close()
+			}
+			w.DB = nil // ensure DB is nil to avoid further operations on a closed connection
+		}
+	}()
+
 	// Connect to DuckDB
 	db, err := sql.Open("duckdb", w.dataSourceName)
 	if err != nil {
@@ -42,7 +55,11 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 			return nil, fmt.Errorf(": %w", err)
 		}
 	}
-
+	if w.ducklakeEnabled {
+		if err := w.connectDuckLake(); err != nil {
+			return nil, fmt.Errorf("failed to connect to DuckLake: %w", err)
+		}
+	}
 	// Configure DuckDB's temp directory:
 	// - If WithTempDir option was provided, use that directory
 	// - Otherwise, use the collection temp directory (a subdirectory in the user's home directory
@@ -140,4 +157,32 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	return nil
+}
+
+func (d *DuckDb) connectDuckLake() error {
+	// 1. Install sqlite extension
+	_, err := d.DB.Exec("install sqlite;")
+	if err != nil {
+		return fmt.Errorf("failed to install sqlite extension: %v", err)
+	}
+
+	// 2. Install ducklake extension
+	// TODO change to using prod extension when stable
+	//_, err = db.Exec("INSTALL ducklake;")
+	_, err = d.DB.Exec("force install ducklake from core_nightly;")
+	if err != nil {
+		return fmt.Errorf("failed to install ducklake nightly extension: %v", err)
+	}
+
+	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
+	metadataDir := config.GlobalWorkspaceProfile.GetMetadataDir()
+
+	// 3. Attach the sqlite database as my_ducklake
+	query := fmt.Sprintf("attach 'ducklake:sqlite:%s/metadata.sqlite' AS tailpipe_ducklake (data_path '%s/');", metadataDir, dataDir)
+	_, err = d.DB.Exec(query)
+	if err != nil {
+		log.Fatalf("Failed to attach sqlite database: %v", err)
+	}
+	return nil
+
 }
