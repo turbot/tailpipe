@@ -98,6 +98,11 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 			return err
 		}
 	}
+	// validate from and to times
+	if err = validateCollectionTImeRange(fromTime, toTime); err != nil {
+		return err
+	}
+
 	partitions, err := getPartitions(args)
 	if err != nil {
 		return fmt.Errorf("failed to get partition config: %w", err)
@@ -140,6 +145,16 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 		return fmt.Errorf("collection error: %w", err)
 	}
 
+	return nil
+}
+
+func validateCollectionTImeRange(fromTime time.Time, toTime time.Time) error {
+	if !fromTime.IsZero() && !toTime.IsZero() && fromTime.After(toTime) {
+		return fmt.Errorf("invalid time range: 'from' time %s is after 'to' time %s", fromTime.Format(time.DateOnly), toTime.Format(time.DateOnly))
+	}
+	if toTime.After(time.Now()) {
+		return fmt.Errorf("invalid time range: 'to' time %s is in the future", toTime.Format(time.DateOnly))
+	}
 	return nil
 }
 
