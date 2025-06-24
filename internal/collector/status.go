@@ -29,13 +29,15 @@ type status struct {
 	partitionName    string
 	fromTime         *row_source.ResolvedFromTime
 	compactionStatus *parquet.CompactionStatus
+	toTime           time.Time
 }
 
 // Init initializes the status with the partition name and  resolved from time of the collection and marks start of collection for timing
-func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTime) {
+func (s *status) Init(partitionName string, fromTime *row_source.ResolvedFromTime, toTime time.Time) {
 	s.started = time.Now()
 	s.partitionName = partitionName
 	s.fromTime = fromTime
+	s.toTime = toTime
 }
 
 // UpdateWithPluginStatus updates the status with the values from the plugin status event
@@ -72,10 +74,10 @@ func (s *status) CollectionHeader() string {
 	// wrap the source in parentheses if it exists
 	fromTimeSource := s.fromTime.Source
 	if s.fromTime.Source != "" {
-		fromTimeSource = fmt.Sprintf("(%s)", s.fromTime.Source)
+		fromTimeSource = fmt.Sprintf(" (%s)", s.fromTime.Source)
 	}
 
-	return fmt.Sprintf("\nCollecting logs for %s from %s %s\n\n", s.partitionName, s.fromTime.Time.Format(time.DateOnly), fromTimeSource)
+	return fmt.Sprintf("\nCollecting logs for %s from %s%s to %s\n\n", s.partitionName, s.fromTime.Time.Format(time.DateOnly), fromTimeSource, s.toTime.Format(time.DateOnly))
 }
 
 // String returns a string representation of the status used as body of app display or final output for non-progress display
