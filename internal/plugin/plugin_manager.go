@@ -112,7 +112,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		FromTime:            timestamppb.New(fromTime),
 		ToTime:              timestamppb.New(toTime),
 		TempDirMaxMb:        viper.GetInt64(pconstants.ArgTempDirMaxMb),
-		Recollect:           recollect,
+		Recollect:           &recollect,
 	}
 
 	if partition.Source.Connection != nil {
