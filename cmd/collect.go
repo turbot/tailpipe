@@ -50,7 +50,7 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
 		AddStringFlag(pconstants.ArgTo, "", "Collect days older than a relative or absolute date (defaulting to now if not specified)").
 		AddBoolFlag(pconstants.ArgProgress, true, "Show active progress of collection, set to false to disable").
-		AddBoolFlag(pconstants.ArgRecollect, false, "Recollect data from the source even if it has already been collected")
+		AddBoolFlag(pconstants.ArgOverwrite, false, "Recollect data from the source even if it has already been collected")
 
 	return cmd
 }
@@ -123,7 +123,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	var errList []error
 	for _, partition := range partitions {
 		// if a from time is set, clear the partition data from that time forward
-		if !fromTime.IsZero() && viper.GetBool(pconstants.ArgRecollect) {
+		if !fromTime.IsZero() && viper.GetBool(pconstants.ArgOverwrite) {
 			slog.Info("Deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
 			_, err := parquet.DeleteParquetFiles(partition, fromTime)
 			if err != nil {
@@ -165,7 +165,7 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	}
 	defer c.Close()
 
-	recollect := viper.GetBool(pconstants.ArgRecollect)
+	recollect := viper.GetBool(pconstants.ArgOverwrite)
 
 	if err = c.Collect(ctx, fromTime, toTime, recollect); err != nil {
 		return err
