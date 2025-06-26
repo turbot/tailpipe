@@ -128,7 +128,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	// set on req (may be nil - this is fine)
 	req.SourcePlugin = sourcePluginReattach
 
-	err = p.verifySupportedOperations(tablePluginClient, sourcePluginClient, toTime)
+	err = p.verifySupportedOperations(tablePluginClient, sourcePluginClient)
 	if err != nil {
 		return nil, err
 	}
@@ -162,17 +162,21 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
-func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.PluginClient, sourcePluginClient *grpc.PluginClient, toTime time.Time) error {
+func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.PluginClient, sourcePluginClient *grpc.PluginClient) error {
 	tablePluginSupportedOperations, err := p.getSupportedOperations(tablePluginClient)
-	var sourcePluginSupportedOperations *proto.GetSupportedOperationsResponse
 	if err != nil {
 		return fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
 	}
+	tablePluginName := pociinstaller.NewImageRef(tablePluginClient.Name).GetFriendlyName()
+
+	var sourcePluginSupportedOperations *proto.GetSupportedOperationsResponse
+	var sourcePluginName string
 	if sourcePluginClient != nil {
-		sourcePluginSupportedOperations, err = p.getSupportedOperations(tablePluginClient)
+		sourcePluginSupportedOperations, err = p.getSupportedOperations(sourcePluginClient)
 		if err != nil {
 			return fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
 		}
+		sourcePluginName = pociinstaller.NewImageRef(sourcePluginClient.Name).GetFriendlyName()
 	}
 
 	// if the plugin does not support time ranges:
@@ -180,27 +184,21 @@ func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.Plugin
 	// - hard code recollect to true - this is the default behaviour for plugins that do not support time ranges
 	// if a 'To' time' is set, we must ensure the plugin supports time ranges
 	if !tablePluginSupportedOperations.TimeRanges {
-		// get friendly plugin name
-		ref := pociinstaller.NewImageRef(tablePluginClient.Name)
-		pluginName := ref.GetFriendlyName()
-
-		//if !toTime.IsZero() {
-		//	return fmt.Errorf("plugin '%s' does not support specifying a 'To' time - try updating the plugin", pluginName)
-		//}
-		slog.Info("plugin does not support time ranges - setting 'Overwrite' to true", "plugin", pluginName)
+		slog.Info("plugin does not support time ranges - setting 'Overwrite' to true", "plugin", tablePluginName)
 		viper.Set(pconstants.ArgOverwrite, true)
+
+		if viper.IsSet(pconstants.ArgTo) {
+			return fmt.Errorf("plugin '%s' does not support specifying a 'To' time - try updating the plugin", tablePluginName)
+		}
 	}
 
 	if sourcePluginSupportedOperations != nil && !sourcePluginSupportedOperations.TimeRanges {
-		// get friendly plugin name
-		ref := pociinstaller.NewImageRef(sourcePluginClient.Name)
-		pluginName := ref.GetFriendlyName()
-
-		if !toTime.IsZero() {
-			return fmt.Errorf("source plugin '%s' does not support specifying a 'To' time - try updating the plugin", pluginName)
-		}
-		slog.Info("source plugin does not support time ranges - setting 'Overwrite' to true", "plugin", pluginName)
+		slog.Info("plugin does not support time ranges - setting 'Overwrite' to true", "plugin", sourcePluginName)
 		viper.Set(pconstants.ArgOverwrite, true)
+
+		if viper.IsSet(pconstants.ArgTo) {
+			return fmt.Errorf("source plugin '%s' does not support specifying a 'To' time - try updating the plugin", sourcePluginName)
+		}
 	}
 	return nil
 }
