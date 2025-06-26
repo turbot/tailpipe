@@ -188,7 +188,7 @@ func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.Plugin
 		//	return fmt.Errorf("plugin '%s' does not support specifying a 'To' time - try updating the plugin", pluginName)
 		//}
 		slog.Info("plugin does not support time ranges - setting 'Recollect' to true", "plugin", pluginName)
-		viper.Set(pconstants.ArgRecollect, true)
+		viper.Set(pconstants.ArgOverwrite, true)
 	}
 
 	if sourcePluginSupportedOperations != nil && !sourcePluginSupportedOperations.TimeRanges {
@@ -200,7 +200,7 @@ func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.Plugin
 			return fmt.Errorf("source plugin '%s' does not support specifying a 'To' time - try updating the plugin", pluginName)
 		}
 		slog.Info("source plugin does not support time ranges - setting 'Recollect' to true", "plugin", pluginName)
-		viper.Set(pconstants.ArgRecollect, true)
+		viper.Set(pconstants.ArgOverwrite, true)
 	}
 	return nil
 }
