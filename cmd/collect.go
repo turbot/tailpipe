@@ -50,7 +50,7 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 		AddStringFlag(pconstants.ArgFrom, "", "Collect days newer than a relative or absolute date (collection defaulting to 7 days if not specified)").
 		AddStringFlag(pconstants.ArgTo, "", "Collect days older than a relative or absolute date (defaulting to now if not specified)").
 		AddBoolFlag(pconstants.ArgProgress, true, "Show active progress of collection, set to false to disable").
-		AddBoolFlag(pconstants.ArgOverwrite, false, "Overwrite data from the source even if it has already been collected")
+		AddBoolFlag(pconstants.ArgOverwrite, false, "Recollect data from the source even if it has already been collected")
 
 	return cmd
 }
