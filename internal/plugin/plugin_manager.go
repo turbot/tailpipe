@@ -565,12 +565,16 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 
 	action := "Installing"
 
+	// Determine which plugin name to use based on PinCorePluginVersion
+	pluginName := constants.CorePluginFullName
+	if constants.PinCorePluginVersion != "" {
+		pluginName = fmt.Sprintf("%s@%s", constants.CorePluginBaseName, constants.PinCorePluginVersion)
+	}
+
 	// check if core plugin is already installed
 	exists, _ := pplugin.Exists(ctx, constants.CorePluginName)
 
 	if exists {
-		// check if the min version is satisfied; if not then update
-
 		// find the version of the core plugin from the pluginVersions
 		installedVersion := pluginVersions.Plugins[constants.CorePluginFullName].Version
 		// if installed version is 'local', that will do
@@ -578,21 +582,28 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 			return pluginVersions, nil
 		}
 
-		// compare the version(using semver) with the min version
-		satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
-		if err != nil {
-			return nil, err
+		// If PinCorePluginVersion is set, just check for exact version match
+		if constants.PinCorePluginVersion != "" {
+			if installedVersion == constants.PinCorePluginVersion {
+				return pluginVersions, nil
+			}
+			action = "Updating"
+		} else {
+			// compare the version(using semver) with the min version
+			satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
+			if err != nil {
+				return nil, err
+			}
+			// if satisfied - we are done
+			if satisfy {
+				return pluginVersions, nil
+			}
+			action = "Updating"
 		}
-		// if satisfied - we are done
-		if satisfy {
-			return pluginVersions, nil
-		}
-
-		// so an update is required - set action to updating and fall through to installation
-		action = "Updating"
 	}
-	// install the core plugin
-	if err = installCorePlugin(ctx, state, action); err != nil {
+
+	// install the core plugin with the determined plugin name
+	if err = installCorePlugin(ctx, state, action, pluginName); err != nil {
 		return nil, err
 	}
 
@@ -617,14 +628,21 @@ func loadPluginVersionFile(ctx context.Context) (*versionfile.PluginVersionFile,
 	return pluginVersions, nil
 }
 
-func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string) error {
+func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string, pluginName string) error {
 	spinner := statushooks.NewStatusSpinnerHook()
 	spinner.Show()
 	defer spinner.Hide()
 	spinner.SetStatus(fmt.Sprintf("%s core plugin", operation))
 
+	var ref *pociinstaller.ImageRef
+
 	// get the latest version of the core plugin
-	ref := pociinstaller.NewImageRef(constants.CorePluginName)
+	if constants.PinCorePluginVersion != "" {
+		// if PinCorePluginVersion is set, use it to get the plugin version
+		ref = pociinstaller.NewImageRef(fmt.Sprintf("%s@%s", constants.CorePluginName, constants.PinCorePluginVersion))
+	} else {
+		ref = pociinstaller.NewImageRef(constants.CorePluginName)
+	}
 	org, name, constraint := ref.GetOrgNameAndStream()
 	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
 	if err != nil {
