@@ -514,7 +514,7 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 		}
 
 		// compare the version(using semver) with the min version
-		satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
+		satisfy, err := versionSatisfyVersionConstraint(installedVersion, constants.CorePluginVersion)
 		if err != nil {
 			return nil, err
 		}
@@ -522,6 +522,16 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 		if satisfy {
 			return pluginVersions, nil
 		}
+
+		//// compare the version(using semver) with the min version
+		//satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
+		//if err != nil {
+		//	return nil, err
+		//}
+		//// if satisfied - we are done
+		//if satisfy {
+		//	return pluginVersions, nil
+		//}
 
 		// so an update is required - set action to updating and fall through to installation
 		action = "Updating"
@@ -560,8 +570,8 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 
 	// get the latest version of the core plugin
 	ref := pociinstaller.NewImageRef(constants.CorePluginName)
-	org, name, constraint := ref.GetOrgNameAndStream()
-	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
+	org, name, _ := ref.GetOrgNameAndStream()
+	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constants.CorePluginVersion)
 	if err != nil {
 		return err
 	}
@@ -594,4 +604,28 @@ func checkSatisfyMinVersion(ver string, pluginVersion string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func versionSatisfyVersionConstraint(ver string, pluginVersion string) (bool, error) {
+	// check if the version satisfies the min version requirement of core plugin
+	// Parse the versions
+	installedVer, err := version.NewVersion(ver)
+	if err != nil {
+		return false, err
+	}
+	versionConstraint, err := version.NewConstraint(pluginVersion)
+	if err != nil {
+		return false, err
+	}
+
+	return versionConstraint.Check(installedVer), nil
+}
+
+func IsNotImplementedError(err error) bool {
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return status.Code() == codes.Unimplemented
 }
