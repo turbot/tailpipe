@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 )
 
@@ -13,10 +14,23 @@ type Source struct {
 	Config *HclBytes `cty:"config"`
 }
 
+func NewSource(sourceType string) *Source {
+	return &Source{
+		Type: sourceType,
+		Config: &HclBytes{
+			Hcl:   []byte{},
+			Range: hclhelpers.Range{},
+		},
+	}
+}
 func (s *Source) ToProto() *proto.ConfigData {
+	var hcl []byte
+	if s.Config != nil {
+		hcl = s.Config.Hcl
+	}
 	return &proto.ConfigData{
 		Target: "source." + s.Type,
-		Hcl:    s.Config.Hcl,
+		Hcl:    hcl,
 		Range:  proto.RangeToProto(s.Config.Range.HclRange()),
 	}
 }
