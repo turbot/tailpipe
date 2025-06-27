@@ -475,7 +475,10 @@ func (p *PluginManager) determineSourcePlugin(partition *config.Partition) (*ppl
 		return nil, fmt.Errorf("error describing sources: %w", err)
 	}
 	if _, ok := coreSources[sourceType]; ok {
-		return pplugin.NewPlugin(constants.CorePluginName), nil
+		// Rather than hard code to core@latest, call CorePluginInstallStream
+		// to handle the case where the core plugin is not installed
+		coreName := constants.CorePluginInstallStream()
+		return pplugin.NewPlugin(coreName), nil
 	}
 
 	pluginName := config.GetPluginForSourceType(sourceType, config.GlobalConfig.PluginVersions)
@@ -501,20 +504,25 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 	action := "Installing"
 
 	// check if core plugin is already installed
-	exists, _ := pplugin.Exists(ctx, constants.CorePluginName)
+	corePluginRequiredConstraint := constants.CorePluginRequiredVersionConstraint()
+	corePluginStream := constants.CorePluginInstallStream()
 
+	exists, _ := pplugin.Exists(ctx, corePluginStream)
 	if exists {
 		// check if the min version is satisfied; if not then update
 
 		// find the version of the core plugin from the pluginVersions
-		installedVersion := pluginVersions.Plugins[constants.CorePluginFullName].Version
+		// NOTE: use the prefixed name to index the pluginVersions map
+		key := constants.TailpipeTurbotPluginPrefix + corePluginStream
+		installedVersion := pluginVersions.Plugins[key].Version
+
 		// if installed version is 'local', that will do
 		if installedVersion == "local" {
 			return pluginVersions, nil
 		}
 
 		// compare the version(using semver) with the min version
-		satisfy, err := versionSatisfyVersionConstraint(installedVersion, constants.CorePluginVersion)
+		satisfy, err := versionSatisfyVersionConstraint(installedVersion, corePluginRequiredConstraint)
 		if err != nil {
 			return nil, err
 		}
@@ -523,21 +531,11 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 			return pluginVersions, nil
 		}
 
-		//// compare the version(using semver) with the min version
-		//satisfy, err := checkSatisfyMinVersion(installedVersion, constants.MinCorePluginVersion)
-		//if err != nil {
-		//	return nil, err
-		//}
-		//// if satisfied - we are done
-		//if satisfy {
-		//	return pluginVersions, nil
-		//}
-
 		// so an update is required - set action to updating and fall through to installation
 		action = "Updating"
 	}
 	// install the core plugin
-	if err = installCorePlugin(ctx, state, action); err != nil {
+	if err = installCorePlugin(ctx, state, action, corePluginStream); err != nil {
 		return nil, err
 	}
 
@@ -562,16 +560,17 @@ func loadPluginVersionFile(ctx context.Context) (*versionfile.PluginVersionFile,
 	return pluginVersions, nil
 }
 
-func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string) error {
+func installCorePlugin(ctx context.Context, state installationstate.InstallationState, operation string, pluginStream string) error {
 	spinner := statushooks.NewStatusSpinnerHook()
 	spinner.Show()
 	defer spinner.Hide()
 	spinner.SetStatus(fmt.Sprintf("%s core plugin", operation))
 
-	// get the latest version of the core plugin
-	ref := pociinstaller.NewImageRef(constants.CorePluginName)
-	org, name, _ := ref.GetOrgNameAndStream()
-	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constants.CorePluginVersion)
+	// get a ref for the plugin stream
+	ref := pociinstaller.NewImageRef(pluginStream)
+	org, name, constraint := ref.GetOrgNameAndStream()
+
+	rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
 	if err != nil {
 		return err
 	}
@@ -587,25 +586,6 @@ func installCorePlugin(ctx context.Context, state installationstate.Installation
 	return nil
 }
 
-func checkSatisfyMinVersion(ver string, pluginVersion string) (bool, error) {
-	// check if the version satisfies the min version requirement of core plugin
-	// Parse the versions
-	installedVer, err := version.NewVersion(ver)
-	if err != nil {
-		return false, err
-	}
-	minReq, err := version.NewVersion(pluginVersion)
-	if err != nil {
-		return false, err
-	}
-
-	// compare the versions
-	if installedVer.LessThan(minReq) {
-		return false, nil
-	}
-	return true, nil
-}
-
 func versionSatisfyVersionConstraint(ver string, pluginVersion string) (bool, error) {
 	// check if the version satisfies the min version requirement of core plugin
 	// Parse the versions
@@ -619,13 +599,4 @@ func versionSatisfyVersionConstraint(ver string, pluginVersion string) (bool, er
 	}
 
 	return versionConstraint.Check(installedVer), nil
-}
-
-func IsNotImplementedError(err error) bool {
-	status, ok := status.FromError(err)
-	if !ok {
-		return false
-	}
-
-	return status.Code() == codes.Unimplemented
 }
