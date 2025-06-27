@@ -99,7 +99,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 		}
 	}
 	// validate from and to times
-	if err = validateCollectionTImeRange(fromTime, toTime); err != nil {
+	if err = validateCollectionTimeRange(fromTime, toTime); err != nil {
 		return err
 	}
 
@@ -148,7 +148,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	return nil
 }
 
-func validateCollectionTImeRange(fromTime time.Time, toTime time.Time) error {
+func validateCollectionTimeRange(fromTime time.Time, toTime time.Time) error {
 	if !fromTime.IsZero() && !toTime.IsZero() && fromTime.After(toTime) {
 		return fmt.Errorf("invalid time range: 'from' time %s is after 'to' time %s", fromTime.Format(time.DateOnly), toTime.Format(time.DateOnly))
 	}

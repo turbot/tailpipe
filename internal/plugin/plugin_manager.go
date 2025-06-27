@@ -162,6 +162,8 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 	return CollectResponseFromProto(collectResponse), nil
 }
 
+// verifySupportedOperations checks if the table plugin and source plugin (if different) support time ranges
+// if they do not support time ranges set the 'Overwrite' flag to true and if the 'To' time is set, return an error
 func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.PluginClient, sourcePluginClient *grpc.PluginClient) error {
 	tablePluginSupportedOperations, err := p.getSupportedOperations(tablePluginClient)
 	if err != nil {
@@ -203,6 +205,7 @@ func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.Plugin
 	return nil
 }
 
+// getSupportedOperations calls the plugin to get the supported operations
 func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginClient) (*proto.GetSupportedOperationsResponse, error) {
 	supportedOperations, err := tablePluginClient.GetSupportedOperations()
 	if err != nil {
