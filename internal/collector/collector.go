@@ -113,7 +113,7 @@ func (c *Collector) Close() {
 // - starts the collection UI
 // - creates a parquet writer, which will process the JSONL files as they are written
 // - starts listening to plugin events
-func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error) {
+func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, recollect bool) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
@@ -132,7 +132,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	c.execution = newExecution(c.partition)
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, c.collectionTempDir)
+	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, toTime, recollect, c.collectionTempDir)
 	if err != nil {
 		return err
 	}
@@ -153,7 +153,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime time.Time) (err error)
 	resolvedFromTime := collectResponse.FromTime
 
 	// display the progress UI
-	err = c.showCollectionStatus(resolvedFromTime)
+	err = c.showCollectionStatus(resolvedFromTime, toTime)
 	if err != nil {
 		return err
 	}
@@ -311,8 +311,8 @@ func (c *Collector) createTableView(ctx context.Context) error {
 	return nil
 }
 
-func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime) error {
-	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime)
+func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime, toTime time.Time) error {
+	c.status.Init(c.partition.GetUnqualifiedName(), resolvedFromTime, toTime)
 
 	// if the progress flag is set, start the tea app to display the progress
 	if viper.GetBool(pconstants.ArgProgress) {

@@ -3,6 +3,8 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"log/slog"
 	"math/rand/v2"
 	"os"
@@ -17,7 +19,7 @@ import (
 	"github.com/hashicorp/go-version"
 	_ "github.com/marcboeker/go-duckdb/v2"
 	"github.com/spf13/viper"
-	"github.com/turbot/go-kit/helpers"
+	gokithelpers "github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
@@ -36,6 +38,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/helpers"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -67,7 +70,7 @@ func (p *PluginManager) AddObserver(o observable.Observer) {
 }
 
 // Collect starts the plugin if needed, discovers the artifacts and download them for the given partition.
-func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time, collectionTempDir string) (*CollectResponse, error) {
+func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition, fromTime time.Time, toTime time.Time, recollect bool, collectionTempDir string) (*CollectResponse, error) {
 	// start plugin if needed
 	tablePlugin := partition.Plugin
 	tablePluginClient, err := p.getPlugin(tablePlugin)
@@ -107,7 +110,9 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 		CollectionStatePath: collectionStatePath,
 		SourceData:          partition.Source.ToProto(),
 		FromTime:            timestamppb.New(fromTime),
+		ToTime:              timestamppb.New(toTime),
 		TempDirMaxMb:        viper.GetInt64(pconstants.ArgTempDirMaxMb),
+		Recollect:           &recollect,
 	}
 
 	if partition.Source.Connection != nil {
@@ -116,12 +121,17 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// identify which plugin provides the source and if it is different from the table plugin,
 	// we need to start the source plugin, and then pass reattach info
-	sourcePluginReattach, err := p.getSourcePluginReattach(ctx, partition, tablePlugin)
+	sourcePluginClient, sourcePluginReattach, err := p.getSourcePluginReattach(ctx, partition, tablePlugin)
 	if err != nil {
 		return nil, err
 	}
 	// set on req (may be nil - this is fine)
 	req.SourcePlugin = sourcePluginReattach
+
+	err = p.verifySupportedOperations(tablePluginClient, sourcePluginClient)
+	if err != nil {
+		return nil, err
+	}
 
 	// start a goroutine to monitor the plugins
 	// populate the custom table
@@ -150,6 +160,62 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	// just return - the observer is responsible for waiting for completion
 	return CollectResponseFromProto(collectResponse), nil
+}
+
+// verifySupportedOperations checks if the table plugin and source plugin (if different) support time ranges
+// if they do not support time ranges set the 'Overwrite' flag to true and if the 'To' time is set, return an error
+func (p *PluginManager) verifySupportedOperations(tablePluginClient *grpc.PluginClient, sourcePluginClient *grpc.PluginClient) error {
+	tablePluginSupportedOperations, err := p.getSupportedOperations(tablePluginClient)
+	if err != nil {
+		return fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
+	}
+	tablePluginName := pociinstaller.NewImageRef(tablePluginClient.Name).GetFriendlyName()
+
+	var sourcePluginSupportedOperations *proto.GetSupportedOperationsResponse
+	var sourcePluginName string
+	if sourcePluginClient != nil {
+		sourcePluginSupportedOperations, err = p.getSupportedOperations(sourcePluginClient)
+		if err != nil {
+			return fmt.Errorf("error getting supported operations for plugin %s: %w", tablePluginClient.Name, err)
+		}
+		sourcePluginName = pociinstaller.NewImageRef(sourcePluginClient.Name).GetFriendlyName()
+	}
+
+	// if the plugin does not support time ranges:
+	// - we cannot specify a 'To' time
+	// - hard code recollect to true - this is the default behaviour for plugins that do not support time ranges
+	// if a 'To' time' is set, we must ensure the plugin supports time ranges
+	if !tablePluginSupportedOperations.TimeRanges {
+		slog.Info("plugin does not support time ranges - setting 'Overwrite' to true", "plugin", tablePluginName)
+		viper.Set(pconstants.ArgOverwrite, true)
+
+		if viper.IsSet(pconstants.ArgTo) {
+			return fmt.Errorf("plugin '%s' does not support specifying a 'To' time - try updating the plugin", tablePluginName)
+		}
+	}
+
+	if sourcePluginSupportedOperations != nil && !sourcePluginSupportedOperations.TimeRanges {
+		slog.Info("plugin does not support time ranges - setting 'Overwrite' to true", "plugin", sourcePluginName)
+		viper.Set(pconstants.ArgOverwrite, true)
+
+		if viper.IsSet(pconstants.ArgTo) {
+			return fmt.Errorf("source plugin '%s' does not support specifying a 'To' time - try updating the plugin", sourcePluginName)
+		}
+	}
+	return nil
+}
+
+// getSupportedOperations calls the plugin to get the supported operations
+func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginClient) (*proto.GetSupportedOperationsResponse, error) {
+	supportedOperations, err := tablePluginClient.GetSupportedOperations()
+	if err != nil {
+		// if the plugin does not implement GetSupportedOperations, it will return a NotImplemented error
+		// just return an empty response
+		if helpers.IsNotGRPCImplementedError(err) {
+			return &proto.GetSupportedOperationsResponse{}, nil
+		}
+	}
+	return supportedOperations, err
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
@@ -271,26 +337,26 @@ func (p *PluginManager) formatToProto(ctx context.Context, format *config.Format
 	return &proto.FormatData{Name: format.FullName, Regex: desc.Regex}, nil
 }
 
-func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*proto.SourcePluginReattach, error) {
+func (p *PluginManager) getSourcePluginReattach(ctx context.Context, partition *config.Partition, tablePlugin *pplugin.Plugin) (*grpc.PluginClient, *proto.SourcePluginReattach, error) {
 	// identify which plugin provides the source
 	sourcePlugin, err := p.determineSourcePlugin(partition)
 	if err != nil {
-		return nil, fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
+		return nil, nil, fmt.Errorf("error determining plugin for source %s: %w", partition.Source.Type, err)
 	}
 	// if this plugin is different from the plugin that provides the table, we need to start the source plugin,
 	// and then pass reattach info
 	if sourcePlugin.Plugin == tablePlugin.Plugin {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// so the source plugin is different from the table plugin - start if needed
 	sourcePluginClient, err := p.getPlugin(sourcePlugin)
 	if err != nil {
-		return nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
+		return nil, nil, fmt.Errorf("error starting plugin '%s' required for source '%s': %w", sourcePlugin.Alias, partition.Source.Type, err)
 	}
 	sourcePluginReattach := proto.NewSourcePluginReattach(partition.Source.Type, sourcePlugin.Alias, sourcePluginClient.Client.ReattachConfig())
 
-	return sourcePluginReattach, nil
+	return sourcePluginClient, sourcePluginReattach, nil
 }
 
 // getExecutionId generates a unique id based on the current time
@@ -402,7 +468,7 @@ func (p *PluginManager) readCollectionEvents(ctx context.Context, executionId st
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, helpers.ToError(r))
+				pluginEventChan <- events.NewCompletedEvent(executionId, 0, 0, gokithelpers.ToError(r))
 			}
 			// ensure
 			close(pluginEventChan)
@@ -599,4 +665,13 @@ func versionSatisfyVersionConstraint(ver string, pluginVersion string) (bool, er
 	}
 
 	return versionConstraint.Check(installedVer), nil
+}
+
+func IsNotImplementedError(err error) bool {
+	status, ok := status.FromError(err)
+	if !ok {
+		return false
+	}
+
+	return status.Code() == codes.Unimplemented
 }
