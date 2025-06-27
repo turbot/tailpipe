@@ -513,8 +513,8 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 
 		// find the version of the core plugin from the pluginVersions
 		// NOTE: use the prefixed name to index the pluginVersions map
-		key := constants.TailpipeTurbotPluginPrefix + corePluginStream
-		installedVersion := pluginVersions.Plugins[key].Version
+		fullName := constants.CorePluginFullName()
+		installedVersion := pluginVersions.Plugins[fullName].Version
 
 		// if installed version is 'local', that will do
 		if installedVersion == "local" {

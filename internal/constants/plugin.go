@@ -5,16 +5,15 @@ import (
 )
 
 const (
-	CorePluginName     = "core"
-	CorePluginFullName = "hub.tailpipe.io/plugins/turbot/core@latest"
+
 	// MinCorePluginVersion should be set for production releases - it is the minimum version of the core plugin that is required
 	MinCorePluginVersion = ""
 	// CorePluginVersion may  be set for pre-release versions - it allows us to pin a pre-release version of the core plugin
 	// NOTE: they must NOT both be set
-	CorePluginVersion = "v0.2.7-rc.0"
+	CorePluginVersion = "v0.2.8-rc.1"
 	// TailpipeHubOCIBase is the tailpipe hub URL
-	TailpipeHubOCIBase         = "hub.tailpipe.io/"
-	TailpipeTurbotPluginPrefix = "hub.tailpipe.io/plugins/turbot/"
+	TailpipeHubOCIBase = "hub.tailpipe.io/"
+
 	// BaseImageRef is the prefix for all tailpipe plugin images
 	BaseImageRef = "ghcr.io/turbot/tailpipe"
 )
@@ -32,7 +31,7 @@ func CorePluginRequiredVersionConstraint() (requiredConstraint string) {
 		panic("both constants.CorePluginVersion and constants.MinCorePluginVersion are set, this is a bug")
 	}
 	if MinCorePluginVersion != "" {
-		requiredConstraint = ">=" + CorePluginVersion
+		requiredConstraint = ">=" + MinCorePluginVersion
 		return requiredConstraint
 	}
 
@@ -54,4 +53,9 @@ func CorePluginInstallStream() string {
 	}
 
 	return "core@" + installConstraint
+}
+
+func CorePluginFullName() string {
+	installStream := CorePluginInstallStream()
+	return "hub.tailpipe.io/plugins/turbot/" + installStream
 }
