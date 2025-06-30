@@ -249,8 +249,7 @@ func handleUnknownHcl(block *hcl.Block, parseCtx *ConfigParseContext, unknownAtt
 
 func decodeSource(block *hclsyntax.Block, parseCtx *ConfigParseContext) (*config.Source, *parse.DecodeResult) {
 	res := parse.NewDecodeResult()
-	source := &config.Source{}
-	source.Type = block.Labels[0]
+	source := config.NewSource(block.Labels[0])
 
 	var unknownBlocks []*hcl.Block
 	for _, block := range block.Body.Blocks {
