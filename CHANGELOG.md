@@ -1,3 +1,25 @@
+
+## v0.6.0 [tbd]
+
+_What's new_
+* Add `--to` flag for `collect`, allowing collection of standalone time ranges. ([#238](https://github.com/turbot/tailpipe/issues/238))
+* Add `--overwrite` flag for `collect`, allowing recollection of existing data. ([#454](https://github.com/turbot/tailpipe/issues/445))
+
+_Bug fixes_
+* Fix issue where collection state end-objects are cleared when collection is complete, 
+meaning no further data will be collected for that day. ([#250](https://github.com/turbot/tailpipe/issues/250))
+
+_Behaviour Change_
+
+When passing a `from` time to a collection, the existing partition data is no longer cleared before the collection starts. 
+This means that data will not by default be recollected for time ranges that have already been collected. 
+To recollect data for a time range, pass the new `--overwrite` flag to the `collect` command.
+
+  
+
+
+
+
 ## v0.5.0 [2025-06-20]
 _What's new_
 * Added `tp_index` property to partition HCL. Use this to specify the source column for the `tp_index`.  ([#414](https://github.com/turbot/tailpipe/issues/414))
