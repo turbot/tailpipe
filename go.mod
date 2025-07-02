@@ -19,8 +19,8 @@ require (
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.3.0
-	github.com/turbot/pipe-fittings/v2 v2.5.1
-	github.com/turbot/tailpipe-plugin-sdk v0.8.0-rc.1
+	github.com/turbot/pipe-fittings/v2 v2.5.2
+	github.com/turbot/tailpipe-plugin-sdk v0.9.0
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
@@ -41,9 +41,10 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb/v2 v2.1.0
 	github.com/thediveo/enumflag/v2 v2.0.5
-	github.com/turbot/tailpipe-plugin-core v0.2.7
+	github.com/turbot/tailpipe-plugin-core v0.2.8
 	golang.org/x/sync v0.12.0
 	golang.org/x/text v0.23.0
+	google.golang.org/grpc v1.69.2
 	google.golang.org/protobuf v1.36.1
 )
 
@@ -229,7 +230,6 @@ require (
 	google.golang.org/genproto v0.0.0-20240722135656-d784300faade // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241104194629-dd2ea8efbc28 // indirect
-	google.golang.org/grpc v1.69.2 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

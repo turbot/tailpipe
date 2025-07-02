@@ -78,7 +78,7 @@ func (p *Partition) SetConfigHcl(u *HclBytes) {
 func (p *Partition) InferPluginName(v *versionfile.PluginVersionFile) string {
 	// NOTE: we cannot call the TailpipeConfig.GetPluginForTable function as tailpipe config is not populated yet
 	if p.CustomTable != nil {
-		return constants.CorePluginName
+		return constants.CorePluginInstallStream()
 	}
 
 	return GetPluginForTable(p.TableName, v.Plugins)

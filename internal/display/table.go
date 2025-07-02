@@ -42,7 +42,7 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 	table := &TableResource{
 		Name:        tableName,
 		Description: types.SafeString(configTable.Description),
-		Plugin:      constants.CorePluginFullName,
+		Plugin:      constants.CorePluginFullName(),
 		Columns:     cols,
 	}
 
@@ -185,7 +185,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 	// if this is a custom table, we need to use the core plugin
 	// NOTE: we cannot do this inside GetPluginForTable as that funciton may be called before the config is fully populated
 	if _, isCustom := config.GlobalConfig.CustomTables[tableName]; isCustom {
-		pluginName = constants.CorePluginName
+		pluginName = constants.CorePluginInstallStream()
 	}
 
 	desc, err := pluginManager.Describe(ctx, pluginName)
