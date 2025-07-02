@@ -29,7 +29,7 @@ EOF
 }
 
 @test "verify file source with multiple paths" {
-  # Create a second directory with the same files for testing multiple paths
+  # Create a second directory with the same files for testing multiple paths  
   mkdir -p $SOURCE_FILES_DIR/aws_cloudtrail_flaws2/
   cp $SOURCE_FILES_DIR/aws_cloudtrail_flaws/* $SOURCE_FILES_DIR/aws_cloudtrail_flaws2/
 
