@@ -7,7 +7,7 @@ import (
 const (
 
 	// MinCorePluginVersion should be set for production releases - it is the minimum version of the core plugin that is required
-	MinCorePluginVersion = "v0.2.8"
+	MinCorePluginVersion = "v0.2.9"
 	// CorePluginVersion may  be set for pre-release versions - it allows us to pin a pre-release version of the core plugin
 	// NOTE: they must NOT both be set
 	CorePluginVersion = ""

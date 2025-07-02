@@ -1,4 +1,9 @@
 
+## v0.6.1 [2025-07-02]
+_Bug fixes_
+* Update core version to v0.2.9 - fix issue where collection state is not being saved for zero granularity collection. ([#251](https://github.com/turbot/tailpipe-plugin-sdk/issues/251))
+
+
 ## v0.6.0 [2025-07-02]
 _What's new_
 * Add `--to` flag for `collect`, allowing collection of standalone time ranges. ([#238](https://github.com/turbot/tailpipe/issues/238))
