@@ -41,7 +41,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb/v2 v2.1.0
 	github.com/thediveo/enumflag/v2 v2.0.5
-	github.com/turbot/tailpipe-plugin-core v0.2.7
+	github.com/turbot/tailpipe-plugin-core v0.2.8
 	golang.org/x/sync v0.12.0
 	golang.org/x/text v0.23.0
 	google.golang.org/grpc v1.69.2
