@@ -186,6 +186,12 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 	}
 
 	// copy the data from the jsonl file to a temp table
+	//if err := w.copyChunkToDuckLake(jsonlFilePath, w.converter.Partition.TableName); err != nil {
+	//	// copyChunkToTempTable will already have called handleSchemaChangeError anf handleConversionError
+	//	return err
+	//}
+
+	// copy the data from the jsonl file to a temp table
 	if err := w.copyChunkToTempTable(jsonlFilePath); err != nil {
 		// copyChunkToTempTable will already have called handleSchemaChangeError anf handleConversionError
 		return err
@@ -270,8 +276,27 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 			rowsInBatch += partitionRowCounts[i]
 		}
 
-		// Perform conversion for this batch using rowid ranges
-		rowCount, err := w.doConversionForBatch(jsonlFilePath, rowOffset, rowsInBatch)
+		//// Perform conversion for this batch using rowid ranges
+		//rowCount, err := w.doConversionForBatch(jsonlFilePath, rowOffset, rowsInBatch)
+		//if err != nil {
+		//	if conversionRanOutOfMemory(err) {
+		//		// If out of memory, flush memory, reopen the connection, and retry with fewer partitions
+		//		if err := w.forceMemoryRelease(); err != nil {
+		//			return err
+		//		}
+		//		partitionsPerConversion /= 2
+		//		if partitionsPerConversion < 1 {
+		//			return fmt.Errorf("failed to convert batch - partition count reduced to 0")
+		//		}
+		//		slog.Info("JSONL-parquet conversion failed with out of memory - retrying with fewer partitions", "file", jsonlFilePath, "failed partitions", partitionsPerConversion*2, "partitions", partitionsPerConversion, "worker", w.id)
+		//		// update partitionKeysPerConversion so the next conversion with this worker uses the new value
+		//		w.partitionKeysPerConversion = partitionsPerConversion
+		//		continue
+		//	}
+		//	return err
+		//}
+
+		rowCount, err := w.insertIntoDucklakeForBatch(w.converter.Partition.TableName, rowOffset, rowsInBatch)
 		if err != nil {
 			if conversionRanOutOfMemory(err) {
 				// If out of memory, flush memory, reopen the connection, and retry with fewer partitions
@@ -289,6 +314,7 @@ func (w *conversionWorker) convertFile(jsonlFilePath string) (err error) {
 			}
 			return err
 		}
+		slog.Debug("inserted rows into DuckLake table", "table", w.converter.Partition.TableName, "count", rowCount)
 
 		// Update counters and advance to the next batch
 		totalRowCount += rowCount
@@ -436,6 +462,72 @@ func (w *conversionWorker) doConversionForBatch(jsonlFilePath string, startRowId
 	// Rename temporary Parquet files
 	err = w.renameTempParquetFiles(files)
 	return exportedRowCount, err
+}
+
+// insertIntoDucklakeForBatch writes a batch of rows from the temp_data table to the specified target DuckDB table.
+//
+// It selects rows based on rowid, using the provided startRowId and rowCount to control the range:
+// - Rows with rowid > startRowId and rowid <= (startRowId + rowCount) are selected.
+//
+// This approach allows for efficient batching from the temporary table into the final destination table.
+//
+// To prevent schema mismatches, it explicitly lists columns in the INSERT statement based on the conversion schema.
+//
+// Returns the number of rows inserted and any error encountered.
+func (w *conversionWorker) insertIntoDucklakeForBatch(targetTable string, startRowId int64, rowCount int64) (int64, error) {
+	// Construct the fully qualified table name to prevent catalog errors.
+	// The schema is retrieved from the conversion schema.
+	qualifiedTable := fmt.Sprintf(`"%s"."%s"`, constants.DuckLakeSchema, targetTable)
+
+	// Build a list of column names from the schema for the INSERT statement.
+	// This is critical to ensure the column order is correct and avoids binder errors.
+	var columnNames []string
+	for _, col := range w.converter.conversionSchema.Columns {
+		// Use the destination column name, quoted for safety
+		columnNames = append(columnNames, fmt.Sprintf(`"%s"`, col.ColumnName))
+	}
+	columnList := strings.Join(columnNames, ", ")
+
+	// Build the SELECT query to pick the correct rows and columns from the temp table.
+	// The column order in this SELECT statement must match the INSERT statement above.
+	selectQuery := fmt.Sprintf(`
+		select %s
+		from temp_data
+		where rowid > %d and rowid <= %d
+	`, columnList, startRowId, startRowId+rowCount)
+
+	// Build the final INSERT INTO ... SELECT statement using the fully qualified table name.
+	insertQuery := fmt.Sprintf(`
+		insert into %s (%s)
+		%s
+	`, qualifiedTable, columnList, selectQuery)
+
+	slog.Info("inserting rows into DuckLake table", "table", qualifiedTable)
+
+	// we must avoid concurrent writes to the DuckLake database to prevent schema conflicts
+	// acquire the ducklake write mutex
+	w.converter.ducklakeMut.Lock()
+	// Execute the insert statement
+	result, err := w.db.Exec(insertQuery)
+	// release the ducklake write mutex
+	w.converter.ducklakeMut.Unlock()
+
+	if err != nil {
+		slog.Error("failed to insert data into DuckLake table", "table", qualifiedTable, "error", err)
+		// It's helpful to wrap the error with context about what failed.
+		return 0, fmt.Errorf("failed to insert data into %s: %w", qualifiedTable, err)
+	}
+	slog.Info("executed insert query", "rows", rowCount, "table", qualifiedTable)
+
+	// Get the number of rows that were actually inserted.
+	insertedRowCount, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get number of affected rows: %w", err)
+	}
+
+	slog.Debug("inserted rows into ducklake table", "table", qualifiedTable, "count", insertedRowCount)
+
+	return insertedRowCount, nil
 }
 
 // validateRows copies the data from the given select query to a temp table and validates required fields are non null

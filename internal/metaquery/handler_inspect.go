@@ -6,11 +6,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/turbot/tailpipe/internal/helpers"
-	"github.com/turbot/tailpipe/internal/plugin"
-
+	"github.com/turbot/tailpipe-plugin-sdk/helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/plugin"
 )
 
 // inspect
