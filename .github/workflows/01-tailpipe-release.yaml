@@ -5,12 +5,12 @@ on:
     inputs:
       environment:
         type: choice
-        description: 'Select Release Type'
+        description: "Select Release Type"
         options:
-        # to change the values in this option, we also need to update the condition test below in at least 3 location. Search for github.event.inputs.environment
-        - Development (alpha)
-        - Development (beta)
-        - Final (RC and final release)
+          # to change the values in this option, we also need to update the condition test below in at least 3 location. Search for github.event.inputs.environment
+          - Development (alpha)
+          - Development (beta)
+          - Final (RC and final release)
         required: true
       version:
         description: "Version (without 'v')"
@@ -132,7 +132,7 @@ jobs:
       # this is required, check golangci-lint-action docs
       - uses: actions/setup-go@19bb51245e9c80abacb2e91cc42b33fa478b8639 # v4.2.1
         with:
-          go-version: '1.23'
+          go-version: "1.23"
           cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
 
       - name: Setup release environment
@@ -223,3 +223,36 @@ jobs:
           git add .
           git commit -m "Versioning brew formulas"
           git push origin $VERSION
+
+  trigger_smoke_tests:
+    name: Trigger smoke tests
+    if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}
+    needs: [build_and_release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate version
+        id: calculate_version
+        run: |
+          echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
+
+      - name: Parse semver string
+        id: semver_parser
+        uses: booxmedialtd/ws-action-parse-semver@3576f3a20a39f8752fe0d8195f5ed384090285dc # v1.3.0
+        with:
+          input_string: ${{ github.event.inputs.version }}
+
+      - name: Trigger smoke test workflow
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          gh workflow run "02-tailpipe-smoke-tests.yaml" \
+            --ref ${{ github.ref }} \
+            --field version=$VERSION \
+            --repo ${{ github.repository }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
+
+      - name: Wait for smoke test workflow to start
+        if: steps.semver_parser.outputs.prerelease == ''
+        run: |
+          echo "Smoke test workflow triggered for version $VERSION"
+          echo "You can monitor the progress at: https://github.com/${{ github.repository }}/actions/workflows/02-tailpipe-smoke-tests.yaml"
