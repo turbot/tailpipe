@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/config"
 	"log"
 	"os"
 
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
@@ -178,7 +178,7 @@ func (d *DuckDb) connectDuckLake() error {
 	metadataDir := config.GlobalWorkspaceProfile.GetMetadataDir()
 
 	// 3. Attach the sqlite database as my_ducklake
-	query := fmt.Sprintf("attach 'ducklake:sqlite:%s/metadata.sqlite' AS tailpipe_ducklake (data_path '%s/');", metadataDir, dataDir)
+	query := fmt.Sprintf("attach 'ducklake:sqlite:%s/metadata.sqlite' AS %s (data_path '%s/');", metadataDir, constants.DuckLakeSchema, dataDir)
 	_, err = d.DB.Exec(query)
 	if err != nil {
 		log.Fatalf("Failed to attach sqlite database: %v", err)

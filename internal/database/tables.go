@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"fmt"
+	"github.com/turbot/tailpipe-plugin-sdk/helpers"
 	"log/slog"
 	"os"
 	"regexp"
@@ -11,7 +12,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/helpers"
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
