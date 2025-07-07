@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/spf13/viper"
-	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 
+	"github.com/spf13/viper"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 )
@@ -57,6 +57,9 @@ type Converter struct {
 	// with just the filename being added when the query is executed
 	readJsonQueryFormat string
 
+	// the format string for the simple query to read the JSON chunks without column definitions
+	readJsonSimpleFormat string
+
 	// the table conversionSchema - populated when the first chunk arrives if the conversionSchema is not already complete
 	conversionSchema *schema.ConversionSchema
 	// the source schema - used to build the conversionSchema
@@ -78,6 +81,9 @@ type Converter struct {
 	// pluginPopulatesTpIndex indicates if the plugin populates the tp_index column (which is no longer required
 	// - tp_index values set by the plugin will be ignored)
 	pluginPopulatesTpIndex bool
+
+	// the conversion workers must not concurrently write to ducklake, so we use a lock to ensure that only one worker is writing at a time
+	ducklakeMut sync.Mutex
 }
 
 func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
@@ -129,13 +135,7 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	// The WaitGroup ensures all subsequent chunks wait for this to complete.
 	// If schema inference fails, the error is captured and returned to the caller.
 	w.viewQueryOnce.Do(func() {
-		w.schemaWg.Add(1)
-		defer w.schemaWg.Done()
-		if err = w.buildConversionSchema(executionId, chunk); err != nil {
-			// err will be returned by the parent function
-			return
-		}
-		w.readJsonQueryFormat = w.buildReadJsonQueryFormat()
+		err = w.onFirstChunk(executionId, chunk)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to infer schema: %w", err)
@@ -149,6 +149,22 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	// Signal that new chunk is available
 	// Using Signal instead of Broadcast as only one worker needs to wake up
 	w.chunkSignal.Signal()
+
+	return nil
+}
+
+func (w *Converter) onFirstChunk(executionId string, chunk int32) error {
+	w.schemaWg.Add(1)
+	defer w.schemaWg.Done()
+	if err := w.buildConversionSchema(executionId, chunk); err != nil {
+		// err will be returned by the parent function
+		return err
+	}
+	// create the DuckDB table fpr this partition if it does not already exist
+	if err := w.ensureDuckLakeTable(w.Partition.TableName); err != nil {
+		return fmt.Errorf("failed to create DuckDB table: %w", err)
+	}
+	w.readJsonQueryFormat = w.buildReadJsonQueryFormat()
 
 	return nil
 }
