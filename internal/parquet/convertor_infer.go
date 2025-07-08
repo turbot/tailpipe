@@ -46,10 +46,17 @@ func (w *Converter) inferConversionSchema(executionId string, chunkNumber int32)
 }
 
 func (w *Converter) InferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
-	// TODO figure out why we need this hack - trying 2 different methods
-	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(filePath)
+	// Open DuckDB connection (NO ducklake required)
+	db, err := database.NewDuckDb()
 	if err != nil {
-		inferredSchema, err = w.inferSchemaForJSONLFileWithJSONStructure(filePath)
+		log.Fatalf("failed to open DuckDB connection: %v", err)
+	}
+	defer db.Close()
+
+	// depdening on the data we have observed that one of the two queries will work
+	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(db, filePath)
+	if err != nil {
+		inferredSchema, err = w.inferSchemaForJSONLFileWithJSONStructure(db, filePath)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer conversionSchema from JSON file: %w", err)
@@ -61,13 +68,7 @@ func (w *Converter) InferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 // inferSchemaForJSONLFileWithJSONStructure infers the schema of a JSONL file using DuckDB
 // it uses 2 different queries as depending on the data, one or the other has been observed to work
 // (needs investigation)
-func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(filePath string) (*schema.TableSchema, error) {
-	// Open DuckDB connection
-	db, err := database.NewDuckDb()
-	if err != nil {
-		log.Fatalf("failed to open DuckDB connection: %v", err)
-	}
-	defer db.Close()
+func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(db *database.DuckDb, filePath string) (*schema.TableSchema, error) {
 
 	// Query to infer schema using json_structure
 	query := `
@@ -77,7 +78,7 @@ func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(filePath string) (*
 	`
 
 	var schemaStr string
-	err = db.QueryRow(query, filePath).Scan(&schemaStr)
+	err := db.QueryRow(query, filePath).Scan(&schemaStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -105,15 +106,7 @@ func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(filePath string) (*
 	return res, nil
 }
 
-func (w *Converter) inferSchemaForJSONLFileWithDescribe(filePath string) (*schema.TableSchema, error) {
-
-	// Open DuckDB connection
-	db, err := database.NewDuckDb()
-	if err != nil {
-		log.Fatalf("failed to open DuckDB connection: %v", err)
-	}
-	defer db.Close()
-
+func (w *Converter) inferSchemaForJSONLFileWithDescribe(db *database.DuckDb, filePath string) (*schema.TableSchema, error) {
 	// Use DuckDB to describe the schema of the JSONL file
 	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
 
