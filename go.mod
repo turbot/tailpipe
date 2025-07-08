@@ -7,8 +7,8 @@ toolchain go1.24.0
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
 	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
-//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
-github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
+	//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
+	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
@@ -121,7 +121,7 @@ require (
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/goccy/go-yaml v1.11.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
