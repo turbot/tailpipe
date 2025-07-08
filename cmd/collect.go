@@ -135,7 +135,7 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 		// if a from time is set, clear the partition data from that time forward
 		if !fromTime.IsZero() && viper.GetBool(pconstants.ArgOverwrite) {
 			slog.Info("Deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
-			_, err := parquet.DeleteParquetFiles(partition, fromTime)
+			_, err := parquet.DeletePartition(ctx, partition, fromTime, toTime)
 			if err != nil {
 				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "from", fromTime, "error", err)
 				errList = append(errList, err)

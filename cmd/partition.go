@@ -184,6 +184,7 @@ func partitionDeleteCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
+		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
 		AddBoolFlag(pconstants.ArgForce, false, "Force delete without confirmation")
 
 	return cmd
@@ -204,18 +205,35 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		localcmdconfig.DisplayConfig()
 		return
 	}
-
-	// arg `fromTime` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
-	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+	// args `fromTime` and `ToTime` accepts:
+	// - ISO 8601 date(2024-01-01)
+	// - ISO 8601 datetime(2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms(2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00)
+	// - relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 	var fromTime time.Time
-	var fromStr string
+	// toTime defaults to now, but can be set to a specific time
+	toTime := time.Now()
+	// confirm deletion
+	var fromStr, toStr string
+
 	if viper.IsSet(pconstants.ArgFrom) {
 		var err error
 		fromTime, err = parseFromToTime(viper.GetString(pconstants.ArgFrom))
-		error_helpers.FailOnError(err)
+		error_helpers.FailOnErrorWithMessage(err, "invalid from time")
 		fromStr = fmt.Sprintf(" from %s", fromTime.Format(time.DateOnly))
 	}
+	if viper.IsSet(pconstants.ArgTo) {
+		var err error
+		toTime, err = parseFromToTime(viper.GetString(pconstants.ArgTo))
+		error_helpers.FailOnErrorWithMessage(err, "invalid to time")
+	}
+	toStr = fmt.Sprintf(" to %s", toTime.Format(time.DateOnly))
+	if toTime.Before(fromTime) {
+		error_helpers.FailOnError(fmt.Errorf("to time %s cannot be before from time %s", toTime.Format(time.RFC3339), fromTime.Format(time.RFC3339)))
+	}
 
+	// retrieve the partition
 	partitionName := args[0]
 	partition, ok := config.GlobalConfig.Partitions[partitionName]
 	if !ok {
@@ -223,15 +241,14 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if !viper.GetBool(pconstants.ArgForce) {
-		// confirm deletion
-		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s?", partitionName, fromStr)
+		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s%s?", partitionName, fromStr, toStr)
 		if !utils.UserConfirmationWithDefault(msg, true) {
 			fmt.Println("Deletion cancelled") //nolint:forbidigo//expected output
 			return
 		}
 	}
 
-	filesDeleted, err := parquet.DeleteParquetFiles(partition, fromTime)
+	filesDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime)
 	error_helpers.FailOnError(err)
 
 	// build the collection state path
@@ -255,7 +272,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	// now prune the collection folders
 	err = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetCollectionDir())
 	if err != nil {
-		slog.Warn("DeleteParquetFiles failed to prune empty collection folders", "error", err)
+		slog.Warn("DeletePartition failed to prune empty collection folders", "error", err)
 	}
 
 	msg := buildStatusMessage(filesDeleted, partitionName, fromStr)
