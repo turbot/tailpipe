@@ -22,8 +22,8 @@ func ListPartitions(ctx context.Context) ([]string, error) {
 	parquetPath := filepaths.GetParquetFileGlobForTable(dataDir, "*", "")
 	query := `select distinct tp_table || '.' || tp_partition from read_parquet('` + parquetPath + `', hive_partitioning=true)`
 
-	// Open DuckDB in-memory database
-	db, err := NewDuckDb()
+	// Open DuckDB in-memory database, with ducklake enabled
+	db, err := NewDuckDb(WithDuckLakeEnabled(true))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open DuckDB: %v", err)
 	}
