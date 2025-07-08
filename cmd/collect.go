@@ -193,6 +193,7 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	return nil
 }
 
+// getPartitions resolves the provided args to a list of partitions.
 func getPartitions(args []string) ([]*config.Partition, error) {
 	// we have loaded tailpipe config by this time
 	tailpipeConfig := config.GlobalConfig

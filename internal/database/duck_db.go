@@ -27,7 +27,7 @@ type DuckDb struct {
 	ducklakeEnabled bool
 }
 
-func NewDuckDb(opts ...DuckDbOpt) (ddb *DuckDb, err error) {
+func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	w := &DuckDb{}
 	for _, opt := range opts {
 		opt(w)

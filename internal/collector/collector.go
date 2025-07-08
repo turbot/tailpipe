@@ -17,7 +17,6 @@ import (
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
@@ -214,14 +213,13 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
-		c.statusLock.Lock()
-		defer c.statusLock.Unlock()
-		c.status.UpdateCompactionStatus(&compactionStatus)
-		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
-	}
-	partitionPattern := parquet.NewPartitionPattern(c.partition)
-	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
+	compactionStatus, err := parquet.CompactDataFiles(ctx)
+
+	c.statusLock.Lock()
+	defer c.statusLock.Unlock()
+	c.status.UpdateCompactionStatus(compactionStatus)
+	c.updateApp(CollectionStatusUpdateMsg{status: c.status})
+
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)
 	}
@@ -304,22 +302,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 		////c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
 		//slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
 	}
-}
-
-func (c *Collector) createTableView(ctx context.Context) error {
-	// so we are done writing chunks - now update the db to add a view to this data
-	// Open a DuckDB connection
-	db, err := database.NewDuckDb(database.WithDbFile(filepaths.TailpipeDbFilePath()))
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	err = database.AddTableView(ctx, c.execution.table, db)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime, toTime time.Time) error {
@@ -405,12 +387,6 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *events.Complete)
 
 	// wait for the conversions to complete
 	c.parquetConvertor.WaitForConversions(ctx)
-
-	// create or update the table view for ths table being collected
-	if err := c.createTableView(ctx); err != nil {
-		slog.Error("error creating table view", "error", err)
-		return err
-	}
 
 	slog.Info("handlePluginEvent - conversions all complete")
 
