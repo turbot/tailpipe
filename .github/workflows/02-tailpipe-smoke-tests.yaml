@@ -154,41 +154,41 @@ jobs:
           docker rm amazonlinux-2023-test
 
   smoke_test_darwin_arm64:
-  name: Smoke test (macOS 14, ARM64)
-  runs-on: macos-latest
-  steps:
-    - name: Checkout
-      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+    name: Smoke test (macOS 14, ARM64)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-    - name: Download Darwin Release Artifact
-      run: |
-        mkdir -p ./artifacts
-        gh release download ${{ env.VERSION }} \
-          --pattern "*darwin_arm64.tar.gz" \
-          --dir ./artifacts \
-          --repo ${{ github.repository }}
-        # Rename to expected format
-        mv ./artifacts/*darwin_arm64.tar.gz ./artifacts/darwin.tar.gz
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download Darwin Release Artifact
+        run: |
+          mkdir -p ./artifacts
+          gh release download ${{ env.VERSION }} \
+            --pattern "*darwin_arm64.tar.gz" \
+            --dir ./artifacts \
+            --repo ${{ github.repository }}
+          # Rename to expected format
+          mv ./artifacts/*darwin_arm64.tar.gz ./artifacts/darwin.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract Darwin Artifacts and Install Binary
-      run: |
-        mkdir -p /tmp/tailpipe
-        tar -xzf ./artifacts/darwin.tar.gz -C /tmp/tailpipe
-        sudo cp /tmp/tailpipe/tailpipe /usr/local/bin/
-        sudo chmod +x /usr/local/bin/tailpipe
+      - name: Extract Darwin Artifacts and Install Binary
+        run: |
+          mkdir -p /tmp/tailpipe
+          tar -xzf ./artifacts/darwin.tar.gz -C /tmp/tailpipe
+          sudo cp /tmp/tailpipe/tailpipe /usr/local/bin/
+          sudo chmod +x /usr/local/bin/tailpipe
 
-    - name: Install jq
-      run: |
-        brew install jq
+      - name: Install jq
+        run: |
+          brew install jq
 
-    - name: Get runner/container info
-      run: |
-        uname -a
-        sw_vers
+      - name: Get runner/container info
+        run: |
+          uname -a
+          sw_vers
 
-    - name: Run smoke tests
-      run: |
-        chmod +x $GITHUB_WORKSPACE/scripts/smoke_test.sh
-        $GITHUB_WORKSPACE/scripts/smoke_test.sh
+      - name: Run smoke tests
+        run: |
+          chmod +x $GITHUB_WORKSPACE/scripts/smoke_test.sh
+          $GITHUB_WORKSPACE/scripts/smoke_test.sh
