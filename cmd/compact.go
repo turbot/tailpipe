@@ -18,6 +18,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
@@ -64,8 +65,12 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 		panic("Reindexing is not yet implemented for ducklake")
 	}
 
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// do the compaction
-	status, err := doCompaction(ctx)
+	status, err := doCompaction(ctx, db)
 	if errors.Is(err, context.Canceled) {
 		// clear error so we don't show it with normal error reporting
 		err = nil
@@ -88,7 +93,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context) (*parquet.CompactionStatus, error) {
+func doCompaction(ctx context.Context, db *database.DuckDb) (*parquet.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -102,7 +107,7 @@ func doCompaction(ctx context.Context) (*parquet.CompactionStatus, error) {
 	s.Suffix = " compacting parquet files"
 
 	// do compaction
-	status, err := parquet.CompactDataFiles(ctx)
+	status, err := parquet.CompactDataFiles(ctx, db)
 
 	s.Suffix = fmt.Sprintf(" compacted parquet files (%d files -> %d files)", status.Source, status.Dest)
 

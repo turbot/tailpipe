@@ -12,6 +12,7 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 const defaultParquetWorkerCount = 5
@@ -84,9 +85,10 @@ type Converter struct {
 
 	// the conversion workers must not concurrently write to ducklake, so we use a lock to ensure that only one worker is writing at a time
 	ducklakeMut sync.Mutex
+	db          *database.DuckDb
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *database.DuckDb) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -103,6 +105,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		tableSchema:      tableSchema,
 		statusFunc:       statusFunc,
 		fileRootProvider: &FileRootProvider{},
+		db:               db,
 	}
 	// create the condition variable using the same lock
 	w.chunkSignal = sync.NewCond(&w.chunkLock)

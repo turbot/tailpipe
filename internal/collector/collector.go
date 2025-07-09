@@ -17,6 +17,8 @@ import (
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
+	internalconstants "github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
@@ -50,6 +52,9 @@ type Collector struct {
 	// the path to the JSONL files - the plugin will write to this path
 	sourcePath string
 
+	// database connection
+	db *database.DuckDb
+
 	// bubble tea app
 	app    *tea.Program
 	cancel context.CancelFunc
@@ -82,6 +87,16 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 		return nil, fmt.Errorf("failed to create JSONL path: %w", err)
 	}
 	c.sourcePath = sourcePath
+
+	// create the DuckDB connection
+	// load json and inet extension in addition to the DuckLake extension - the convertor will need them
+	db, err := database.NewDuckDb(
+		database.WithDuckDbExtensions(internalconstants.DuckDbExtensions),
+		database.WithDuckLakeEnabled(true))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DuckDB connection: %w", err)
+	}
+	c.db = db
 
 	return c, nil
 }
@@ -117,7 +132,7 @@ func (c *Collector) Close() {
 // - starts the collection UI
 // - creates a parquet writer, which will process the JSONL files as they are written
 // - starts listening to plugin events
-func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, recollect bool) (err error) {
+func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, overwrite bool) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
@@ -136,7 +151,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	c.execution = newExecution(c.partition)
 
 	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, toTime, recollect, c.collectionTempDir)
+	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, toTime, overwrite, c.collectionTempDir)
 	if err != nil {
 		return err
 	}
@@ -156,6 +171,17 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	// determine the time to start collecting from
 	resolvedFromTime := collectResponse.FromTime
 
+	// if we are overwriting, we need to delete any existing data in the partition
+	if overwrite {
+		if err := c.deletePartitionData(ctx, resolvedFromTime.Time, toTime); err != nil {
+			// set execution to error
+			c.execution.done(err)
+			// and return error
+			return fmt.Errorf("failed to delete partition data: %w", err)
+		}
+
+	}
+
 	// display the progress UI
 	err = c.showCollectionStatus(resolvedFromTime, toTime)
 	if err != nil {
@@ -166,7 +192,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	c.addTimeRangeFilters(resolvedFromTime, toTime)
 
 	// create a parquet writer
-	parquetConvertor, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount)
+	parquetConvertor, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount, c.db)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -218,7 +244,7 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	compactionStatus, err := parquet.CompactDataFiles(ctx)
+	compactionStatus, err := parquet.CompactDataFiles(ctx, c.db)
 
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()
@@ -242,6 +268,18 @@ func (c *Collector) Completed() {
 	if !viper.GetBool(pconstants.ArgProgress) {
 		_, _ = fmt.Fprint(os.Stdout, c.StatusString()) //nolint:forbidigo // UI output
 	}
+}
+
+// deletePartitionData deletes all parquet files in the partition between the fromTime and toTime
+func (c *Collector) deletePartitionData(ctx context.Context, fromTime, toTime time.Time) error {
+	slog.Info("Deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
+	_, err := parquet.DeletePartition(ctx, c.partition, fromTime, toTime, c.db)
+	if err != nil {
+		slog.Warn("Failed to delete parquet files after the from time", "partition", c.partition.Name, "from", fromTime, "error", err)
+
+	}
+	slog.Info("Completed deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
+	return err
 }
 
 // handlePluginEvent handles an event from a plugin
