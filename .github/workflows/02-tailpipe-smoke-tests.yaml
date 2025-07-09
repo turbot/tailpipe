@@ -14,7 +14,7 @@ env:
   # Disable update checks during smoke tests
   TAILPIPE_UPDATE_CHECK: false
 
-  jobs:
+jobs:
   smoke_test_ubuntu_24:
     name: Smoke test (Ubuntu 24, x86_64)
     runs-on: ubuntu-latest
@@ -153,42 +153,49 @@ env:
           docker stop amazonlinux-2023-test
           docker rm amazonlinux-2023-test
 
-  smoke_test_darwin_arm64:
-    name: Smoke test (macOS 14, ARM64)
-    runs-on: macos-latest
+  smoke_test_linux_arm64:
+    name: Smoke test (Ubuntu 24, ARM64)
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Download Darwin Release Artifact
+      - name: Download Linux ARM64 Release Artifact
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "*darwin_arm64.tar.gz" \
+            --pattern "*linux_arm64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/*darwin_arm64.tar.gz ./artifacts/darwin.tar.gz
+          mv ./artifacts/*linux_arm64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Darwin Artifacts and Install Binary
+      - name: Extract Linux Artifacts and Install Binary
         run: |
-          mkdir -p /tmp/tailpipe
-          tar -xzf ./artifacts/darwin.tar.gz -C /tmp/tailpipe
-          sudo cp /tmp/tailpipe/tailpipe /usr/local/bin/
+          sudo tar -xzf ./artifacts/linux.tar.gz -C /usr/local/bin
           sudo chmod +x /usr/local/bin/tailpipe
 
       - name: Install jq
         run: |
-          brew install jq
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Create tailpipe user and setup environment
+        run: |
+          sudo useradd -m tailpipe
+          sudo mkdir -p /home/tailpipe/.tailpipe/logs
+          sudo chown -R tailpipe:tailpipe /home/tailpipe
 
       - name: Get runner/container info
         run: |
           uname -a
-          sw_vers
+          cat /etc/os-release
 
       - name: Run smoke tests
         run: |
           chmod +x $GITHUB_WORKSPACE/scripts/smoke_test.sh
-          $GITHUB_WORKSPACE/scripts/smoke_test.sh
+          sudo cp $GITHUB_WORKSPACE/scripts/smoke_test.sh /home/tailpipe/smoke_test.sh
+          sudo chown tailpipe:tailpipe /home/tailpipe/smoke_test.sh
+          sudo -u tailpipe /home/tailpipe/smoke_test.sh
