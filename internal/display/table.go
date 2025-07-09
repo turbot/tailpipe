@@ -9,6 +9,7 @@ import (
 	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/sanitize"
+	"github.com/turbot/tailpipe-plugin-sdk/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -229,24 +230,21 @@ func (r *TableResource) getColumnsRenderFunc() printers.RenderFunc {
 		var lines []string
 		lines = append(lines, "") // blank line before column details
 
-		cols := r.Columns
-		// TODO: #graza we utilize similar behaviour in the view creation but only on string, can we combine these into a single func?
-		tpPrefix := "tp_"
-		slices.SortFunc(cols, func(a, b TableColumnResource) int {
-			isPrefixedA, isPrefixedB := strings.HasPrefix(a.ColumnName, tpPrefix), strings.HasPrefix(b.ColumnName, tpPrefix)
-			switch {
-			case isPrefixedA && !isPrefixedB:
-				return 1 // a > b
-			case !isPrefixedA && isPrefixedB:
-				return -1 // a < b
-			default:
-				return strings.Compare(a.ColumnName, b.ColumnName) // standard alphabetical sort
-			}
-		})
+		// Extract column names and build map in a single loop
+		columnNames := make([]string, len(r.Columns))
+		columnMap := make(map[string]TableColumnResource)
+		for i, col := range r.Columns {
+			columnNames[i] = col.ColumnName
+			columnMap[col.ColumnName] = col
+		}
+		// sort column names alphabetically, with tp fields at the end
+		sortedColumnNames := helpers.SortColumnsAlphabetically(columnNames)
 
-		for _, c := range r.Columns {
+		// Build lines in sorted order
+		for _, colName := range sortedColumnNames {
+			col := columnMap[colName]
 			// type is forced to lowercase, this should be the case for our tables/plugins but this provides consistency for custom tables, etc
-			line := fmt.Sprintf("  %s: %s", c.ColumnName, strings.ToLower(c.Type))
+			line := fmt.Sprintf("  %s: %s", col.ColumnName, strings.ToLower(col.Type))
 			lines = append(lines, line)
 		}
 
