@@ -12,6 +12,7 @@ import (
 
 // handleConversionError attempts to handle conversion errors by counting the number of lines in the file.
 // if we fail, just return the raw error.
+// TODO #DL we need to pass an error prefix into here so we know the context
 func handleConversionError(err error, path string) error {
 	logArgs := []any{
 		"error",
