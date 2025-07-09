@@ -420,9 +420,8 @@ func (w *conversionWorker) getPartitionRowCounts() ([]int64, error) {
 //
 // Returns the number of rows inserted and any error encountered.
 func (w *conversionWorker) insertIntoDucklakeForBatch(targetTable string, startRowId int64, rowCount int64) (int64, error) {
-	// Construct the fully qualified table name to prevent catalog errors.
-	// The schema is retrieved from the conversion schema.
-	qualifiedTable := fmt.Sprintf(`"%s"."%s"`, constants.DuckLakeCatalog, targetTable)
+	// Construct the table name (catalog is set as default, so no need to qualify)
+	qualifiedTable := fmt.Sprintf(`"%s"`, targetTable)
 
 	// Build a list of column names from the schema for the INSERT statement.
 	// This is critical to ensure the column order is correct and avoids binder errors.
