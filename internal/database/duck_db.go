@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
@@ -28,6 +29,8 @@ type DuckDb struct {
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
+	slog.Info("Initializing DuckDB connection")
+
 	w := &DuckDb{}
 	for _, opt := range opts {
 		opt(w)
@@ -167,8 +170,8 @@ func (d *DuckDb) connectDuckLake() error {
 	}
 
 	// 2. Install ducklake extension
-	// TODO change to using prod extension when stable
-	//_, err = db.Exec("INSTALL ducklake;")
+	// TODO #DL change to using prod extension when stable
+	//_, err = db.Exec("install ducklake;")
 	_, err = d.DB.Exec("force install ducklake from core_nightly;")
 	if err != nil {
 		return fmt.Errorf("failed to install ducklake nightly extension: %v", err)
@@ -178,11 +181,16 @@ func (d *DuckDb) connectDuckLake() error {
 	metadataDir := config.GlobalWorkspaceProfile.GetMetadataDir()
 
 	// 3. Attach the sqlite database as my_ducklake
-	query := fmt.Sprintf("attach 'ducklake:sqlite:%s/metadata.sqlite' AS %s (data_path '%s/');", metadataDir, constants.DuckLakeSchema, dataDir)
+	query := fmt.Sprintf("attach 'ducklake:sqlite:%s/metadata.sqlite' AS %s (data_path '%s/');", metadataDir, constants.DuckLakeCatalog, dataDir)
 	_, err = d.DB.Exec(query)
 	if err != nil {
 		log.Fatalf("Failed to attach sqlite database: %v", err)
 	}
-	return nil
 
+	// set default catalog to ducklake
+	_, err = d.DB.Exec(fmt.Sprintf("use %s;", constants.DuckLakeCatalog))
+	if err != nil {
+		return fmt.Errorf("failed to set catalog: %w", err)
+	}
+	return nil
 }

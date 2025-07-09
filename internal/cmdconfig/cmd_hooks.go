@@ -21,7 +21,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"
 	"github.com/turbot/tailpipe/internal/plugin"
@@ -151,12 +150,6 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
 	// create the required data and internal folder for this workspace if needed
 	err = config.GlobalWorkspaceProfile.EnsureWorkspaceDirs()
-	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
-	}
-
-	// ensure we have a database file for this workspace
-	err = database.EnsureDatabaseFile(ctx)
 	if err != nil {
 		return error_helpers.NewErrorsAndWarning(err)
 	}

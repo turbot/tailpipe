@@ -25,7 +25,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
@@ -73,42 +72,9 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		displayOutput(ctx, databaseFilePath, err)
 	}()
 
-	databaseFilePath, err = generateDbFile(ctx)
+	// TODO decide what to return
 
 	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
-}
-
-func generateDbFile(ctx context.Context) (string, error) {
-	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
-
-	// cleanup the old db files if not in use
-	err := cleanupOldDbFiles()
-	if err != nil {
-		return "", err
-	}
-
-	// first build the filters
-	filters, err := getFilters()
-	if err != nil {
-		return "", fmt.Errorf("error building filters: %w", err)
-	}
-
-	// if there are no filters, just copy the db file
-	if len(filters) == 0 {
-		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
-		return databaseFilePath, err
-	}
-
-	// Open a DuckDB connection (creates the file if it doesn't exist)
-	db, err := database.NewDuckDb(database.WithDbFile(databaseFilePath))
-
-	if err != nil {
-		return "", fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
-	err = database.AddTableViews(ctx, db, filters...)
-	return databaseFilePath, err
 }
 
 func displayOutput(ctx context.Context, databaseFilePath string, err error) {

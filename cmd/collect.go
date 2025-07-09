@@ -19,7 +19,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
@@ -121,18 +120,8 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 
 	// collect each partition serially
 	var errList []error
+
 	for _, partition := range partitions {
-		// if a from time is set, clear the partition data from that time forward
-		if !fromTime.IsZero() && viper.GetBool(pconstants.ArgOverwrite) {
-			slog.Info("Deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
-			_, err := parquet.DeletePartition(ctx, partition, fromTime, toTime)
-			if err != nil {
-				slog.Warn("Failed to delete parquet files after the from time", "partition", partition.Name, "from", fromTime, "error", err)
-				errList = append(errList, err)
-				continue
-			}
-			slog.Info("Completed deleting parquet files after the from time", "partition", partition.Name, "from", fromTime)
-		}
 		// do the collection
 		err = collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
 		if err != nil {
@@ -165,9 +154,9 @@ func collectPartition(ctx context.Context, cancel context.CancelFunc, partition 
 	}
 	defer c.Close()
 
-	recollect := viper.GetBool(pconstants.ArgOverwrite)
+	overwrite := viper.GetBool(pconstants.ArgOverwrite)
 
-	if err = c.Collect(ctx, fromTime, toTime, recollect); err != nil {
+	if err = c.Collect(ctx, fromTime, toTime, overwrite); err != nil {
 		return err
 	}
 

@@ -9,7 +9,6 @@ import (
 	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 const (
@@ -96,8 +95,9 @@ func migrateTpIndexForPartition(ctx context.Context, db *database.DuckDb, baseDi
 // It reads the partition data into a temporary table, writes the data with the migrated tp_index
 // to intermediate output files (with .tmp extension), and returns the list of output file paths.
 func executeMigrationQuery(ctx context.Context, db *database.DuckDb, baseDir string, partition *config.Partition, fileRootProvider *FileRootProvider) ([]string, error) {
+	// TODO #DL this is out of date/not needed
 	// Get the file glob pattern for all files in this partition
-	fileGlob := filepaths.GetParquetFileGlobForPartition(baseDir, partition.TableName, partition.ShortName, "")
+	fileGlob := "" //filepaths.GetParquetFileGlobForPartition(baseDir, partition.TableName, partition.ShortName, "")
 
 	// get unique file root to use for the output files
 	fileRoot := fileRootProvider.GetFileRoot()

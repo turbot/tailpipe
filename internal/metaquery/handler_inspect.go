@@ -14,24 +14,24 @@ import (
 
 // inspect
 func inspect(ctx context.Context, input *HandlerInput) error {
-	views, err := input.GetViews()
+	tables, err := input.GetTables(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get tables: %w", err)
 	}
 
 	if len(input.args()) == 0 {
-		return listViews(ctx, input, views)
+		return listTables(ctx, input, tables)
 	}
 
-	viewName := input.args()[0]
-	if slices.Contains(views, viewName) {
-		return listViewSchema(ctx, input, viewName)
+	tableName := input.args()[0]
+	if slices.Contains(tables, tableName) {
+		return getTableSchema(ctx, input, tableName)
 	}
 
-	return fmt.Errorf("could not find a view named '%s'", viewName)
+	return fmt.Errorf("could not find a view named '%s'", tableName)
 }
 
-func listViews(ctx context.Context, input *HandlerInput, views []string) error {
+func listTables(ctx context.Context, input *HandlerInput, views []string) error {
 	var rows [][]string
 	rows = append(rows, []string{"Table", "Plugin"}) // Header
 
@@ -47,10 +47,10 @@ func listViews(ctx context.Context, input *HandlerInput, views []string) error {
 	return nil
 }
 
-func listViewSchema(ctx context.Context, input *HandlerInput, viewName string) error {
-	schema, err := database.GetTableViewSchema(ctx, viewName)
+func getTableSchema(ctx context.Context, input *HandlerInput, tableName string) error {
+	schema, err := database.GetTableSchema(ctx, tableName, input.Db)
 	if err != nil {
-		return fmt.Errorf("failed to get view schema: %w", err)
+		return fmt.Errorf("failed to get table schema: %w", err)
 	}
 
 	var rows [][]string
