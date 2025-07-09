@@ -40,6 +40,7 @@ func WithMaxMemoryMb(maxMemoryMb int) DuckDbOpt {
 }
 
 // TODO #DL think about making this a default
+
 // WithDuckLakeEnabled enables the DuckLake extension for DuckDB.
 func WithDuckLakeEnabled(enabled bool) DuckDbOpt {
 	return func(d *DuckDb) {

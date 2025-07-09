@@ -14,26 +14,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 )
 
-// if this parquetFile ends with the partition segment, return the table and partition
-func getPartitionFromPath(dirPath string) (string, string, bool) {
-	// if this is a partition folder, check if it matches the patterns
-	parts := strings.Split(dirPath, "/")
-	l := len(parts)
-	if l < 2 {
-		return "", "", false
-	}
-
-	// Find the last two segments that match our pattern
-	for i := l - 1; i > 0; i-- {
-		if strings.HasPrefix(parts[i], "tp_partition=") && strings.HasPrefix(parts[i-1], "tp_table=") {
-			table := strings.TrimPrefix(parts[i-1], "tp_table=")
-			partition := strings.TrimPrefix(parts[i], "tp_partition=")
-			return table, partition, true
-		}
-	}
-	return "", "", false
-}
-
 // addExtensionToFiles renames all given files to add a the provided extension
 func addExtensionToFiles(fileNames []string, suffix string) ([]string, error) {
 	if len(fileNames) == 0 {

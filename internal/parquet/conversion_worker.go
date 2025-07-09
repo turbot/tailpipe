@@ -15,7 +15,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 // limit tha max partitions to convert
@@ -410,60 +409,6 @@ func (w *conversionWorker) getPartitionRowCounts() ([]int64, error) {
 	return result, rows.Err()
 }
 
-// doConversionForBatch writes a batch of rows from the temp_data table to partitioned Parquet files.
-//
-// It selects rows based on rowid, using the provided startRowId and rowCount to control the range:
-// - Rows with rowid > startRowId and rowid <= (startRowId + rowCount) are selected.
-//
-// This approach ensures that full partitions are processed contiguously and allows efficient batching
-// without needing complex WHERE clauses.
-//
-// Returns the number of rows written and any error encountered.
-func (w *conversionWorker) doConversionForBatch(jsonlFilePath string, startRowId int64, rowCount int64) (int64, error) {
-	// Create a query to write a batch of rows to partitioned Parquet files
-
-	// Get a unique file root
-	fileRoot := w.fileRootProvider.GetFileRoot()
-
-	// Build select query to pick the correct rows
-	selectQuery := fmt.Sprintf(`
-		select *
-		from temp_data
-		where rowid > %d and rowid <= %d
-	`, startRowId, startRowId+rowCount)
-
-	// Build the export query
-	partitionColumns := []string{sdkconstants.TpTable, sdkconstants.TpPartition, sdkconstants.TpIndex, sdkconstants.TpDate}
-	exportQuery := fmt.Sprintf(`copy (%s) to '%s' (
-		format parquet,
-		partition_by (%s),
-		return_files true,
-		overwrite_or_ignore,
-		filename_pattern '%s_{i}',
-		file_extension '%s'
-);`,
-		selectQuery,
-		w.destDir,
-		strings.Join(partitionColumns, ","),
-		fileRoot,
-		strings.TrimPrefix(filepaths.TempParquetExtension, "."),
-	)
-
-	// Execute the export
-	row := w.db.QueryRow(exportQuery)
-	var exportedRowCount int64
-	var files []interface{}
-	err := row.Scan(&exportedRowCount, &files)
-	if err != nil {
-		return 0, handleConversionError(err, jsonlFilePath)
-	}
-	slog.Debug("created parquet files", "count", len(files))
-
-	// Rename temporary Parquet files
-	err = w.renameTempParquetFiles(files)
-	return exportedRowCount, err
-}
-
 // insertIntoDucklakeForBatch writes a batch of rows from the temp_data table to the specified target DuckDB table.
 //
 // It selects rows based on rowid, using the provided startRowId and rowCount to control the range:
@@ -477,7 +422,7 @@ func (w *conversionWorker) doConversionForBatch(jsonlFilePath string, startRowId
 func (w *conversionWorker) insertIntoDucklakeForBatch(targetTable string, startRowId int64, rowCount int64) (int64, error) {
 	// Construct the fully qualified table name to prevent catalog errors.
 	// The schema is retrieved from the conversion schema.
-	qualifiedTable := fmt.Sprintf(`"%s"."%s"`, constants.DuckLakeSchema, targetTable)
+	qualifiedTable := fmt.Sprintf(`"%s"."%s"`, constants.DuckLakeCatalog, targetTable)
 
 	// Build a list of column names from the schema for the INSERT statement.
 	// This is critical to ensure the column order is correct and avoids binder errors.
@@ -648,30 +593,4 @@ func (w *conversionWorker) deleteInvalidRows(requiredColumns []string) error {
 
 	_, err := w.db.Exec(query)
 	return err
-}
-
-// renameTempParquetFiles renames the given list of temporary parquet files to have a .parquet extension.
-// note: we receive the list of files as an interface{} as that is what we read back from the db
-func (w *conversionWorker) renameTempParquetFiles(files []interface{}) error {
-	var errList []error
-	for _, f := range files {
-		fileName := f.(string)
-		if strings.HasSuffix(fileName, filepaths.TempParquetExtension) {
-			newName := strings.TrimSuffix(fileName, filepaths.TempParquetExtension) + ".parquet"
-			if err := os.Rename(fileName, newName); err != nil {
-				errList = append(errList, fmt.Errorf("%s: %w", fileName, err))
-			}
-		}
-	}
-
-	if len(errList) > 0 {
-		var msg strings.Builder
-		msg.WriteString(fmt.Sprintf("Failed to rename %d parquet files:\n", len(errList)))
-		for _, err := range errList {
-			msg.WriteString(fmt.Sprintf("  - %v\n", err))
-		}
-		return errors.New(msg.String())
-	}
-
-	return nil
 }

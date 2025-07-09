@@ -6,7 +6,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 	"github.com/turbot/tailpipe/internal/database"
-	"log"
 	"path/filepath"
 )
 
@@ -46,17 +45,10 @@ func (w *Converter) inferConversionSchema(executionId string, chunkNumber int32)
 }
 
 func (w *Converter) InferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
-	// Open DuckDB connection (NO ducklake required)
-	db, err := database.NewDuckDb()
+	// depending on the data we have observed that one of the two queries will work
+	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(w.db, filePath)
 	if err != nil {
-		log.Fatalf("failed to open DuckDB connection: %v", err)
-	}
-	defer db.Close()
-
-	// depdening on the data we have observed that one of the two queries will work
-	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(db, filePath)
-	if err != nil {
-		inferredSchema, err = w.inferSchemaForJSONLFileWithJSONStructure(db, filePath)
+		inferredSchema, err = w.inferSchemaForJSONLFileWithJSONStructure(filePath)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to infer conversionSchema from JSON file: %w", err)
@@ -68,8 +60,7 @@ func (w *Converter) InferSchemaForJSONLFile(filePath string) (*schema.TableSchem
 // inferSchemaForJSONLFileWithJSONStructure infers the schema of a JSONL file using DuckDB
 // it uses 2 different queries as depending on the data, one or the other has been observed to work
 // (needs investigation)
-func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(db *database.DuckDb, filePath string) (*schema.TableSchema, error) {
-
+func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(filePath string) (*schema.TableSchema, error) {
 	// Query to infer schema using json_structure
 	query := `
 		select json_structure(json)::varchar as schema
@@ -78,7 +69,7 @@ func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(db *database.DuckDb
 	`
 
 	var schemaStr string
-	err := db.QueryRow(query, filePath).Scan(&schemaStr)
+	err := w.db.QueryRow(query, filePath).Scan(&schemaStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}

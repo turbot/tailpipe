@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
@@ -76,9 +75,8 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// get a connection to the database
-	var db *database.DuckDb
-	db, err = openDatabaseConnection(ctx)
+	// get a connection to the database, with DuckLake enabled
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
 	if err != nil {
 		return
 	}
@@ -99,17 +97,6 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		// if there were any errors, they would have been shown already from `RunBatchSession` - just set the exit code
 		exitCode = pconstants.ExitCodeQueryExecutionFailed
 	}
-
-}
-
-// generate a db file - this will respect any time/index filters specified in the command args
-func openDatabaseConnection(ctx context.Context) (*database.DuckDb, error) {
-	dbFilePath, err := generateDbFile(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// Open a DuckDB connection
-	return database.NewDuckDb(database.WithDbFile(dbFilePath))
 }
 
 func setExitCodeForQueryError(err error) {

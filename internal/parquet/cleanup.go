@@ -10,16 +10,10 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time) (rowCount int, err error) {
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
-	if err != nil {
-		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
+func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time, db *database.DuckDb) (rowCount int, err error) {
 	// build a delete query for the partition
 	// Note: table names cannot be parameterized, so we use string formatting for the table name
-	query := fmt.Sprintf(`delete from %s.%s where tp_partition = ? and tp_date >= ? and tp_date <= ?`, localconstants.DuckLakeSchema, partition.TableName)
+	query := fmt.Sprintf(`delete from %s.%s where tp_partition = ? and tp_date >= ? and tp_date <= ?`, localconstants.DuckLakeCatalog, partition.TableName)
 	// Execute the query with parameters for the partition and date range
 	result, err := db.Exec(query, partition.ShortName, from, to)
 	if err != nil {
@@ -40,15 +34,8 @@ func DeletePartition(ctx context.Context, partition *config.Partition, from, to 
 	return rowCount, nil
 }
 
-func CompactDataFiles(ctx context.Context) (*CompactionStatus, error) {
+func CompactDataFiles(ctx context.Context, db *database.DuckDb) (*CompactionStatus, error) {
 	var status = NewCompactionStatus()
-
-	// open a duckdb connection
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open duckdb connection: %w", err)
-	}
-	defer db.Close()
 
 	// get the starting file count
 	startingFileCount, err := parquetFileCount(ctx, db)
@@ -98,7 +85,7 @@ func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
 
 // mergeParquetFiles combines adjacent parquet files in the DuckDB database.
 func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("call %s.merge_adjacent_files();", localconstants.DuckLakeSchema)); err != nil {
+	if _, err := db.ExecContext(ctx, fmt.Sprintf("call %s.merge_adjacent_files();", localconstants.DuckLakeCatalog)); err != nil {
 		if ctx.Err() != nil {
 			return err
 		}
@@ -115,7 +102,7 @@ func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
 	// 1) get the timestamp of the latest snapshot from the metadata schema
 	var latestTimestamp string
-	query := fmt.Sprintf(`select snapshot_time from %s.ducklake_snapshot order by snapshot_id desc limit 1`, localconstants.DuckLakeMetadataSchema)
+	query := fmt.Sprintf(`select snapshot_time from %s.ducklake_snapshot order by snapshot_id desc limit 1`, localconstants.DuckLakeMetadataCatalog)
 
 	err := db.QueryRowContext(ctx, query).Scan(&latestTimestamp)
 	if err != nil {
@@ -123,7 +110,7 @@ func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
 	}
 
 	// 2) expire all snapshots older than the latest one
-	expireQuery := fmt.Sprintf(`call ducklake_expire_snapshots('%s', older_than => '%s')`, localconstants.DuckLakeSchema, latestTimestamp)
+	expireQuery := fmt.Sprintf(`call ducklake_expire_snapshots('%s', older_than => '%s')`, localconstants.DuckLakeCatalog, latestTimestamp)
 
 	_, err = db.ExecContext(ctx, expireQuery)
 	if err != nil {
@@ -135,7 +122,7 @@ func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
 
 // cleanupExpiredFiles deletes and files marked as expired in the ducklake system.
 func cleanupExpiredFiles(ctx context.Context, db *database.DuckDb) error {
-	cleanupQuery := fmt.Sprintf(`call ducklake_cleanup_old_files('%s', cleanup_all => true)`, localconstants.DuckLakeSchema)
+	cleanupQuery := fmt.Sprintf(`call ducklake_cleanup_old_files('%s', cleanup_all => true)`, localconstants.DuckLakeCatalog)
 
 	_, err := db.ExecContext(ctx, cleanupQuery)
 	if err != nil {
@@ -147,8 +134,7 @@ func cleanupExpiredFiles(ctx context.Context, db *database.DuckDb) error {
 
 // parquetFileCount returns the count of ALL parquet files in the ducklake_data_file table (whether active or not)
 func parquetFileCount(ctx context.Context, db *database.DuckDb) (int, error) {
-
-	query := fmt.Sprintf(`select count (*) from %s.ducklake_data_file;`, localconstants.DuckLakeMetadataSchema)
+	query := fmt.Sprintf(`select count (*) from %s.ducklake_data_file;`, localconstants.DuckLakeMetadataCatalog)
 
 	var count int
 	err := db.QueryRowContext(ctx, query).Scan(&count)

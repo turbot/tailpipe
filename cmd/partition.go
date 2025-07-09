@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"log/slog"
 	"os"
 	"strings"
@@ -85,8 +86,12 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resources, err := display.ListPartitionResources(ctx)
+	resources, err := display.ListPartitionResources(ctx, db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
@@ -135,9 +140,24 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	partitionName := args[0]
-	resource, err := display.GetPartitionResource(partitionName)
+
+	partitions, err := getPartitions(args)
+	error_helpers.FailOnError(err)
+	// if no partitions are found, return an error
+	if len(partitions) == 0 {
+		error_helpers.FailOnError(fmt.Errorf("no partitions found matching %s", args[0]))
+	}
+	// if more than one partition is found, return an error
+	if len(partitions) > 1 {
+		error_helpers.FailOnError(fmt.Errorf("multiple partitions found matching %s, please specify a more specific partition name", args[0]))
+	}
+
+	resource, err := display.GetPartitionResource(cmd.Context(), partitions[0], db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 
@@ -229,8 +249,11 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 			return
 		}
 	}
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
 
-	filesDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime)
+	filesDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
 	error_helpers.FailOnError(err)
 
 	// build the collection state path

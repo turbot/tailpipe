@@ -3,8 +3,7 @@ package constants
 import "time"
 
 const (
-	TailpipeDbName         = "tailpipe.db"
-	DbFileMaxAge           = 24 * time.Hour
-	DuckLakeSchema         = "tailpipe_ducklake"
-	DuckLakeMetadataSchema = "__ducklake_metadata_" + DuckLakeSchema
+	DbFileMaxAge            = 24 * time.Hour
+	DuckLakeCatalog         = "tailpipe_ducklake"
+	DuckLakeMetadataCatalog = "__ducklake_metadata_" + DuckLakeCatalog
 )
