@@ -176,6 +176,10 @@ func (d *DuckDb) connectDuckLake() error {
 	if err != nil {
 		return fmt.Errorf("failed to install ducklake nightly extension: %v", err)
 	}
+	_, err = d.DB.Exec("load ducklake;")
+	if err != nil {
+		return fmt.Errorf("failed to load ducklakeextension: %v", err)
+	}
 
 	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
 	metadataDir := config.GlobalWorkspaceProfile.GetMetadataDir()

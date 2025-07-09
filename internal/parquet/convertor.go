@@ -15,7 +15,7 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-const defaultParquetWorkerCount = 5
+const defaultParquetWorkerCount = 1
 const chunkBufferLength = 1000
 
 // the minimum memory to assign to each worker -
