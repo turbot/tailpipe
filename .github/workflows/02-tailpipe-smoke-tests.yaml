@@ -26,11 +26,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "*linux_amd64.tar.gz" \
+            --pattern "tailpipe.linux.amd64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/*linux_amd64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/tailpipe.linux.amd64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -72,11 +72,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "*linux_amd64.tar.gz" \
+            --pattern "tailpipe.linux.amd64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/*linux_amd64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/tailpipe.linux.amd64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -118,11 +118,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "*linux_amd64.tar.gz" \
+            --pattern "tailpipe.linux.amd64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/*linux_amd64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/tailpipe.linux.amd64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -164,11 +164,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "*linux_arm64.tar.gz" \
+            --pattern "tailpipe.linux.arm64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/*linux_arm64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/tailpipe.linux.arm64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
