@@ -448,13 +448,16 @@ func (w *conversionWorker) insertIntoDucklakeForBatch(targetTable string, startR
 
 	slog.Info("inserting rows into DuckLake table", "table", qualifiedTable)
 
+	t := time.Now()
 	// we must avoid concurrent writes to the DuckLake database to prevent schema conflicts
 	// acquire the ducklake write mutex
 	w.converter.ducklakeMut.Lock()
+	t1 := time.Now()
 	// Execute the insert statement
 	result, err := w.db.Exec(insertQuery)
 	// release the ducklake write mutex
 	w.converter.ducklakeMut.Unlock()
+	slog.Info("insert query executed", "worker_id", w.id, "lock duration_ms", t1.Sub(t).Milliseconds(), "insert_duration_ms", time.Since(t).Milliseconds())
 
 	if err != nil {
 		slog.Error("failed to insert data into DuckLake table", "table", qualifiedTable, "error", err)

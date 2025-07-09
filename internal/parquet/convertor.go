@@ -15,7 +15,7 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-const defaultParquetWorkerCount = 1
+const defaultParquetWorkerCount = 5
 const chunkBufferLength = 1000
 
 // the minimum memory to assign to each worker -
@@ -84,7 +84,7 @@ type Converter struct {
 	pluginPopulatesTpIndex bool
 
 	// the conversion workers must not concurrently write to ducklake, so we use a lock to ensure that only one worker is writing at a time
-	ducklakeMut sync.Mutex
+	ducklakeMut *sync.Mutex
 	db          *database.DuckDb
 }
 
@@ -106,6 +106,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		statusFunc:       statusFunc,
 		fileRootProvider: &FileRootProvider{},
 		db:               db,
+		ducklakeMut:      &sync.Mutex{},
 	}
 	// create the condition variable using the same lock
 	w.chunkSignal = sync.NewCond(&w.chunkLock)
