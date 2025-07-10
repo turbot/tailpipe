@@ -144,11 +144,6 @@ jobs:
         run: |
           docker exec amazonlinux-2023-test /scripts/prepare_amazonlinux_container.sh
 
-      - name: Verify user creation
-        run: |
-          docker exec amazonlinux-2023-test id tailpipe
-          docker exec amazonlinux-2023-test ls -la /home/tailpipe
-
       - name: Run smoke tests
         run: |
           docker exec -u tailpipe amazonlinux-2023-test /scripts/smoke_test.sh
@@ -192,6 +187,27 @@ jobs:
           sudo useradd -m tailpipe
           sudo mkdir -p /home/tailpipe/.tailpipe/logs
           sudo chown -R tailpipe:tailpipe /home/tailpipe
+
+      - name: Debug binary info
+        run: |
+          echo "=== Binary Information ==="
+          file /usr/local/bin/tailpipe
+          ls -la /usr/local/bin/tailpipe
+          echo "=== Dependencies ==="
+          ldd /usr/local/bin/tailpipe || true
+          echo "=== Basic Commands Test ==="
+          /usr/local/bin/tailpipe --version
+          echo "=== Help Command Test ==="
+          /usr/local/bin/tailpipe --help | head -5 || echo "Help command failed"
+
+      - name: Test database commands individually
+        run: |
+          echo "=== Testing connect command ==="
+          sudo -u tailpipe /usr/local/bin/tailpipe connect || echo "Connect failed"
+          echo "=== Testing basic query ==="
+          sudo -u tailpipe /usr/local/bin/tailpipe query "SELECT 1" || echo "Query failed"
+          echo "=== Testing with explicit output format ==="
+          sudo -u tailpipe /usr/local/bin/tailpipe query "SELECT 1 as test" --output json || echo "JSON query failed"
 
       - name: Get runner/container info
         run: |
