@@ -48,13 +48,13 @@ jobs:
         run: |
           docker exec ubuntu-24-test /scripts/linux_container_info.sh
 
-      - name: Install dependencies, create user, and assign necessary permissions
+      - name: Install dependencies and setup environment
         run: |
           docker exec ubuntu-24-test /scripts/prepare_ubuntu_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec -u tailpipe ubuntu-24-test /scripts/smoke_test.sh
+          docker exec ubuntu-24-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
@@ -94,13 +94,13 @@ jobs:
         run: |
           docker exec centos-stream9-test /scripts/linux_container_info.sh
 
-      - name: Install dependencies, create user, and assign necessary permissions
+      - name: Install dependencies and setup environment
         run: |
           docker exec centos-stream9-test /scripts/prepare_centos_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec -u tailpipe centos-stream9-test /scripts/smoke_test.sh
+          docker exec centos-stream9-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
@@ -140,13 +140,13 @@ jobs:
         run: |
           docker exec amazonlinux-2023-test /scripts/linux_container_info.sh
 
-      - name: Install dependencies, create user, and assign necessary permissions
+      - name: Install dependencies and setup environment
         run: |
           docker exec amazonlinux-2023-test /scripts/prepare_amazonlinux_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec -u tailpipe amazonlinux-2023-test /scripts/smoke_test.sh
+          docker exec amazonlinux-2023-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
@@ -182,33 +182,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y jq
 
-      - name: Create tailpipe user and setup environment
-        run: |
-          sudo useradd -m tailpipe
-          sudo mkdir -p /home/tailpipe/.tailpipe/logs
-          sudo chown -R tailpipe:tailpipe /home/tailpipe
-
-      - name: Debug binary info
-        run: |
-          echo "=== Binary Information ==="
-          file /usr/local/bin/tailpipe
-          ls -la /usr/local/bin/tailpipe
-          echo "=== Dependencies ==="
-          ldd /usr/local/bin/tailpipe || true
-          echo "=== Basic Commands Test ==="
-          /usr/local/bin/tailpipe --version
-          echo "=== Help Command Test ==="
-          /usr/local/bin/tailpipe --help | head -5 || echo "Help command failed"
-
-      - name: Test database commands individually
-        run: |
-          echo "=== Testing connect command ==="
-          sudo -u tailpipe /usr/local/bin/tailpipe connect || echo "Connect failed"
-          echo "=== Testing basic query ==="
-          sudo -u tailpipe /usr/local/bin/tailpipe query "SELECT 1" || echo "Query failed"
-          echo "=== Testing with explicit output format ==="
-          sudo -u tailpipe /usr/local/bin/tailpipe query "SELECT 1 as test" --output json || echo "JSON query failed"
-
       - name: Get runner/container info
         run: |
           uname -a
@@ -217,6 +190,4 @@ jobs:
       - name: Run smoke tests
         run: |
           chmod +x $GITHUB_WORKSPACE/scripts/smoke_test.sh
-          sudo cp $GITHUB_WORKSPACE/scripts/smoke_test.sh /home/tailpipe/smoke_test.sh
-          sudo chown tailpipe:tailpipe /home/tailpipe/smoke_test.sh
-          sudo -u tailpipe /home/tailpipe/smoke_test.sh
+          /scripts/smoke_test.sh

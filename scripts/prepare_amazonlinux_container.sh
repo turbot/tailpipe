@@ -13,12 +13,7 @@ tar -xzf /artifacts/linux.tar.gz -C /usr/local/bin
 # Make the binary executable
 chmod +x /usr/local/bin/tailpipe
 
-# Create user, since tailpipe cannot be run as root
-echo "Creating tailpipe user..."
-useradd -m tailpipe
-
 # Make the scripts executable
-chown tailpipe:tailpipe /scripts/smoke_test.sh
 chmod +x /scripts/smoke_test.sh
 
 echo "Amazon Linux container preparation completed successfully" 
