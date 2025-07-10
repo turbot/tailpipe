@@ -4,7 +4,7 @@
 
 # update apt and install required packages
 apt-get update
-apt-get install -y tar ca-certificates jq
+apt-get install -y tar ca-certificates jq gzip
 
 # Extract the tailpipe binary
 tar -xzf /artifacts/linux.tar.gz -C /usr/local/bin

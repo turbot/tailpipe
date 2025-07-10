@@ -2,9 +2,10 @@
 # This is a script to install dependencies/packages, create user, and assign necessary permissions in the CentOS Stream 9 container.
 # Used in release smoke tests.
 
+set -e
+
 # update yum and install required packages
-yum update -y
-yum install -y tar ca-certificates jq
+yum install -y epel-release tar ca-certificates jq curl --allowerasing
 
 # Extract the tailpipe binary
 tar -xzf /artifacts/linux.tar.gz -C /usr/local/bin
