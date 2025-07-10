@@ -283,7 +283,7 @@ jobs:
   trigger_smoke_tests:
     name: Trigger smoke tests
     if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}
-    needs: [update_pr_for_versioning]
+    needs: [update_homebrew_tap]
     runs-on: ubuntu-latest
     steps:
       - name: Calculate version
