@@ -189,5 +189,5 @@ jobs:
 
       - name: Run smoke tests
         run: |
-          chmod +x $GITHUB_WORKSPACE/scripts/smoke_test.sh
-          /scripts/smoke_test.sh
+          chmod +x ${{ github.workspace }}/scripts/smoke_test.sh
+          ${{ github.workspace }}/scripts/smoke_test.sh
