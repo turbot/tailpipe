@@ -144,6 +144,11 @@ jobs:
         run: |
           docker exec amazonlinux-2023-test /scripts/prepare_amazonlinux_container.sh
 
+      - name: Verify user creation
+        run: |
+          docker exec amazonlinux-2023-test id tailpipe
+          docker exec amazonlinux-2023-test ls -la /home/tailpipe
+
       - name: Run smoke tests
         run: |
           docker exec -u tailpipe amazonlinux-2023-test /scripts/smoke_test.sh
@@ -187,6 +192,19 @@ jobs:
           sudo useradd -m tailpipe
           sudo mkdir -p /home/tailpipe/.tailpipe/logs
           sudo chown -R tailpipe:tailpipe /home/tailpipe
+
+      - name: Debug binary info
+        run: |
+          file /usr/local/bin/tailpipe
+          ldd /usr/local/bin/tailpipe || true
+          /usr/local/bin/tailpipe --help || true
+
+      - name: Test basic commands as root first
+        run: |
+          echo "Testing basic tailpipe commands as root..."
+          /usr/local/bin/tailpipe --version
+          echo "Testing help command..."
+          /usr/local/bin/tailpipe --help | head -10
 
       - name: Get runner/container info
         run: |
