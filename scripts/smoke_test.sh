@@ -39,7 +39,7 @@ fi
 if [ "$(uname -s)" = "Darwin" ]; then
     CONFIG_DIR="$HOME/.tailpipe/config"
 else
-    CONFIG_DIR="/root/.tailpipe/config"
+    CONFIG_DIR="$HOME/.tailpipe/config"
 fi
 
 mkdir -p "$CONFIG_DIR"
