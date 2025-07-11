@@ -13,7 +13,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 const defaultParquetWorkerCount = 5
@@ -52,15 +51,10 @@ type Converter struct {
 	sourceDir string
 	// the dest file location
 	destDir string
-	// helper to provide unique file roots
-	fileRootProvider *FileRootProvider
 
 	// the format string for the query to read the JSON chunks - thids is reused for all chunks,
 	// with just the filename being added when the query is executed
 	readJsonQueryFormat string
-
-	// the format string for the simple query to read the JSON chunks without column definitions
-	readJsonSimpleFormat string
 
 	// the table conversionSchema - populated when the first chunk arrives if the conversionSchema is not already complete
 	conversionSchema *schema.ConversionSchema
@@ -97,17 +91,16 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	tableSchema.NormaliseColumnTypes()
 
 	w := &Converter{
-		id:               executionId,
-		chunks:           make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
-		Partition:        partition,
-		cancel:           cancel,
-		sourceDir:        sourceDir,
-		destDir:          destDir,
-		tableSchema:      tableSchema,
-		statusFunc:       statusFunc,
-		fileRootProvider: newFileRootProvider(executionId),
-		db:               db,
-		ducklakeMut:      &sync.Mutex{},
+		id:          executionId,
+		chunks:      make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
+		Partition:   partition,
+		cancel:      cancel,
+		sourceDir:   sourceDir,
+		destDir:     destDir,
+		tableSchema: tableSchema,
+		statusFunc:  statusFunc,
+		db:          db,
+		ducklakeMut: &sync.Mutex{},
 	}
 	// create the condition variable using the same lock
 	w.chunkSignal = sync.NewCond(&w.chunkLock)
@@ -190,18 +183,8 @@ func (w *Converter) WaitForConversions(ctx context.Context) error {
 		return ctx.Err()
 	case <-done:
 		slog.Info("WaitForConversions - all jobs processed.")
+		return nil
 	}
-
-	// successfully processed all jobs
-
-	// noy add parquet files to ducklake
-	return w.addFilesToDucklake(ctx)
-}
-
-func (w *Converter) addFilesToDucklake(ctx context.Context) error {
-	fileGlob := filepaths.GetParquetGlob(w.destDir, w.Partition.TableName, w.Partition.ShortName, w.id)
-
-	return addFileToDucklake(ctx, w.db, w.Partition.TableName, fileGlob)
 }
 
 // waitForSignal waits for the condition signal or context cancellation
