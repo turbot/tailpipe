@@ -98,6 +98,18 @@ func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
 	return nil
 }
 
+// addFileToDucklake adds a file to the DuckDB database using DuckLake.
+func addFileToDucklake(ctx context.Context, db *database.DuckDb, table, glob string) error {
+	query := fmt.Sprintf(`call ducklake_add_data_files('%s', '%s', '%s', ignore_extra_columns => true );`, localconstants.DuckLakeCatalog, table, glob)
+	if _, err := db.ExecContext(ctx, query); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("failed to add file to ducklake: %w", err)
+	}
+	return nil
+}
+
 // mergeParquetFiles combines adjacent parquet files in the DuckDB database.
 func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 	if _, err := db.ExecContext(ctx, "call merge_adjacent_files();"); err != nil {

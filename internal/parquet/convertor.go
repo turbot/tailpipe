@@ -13,6 +13,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 const defaultParquetWorkerCount = 5
@@ -104,7 +105,7 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		destDir:          destDir,
 		tableSchema:      tableSchema,
 		statusFunc:       statusFunc,
-		fileRootProvider: &FileRootProvider{},
+		fileRootProvider: newFileRootProvider(executionId),
 		db:               db,
 		ducklakeMut:      &sync.Mutex{},
 	}
@@ -174,7 +175,7 @@ func (w *Converter) onFirstChunk(executionId string, chunk int32) error {
 }
 
 // WaitForConversions waits for all jobs to be processed or for the context to be cancelled
-func (w *Converter) WaitForConversions(ctx context.Context) {
+func (w *Converter) WaitForConversions(ctx context.Context) error {
 	slog.Info("Converter.WaitForConversions - waiting for all jobs to be processed or context to be cancelled.")
 	// wait for the wait group within a goroutine so we can also check the context
 	done := make(chan struct{})
@@ -186,9 +187,21 @@ func (w *Converter) WaitForConversions(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		slog.Info("WaitForConversions - context cancelled.")
+		return ctx.Err()
 	case <-done:
 		slog.Info("WaitForConversions - all jobs processed.")
 	}
+
+	// successfully processed all jobs
+
+	// noy add parquet files to ducklake
+	return w.addFilesToDucklake(ctx)
+}
+
+func (w *Converter) addFilesToDucklake(ctx context.Context) error {
+	fileGlob := filepaths.GetParquetGlob(w.destDir, w.Partition.TableName, w.Partition.ShortName, w.id)
+
+	return addFileToDucklake(ctx, w.db, w.Partition.TableName, fileGlob)
 }
 
 // waitForSignal waits for the condition signal or context cancellation

@@ -15,7 +15,16 @@ type FileRootProvider struct {
 	// the last time a filename was provided
 	lastTime time.Time
 	// mutex
-	mutex sync.Mutex
+	mutex *sync.Mutex
+
+	executionId string
+}
+
+func newFileRootProvider(executionId string) *FileRootProvider {
+	return &FileRootProvider{
+		executionId: executionId,
+		mutex:       &sync.Mutex{},
+	}
 }
 
 // GetFileRoot returns a unique file root for a parquet file
@@ -31,5 +40,5 @@ func (p *FileRootProvider) GetFileRoot() string {
 	}
 	p.lastTime = now
 
-	return fmt.Sprintf("data_%s_%06d", now.Format("20060102150405"), now.Nanosecond()/1000)
+	return fmt.Sprintf("data_%s_%s_%06d", p.executionId, now.Format("20060102150405"), now.Nanosecond()/1000)
 }
