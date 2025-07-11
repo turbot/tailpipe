@@ -417,8 +417,6 @@ func (w *conversionWorker) getPartitionRowCounts() ([]int64, error) {
 //
 // Returns the number of rows inserted and any error encountered.
 func (w *conversionWorker) insertIntoDucklakeForBatch(targetTable string, startRowId int64, rowCount int64) (int64, error) {
-	// Construct the table name (catalog is set as default, so no need to qualify)
-	qualifiedTable := fmt.Sprintf(`"%s"`, targetTable)
 
 	// Build a list of column names from the schema for the INSERT statement.
 	// This is critical to ensure the column order is correct and avoids binder errors.
@@ -438,42 +436,27 @@ func (w *conversionWorker) insertIntoDucklakeForBatch(targetTable string, startR
 	`, columnList, startRowId, startRowId+rowCount)
 
 	// Build the final INSERT INTO ... SELECT statement using the fully qualified table name.
-	insertQuery := fmt.Sprintf(`
-		insert into %s (%s)
-		%s
-	`, qualifiedTable, columnList, selectQuery)
+	slog.Info("inserting rows into DuckLake table", "table", targetTable)
 
-	slog.Info("inserting rows into DuckLake table", "table", qualifiedTable)
-
-	t := time.Now()
-	slog.Info("***LOCK*** acquiring ducklake write mutex", "worker_id", w.id)
 	// we must avoid concurrent writes to the DuckLake database to prevent schema conflicts
 	// acquire the ducklake write mutex
-	w.converter.ducklakeMut.Lock()
-	slog.Info("***LOCK*** acquired ducklake write mutex", "worker_id", w.id, "wait_duration_ms", time.Since(t).Milliseconds())
-	t1 := time.Now()
-	// Execute the insert statement
-	result, err := w.db.Exec(insertQuery)
-	// release the ducklake write mutex
-	w.converter.ducklakeMut.Unlock()
-	slog.Info("insert query executed", "worker_id", w.id, "lock duration_ms", t1.Sub(t).Milliseconds(), "insert_duration_ms", time.Since(t).Milliseconds())
+	insertedRowCount, err := w.converter.TransferDataFromWorkerDB(w.db, targetTable, selectQuery)
+	if err != nil {
+		slog.Error("failed to acquire ducklake write mutex", "worker_id", w.id, "error", err)
+		// If we fail to acquire the lock, return the error
+		return 0, fmt.Errorf("failed to acquire ducklake write mutex: %w", err)
+	}
 
 	if err != nil {
-		slog.Error("failed to insert data into DuckLake table", "table", qualifiedTable, "error", err)
+		slog.Error("failed to insert data into DuckLake table", "table", targetTable, "error", err)
 		// It's helpful to wrap the error with context about what failed.
-		return 0, fmt.Errorf("failed to insert data into %s: %w", qualifiedTable, err)
+		return 0, fmt.Errorf("failed to insert data into %s: %w", targetTable, err)
 	}
-	slog.Info("executed insert query", "rows", rowCount, "table", qualifiedTable)
+	slog.Info("executed insert query", "rows", rowCount, "table", targetTable)
 
-	// Get the number of rows that were actually inserted.
-	insertedRowCount, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get number of affected rows: %w", err)
-	}
+	slog.Debug("inserted rows into ducklake table", "table", targetTable, "count", insertedRowCount)
 
-	slog.Debug("inserted rows into ducklake table", "table", qualifiedTable, "count", insertedRowCount)
-
-	return insertedRowCount, nil
+	return int64(insertedRowCount), nil
 }
 
 // validateRows copies the data from the given select query to a temp table and validates required fields are non null
