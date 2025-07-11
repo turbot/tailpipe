@@ -2,9 +2,11 @@ package parquet
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -317,5 +319,146 @@ func (w *Converter) createWorkers(ctx context.Context) error {
 		// start the worker
 		go wk.start(ctx)
 	}
+	return nil
+}
+
+// TransferDataFromWorkerDB executes a select query on a worker's database connection
+// and inserts the results into the convertor's own DuckLake database table.
+// Returns the number of rows transferred and an error if any.
+func (w *Converter) TransferDataFromWorkerDB(workerDB *database.DuckDb, targetTableName string, selectQuery string) (int, error) {
+	slog.Info("transferring data from worker DB to convertor DB", "target_table", targetTableName)
+
+	// Execute the select query on the worker's database
+	rows, err := workerDB.Query(selectQuery)
+	if err != nil {
+		return 0, fmt.Errorf("failed to execute select query on worker DB: %w", err)
+	}
+	defer rows.Close()
+
+	// Get column information from the result set
+	columns, err := rows.Columns()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get column information: %w", err)
+	}
+
+	// Prepare the insert statement for the convertor's database
+	columnList := make([]string, len(columns))
+	for i, col := range columns {
+		columnList[i] = fmt.Sprintf(`"%s"`, col)
+	}
+	columnListStr := strings.Join(columnList, ", ")
+
+	// Create placeholders for the INSERT statement
+	placeholders := make([]string, len(columns))
+	for i := range columns {
+		placeholders[i] = "?"
+	}
+	placeholdersStr := strings.Join(placeholders, ", ")
+
+	insertQuery := fmt.Sprintf(`INSERT INTO "%s" (%s) VALUES (%s)`, targetTableName, columnListStr, placeholdersStr)
+
+	// Prepare the insert statement
+	stmt, err := w.db.Prepare(insertQuery)
+	if err != nil {
+		return 0, fmt.Errorf("failed to prepare insert statement: %w", err)
+	}
+	defer stmt.Close()
+
+	// Create a slice to hold the values for each row
+	values := make([]interface{}, len(columns))
+	valuePtrs := make([]interface{}, len(columns))
+
+	// Set up scan targets based on column types
+	for i := range values {
+		if i < len(w.conversionSchema.Columns) && w.conversionSchema.Columns[i].Type == "json" {
+			// For JSON columns, use NullString to handle NULL values
+			var s sql.NullString
+			values[i] = &s
+			valuePtrs[i] = &s
+		} else {
+			// For other columns, use the normal approach
+			valuePtrs[i] = &values[i]
+		}
+	}
+
+	// Acquire the ducklake write mutex to prevent concurrent writes
+	w.ducklakeMut.Lock()
+	defer w.ducklakeMut.Unlock()
+
+	// Iterate through the result set and insert each row
+	rowCount := 0
+	for rows.Next() {
+		// Scan the current row into the values slice
+		if err := rows.Scan(valuePtrs...); err != nil {
+			return rowCount, fmt.Errorf("failed to scan row %d: %w", rowCount+1, err)
+		}
+
+		// Prepare final values for insert
+		finalValues := make([]interface{}, len(columns))
+		for i := range columns {
+			if i < len(w.conversionSchema.Columns) && w.conversionSchema.Columns[i].Type == "json" {
+				// For JSON columns, handle NullString and convert to appropriate value
+				nullStr := values[i].(*sql.NullString)
+				if nullStr.Valid {
+					finalValues[i] = nullStr.String
+				} else {
+					finalValues[i] = nil
+				}
+			} else {
+				finalValues[i] = values[i]
+			}
+		}
+
+		// Execute the insert statement
+		_, err := stmt.Exec(finalValues...)
+		if err != nil {
+			return rowCount, fmt.Errorf("failed to insert row %d: %w", rowCount+1, err)
+		}
+
+		rowCount++
+	}
+
+	// Check for any errors from iterating over rows
+	if err := rows.Err(); err != nil {
+		return rowCount, fmt.Errorf("error during rows iteration: %w", err)
+	}
+
+	slog.Info("successfully transferred data from worker DB", "target_table", targetTableName, "rows_transferred", rowCount)
+	return rowCount, nil
+}
+
+// TransferDataFromWorkerDBBulk executes a select query on a worker's database connection
+// and inserts the results into the convertor's own DuckLake database table using a bulk insert approach.
+// This is more efficient for large datasets as it uses a single INSERT INTO ... SELECT statement.
+// The workerDB must be able to access the same DuckLake metadata as the convertor's database.
+func (w *Converter) TransferDataFromWorkerDBBulk(workerDB *database.DuckDb, targetTableName string, selectQuery string) error {
+	w.ducklakeMut.Lock()
+	defer w.ducklakeMut.Unlock()
+
+	slog.Info("transferring data from worker DB to convertor DB (bulk)", "target_table", targetTableName)
+
+	// Build the bulk insert query
+	bulkInsertQuery := fmt.Sprintf(`INSERT INTO "%s" %s`, targetTableName, selectQuery)
+
+	// Acquire the ducklake write mutex to prevent concurrent writes
+	w.ducklakeMut.Lock()
+	defer w.ducklakeMut.Unlock()
+
+	// Execute the bulk insert on the convertor's database
+	// Note: This assumes the workerDB can access the same DuckLake metadata
+	// If not, you would need to use the row-by-row approach instead
+	result, err := w.db.Exec(bulkInsertQuery)
+	if err != nil {
+		return fmt.Errorf("failed to execute bulk insert: %w", err)
+	}
+
+	// Get the number of rows affected
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		slog.Warn("could not get rows affected count", "error", err)
+		rowsAffected = -1
+	}
+
+	slog.Info("successfully transferred data from worker DB (bulk)", "target_table", targetTableName, "rows_transferred", rowsAffected)
 	return nil
 }
