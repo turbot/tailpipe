@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"log/slog"
 	"os"
 	"strings"
@@ -22,6 +21,7 @@ import (
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/pipe-fittings/v2/constants"
 )
 
 func GetTables(ctx context.Context, db *DuckDb) ([]string, error) {

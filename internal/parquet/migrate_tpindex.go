@@ -12,6 +12,7 @@ const (
 
 func migrateTpIndex(ctx context.Context, db *database.DuckDb, baseDir string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
 	// TODO #DL reimplement for ducklake
+	//  https://github.com/turbot/tailpipe/issues/475
 	//fileRootProvider := &FileRootProvider{}
 	//for _, partition := range config.GlobalConfig.Partitions {
 	//	if PartitionMatchesPatterns(partition.TableName, partition.ShortName, patterns) {
@@ -91,7 +92,6 @@ func migrateTpIndex(ctx context.Context, db *database.DuckDb, baseDir string, up
 //// It reads the partition data into a temporary table, writes the data with the migrated tp_index
 //// to intermediate output files (with .tmp extension), and returns the list of output file paths.
 //func executeMigrationQuery(ctx context.Context, db *database.DuckDb, baseDir string, partition *config.Partition, fileRootProvider *FileRootProvider) ([]string, error) {
-//	// TODO #DL this is out of date/not needed
 //	// Get the file glob pattern for all files in this partition
 //	fileGlob := "" //filepaths.GetParquetFileGlobForPartition(baseDir, partition.TableName, partition.ShortName, "")
 //
