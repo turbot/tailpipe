@@ -13,6 +13,7 @@ type TableSchemaStatus struct {
 	SchemaDiff    string
 }
 
+// TODO #ducklake  check if we need this
 func NewTableSchemaStatusFromComparison(existingSchema map[string]schema.ColumnSchema, conversionSchema schema.ConversionSchema) TableSchemaStatus {
 	var diffParts []string
 	canMigrate := true
