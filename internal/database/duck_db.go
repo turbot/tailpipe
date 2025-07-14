@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 
+	"github.com/turbot/pipe-fittings/v2/backend"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
@@ -26,6 +26,7 @@ type DuckDb struct {
 	tempDir         string
 	maxMemoryMb     int
 	ducklakeEnabled bool
+	maxConnections  int
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
@@ -59,9 +60,27 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 		}
 	}
 	if w.ducklakeEnabled {
-		if err := w.connectDuckLake(); err != nil {
+		dataDir := config.GlobalWorkspaceProfile.GetDataDir()
+		// TODO #DL for now check env for data dir override
+		if envDir := os.Getenv("TAILPIPE_DATA_DIR"); envDir != "" {
+			dataDir = envDir
+		}
+
+		ducklakeDb := config.GlobalWorkspaceProfile.GetDucklakeDbPath()
+
+		if err := backend.ConnectDucklake(context.Background(), db, ducklakeDb, dataDir); err != nil {
 			return nil, fmt.Errorf("failed to connect to DuckLake: %w", err)
 		}
+
+		// Set the default catalog to tailpipe_ducklake to avoid catalog context issues
+		if _, err := db.Exec(`use "tailpipe_ducklake"`); err != nil {
+			return nil, fmt.Errorf("failed to set default catalog: %w", err)
+		}
+	}
+
+	if w.maxConnections > 0 {
+		slog.Info(fmt.Sprintf("Setting max open connections to %d", w.maxConnections))
+		w.DB.SetMaxOpenConns(w.maxConnections)
 	}
 	// Configure DuckDB's temp directory:
 	// - If WithTempDir option was provided, use that directory
@@ -90,6 +109,8 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 			return nil, fmt.Errorf("failed to set max_memory: %w", err)
 		}
 	}
+	slog.Warn(fmt.Sprintf("created duckdb - db %p", w.DB))
+
 	return w, nil
 }
 
@@ -153,48 +174,11 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	// install and load the extensions
-	for _, extension := range constants.DuckDbExtensions {
+	for _, extension := range pconstants.DuckDbExtensions {
 		if _, err := d.DB.Exec(fmt.Sprintf("INSTALL '%s'; LOAD '%s';", extension, extension)); err != nil {
 			return fmt.Errorf("failed to install and load extension %s: %s", extension, err.Error())
 		}
 	}
 
-	return nil
-}
-
-func (d *DuckDb) connectDuckLake() error {
-	// 1. Install sqlite extension
-	_, err := d.DB.Exec("install sqlite;")
-	if err != nil {
-		return fmt.Errorf("failed to install sqlite extension: %v", err)
-	}
-
-	// 2. Install ducklake extension
-	// TODO #DL change to using prod extension when stable
-	//_, err = db.Exec("install ducklake;")
-	_, err = d.DB.Exec("force install ducklake from core_nightly;")
-	if err != nil {
-		return fmt.Errorf("failed to install ducklake nightly extension: %v", err)
-	}
-	_, err = d.DB.Exec("load ducklake;")
-	if err != nil {
-		return fmt.Errorf("failed to load ducklakeextension: %v", err)
-	}
-
-	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-	metadataDir := config.GlobalWorkspaceProfile.GetMetadataDir()
-
-	// 3. Attach the sqlite database as my_ducklake
-	query := fmt.Sprintf("attach 'ducklake:sqlite:%s/metadata.sqlite' AS %s (data_path '%s/');", metadataDir, constants.DuckLakeCatalog, dataDir)
-	_, err = d.DB.Exec(query)
-	if err != nil {
-		log.Fatalf("Failed to attach sqlite database: %v", err)
-	}
-
-	// set default catalog to ducklake
-	_, err = d.DB.Exec(fmt.Sprintf("use %s;", constants.DuckLakeCatalog))
-	if err != nil {
-		return fmt.Errorf("failed to set catalog: %w", err)
-	}
 	return nil
 }

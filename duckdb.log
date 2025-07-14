@@ -1,0 +1,9 @@
+Invalid Error: Failed to load DuckLake table dataUnable to open database "/Users/kai/.tailpipe/data/default/metadatas3.sqlite": unable to open database file
+Catalog Error: SET schema: No catalog + schema named "tailpipe_ducklake" found.
+Catalog Error: Table with name test_ does not exist!
+Did you mean "pg_settings"?
+
+LINE 1: select * from test_;
+                      ^
+Catalog Error: Table with name "test_insert" already exists!
+Catalog Error: Schema with name tailpipe_ducklake does not exist!

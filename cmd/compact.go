@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/spf13/viper"
 	"log/slog"
 	"os"
 	"time"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
@@ -20,9 +20,12 @@ import (
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
+// TODO #DL update docs - no longer support compacting single partition
+//
+//	https://github.com/turbot/tailpipe/issues/474
 func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "compact [table|table.partition] [flags]",
+		Use:   "compact [flags]",
 		Args:  cobra.ExactArgs(0),
 		Run:   runCompactCmd,
 		Short: "Compact multiple parquet files per day to one per day",
@@ -53,7 +56,8 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 
 	// if the flag was provided, migrate the tp_index files
 	if viper.GetBool(pconstants.ArgReindex) {
-		// TODO #DL look at migration
+		// TODO #DL update tpIndex migration for ducklake
+		//  https://github.com/turbot/tailpipe/issues/475
 		panic("Reindexing is not yet implemented for ducklake")
 	}
 
