@@ -155,7 +155,7 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 // getChunksToProcess returns the chunks to process, up to a maximum of maxChunksToProcess
 // it also trims the scheduledChunks to remove the processed chunks
 func (w *Converter) getChunksToProcess() []int32 {
-	const maxChunksToProcess = 5
+	const maxChunksToProcess = 2
 	var chunksToProcess []int32
 	if len(w.scheduledChunks) > maxChunksToProcess {
 		slog.Debug("Converter.AddChunk limiting chunks to process to max", "scheduledChunks", len(w.scheduledChunks), "maxChunksToProcess", maxChunksToProcess)
