@@ -243,10 +243,10 @@ jobs:
           fi
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           if [ "$SUCCESS_COUNT" -eq "$TOTAL_COUNT" ]; then
-            MESSAGE="✅ Steampipe ${{ env.VERSION }} release completed successfully! All smoke tests passed across all Linux distributions.\n\n🔗 View details: $WORKFLOW_URL"
+            MESSAGE="✅ Tailpipe ${{ env.VERSION }} release completed successfully! All smoke tests passed across all Linux distributions.\n\n🔗 View details: $WORKFLOW_URL"
             echo "status=success" >> $GITHUB_OUTPUT
           else
-            MESSAGE="❌ Steampipe ${{ env.VERSION }} smoke tests completed with failures:\n\n✅ Passed: $SUCCESS_COUNT/$TOTAL_COUNT platforms\n"
+            MESSAGE="❌ Tailpipe ${{ env.VERSION }} smoke tests completed with failures:\n\n✅ Passed: $SUCCESS_COUNT/$TOTAL_COUNT platforms\n"
             if [ -n "$FAILED_PLATFORMS" ]; then
               MESSAGE="$MESSAGE\n❌ Failed platforms:\n$FAILED_PLATFORMS"
             fi
