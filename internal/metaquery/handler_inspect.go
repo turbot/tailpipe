@@ -10,6 +10,7 @@ import (
 	"github.com/turbot/tailpipe/internal/plugin"
 
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 )
 
@@ -76,6 +77,13 @@ func listViewSchema(ctx context.Context, input *HandlerInput, viewName string) e
 // getPluginForTable returns the plugin name and version for a given table name.
 // note - this looks at the installed plugins and their version file entry, not only the version file
 func getPluginForTable(ctx context.Context, tableName string) (string, error) {
+	// First check if this is a custom table
+	if _, isCustom := config.GlobalConfig.CustomTables[tableName]; isCustom {
+		// Custom tables use the core plugin
+		corePluginName := constants.CorePluginInstallStream()
+		return corePluginName, nil
+	}
+
 	prefix := strings.Split(tableName, "_")[0]
 
 	ps, err := plugin.GetInstalledPlugins(ctx, config.GlobalConfig.PluginVersions)
