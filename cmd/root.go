@@ -12,6 +12,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
+	localfilepaths "github.com/turbot/tailpipe/internal/filepaths"
 )
 
 var exitCode int
@@ -69,9 +70,14 @@ func Execute() int {
 		return 0
 	}
 
-	rootCmd := rootCommand()
 	utils.LogTime("cmd.root.Execute start")
 	defer utils.LogTime("cmd.root.Execute end")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	// This runs early to ensure cleanup happens for all commands, including --version
+	localfilepaths.CleanupPluginTmpDirs()
+
+	rootCmd := rootCommand()
 
 	if err := rootCmd.Execute(); err != nil {
 		exitCode = -1
