@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -142,6 +143,33 @@ func streamResults(ctx context.Context, rows *sql.Rows, result *queryresult.Resu
 		if err := rows.Scan(columnPointers...); err != nil {
 			slog.Warn("Error scanning row", "error", err)
 			return
+		}
+
+		// Post-process JSON columns to convert them back to JSON strings
+		for i, colDef := range colDefs {
+			// Check for JSON columns using multiple criteria
+			dataType := strings.ToLower(colDef.DataType)
+
+			// Primary detection: Check if DuckDB reports this as a JSON type
+			isJSONByType := dataType == "json" || strings.Contains(dataType, "json")
+
+			// Secondary detection: Check if the data looks like JSON data structures
+			// This handles cases where DuckDB might not explicitly mark it as JSON type
+			isJSONByData := false
+			if columnsData[i] != nil {
+				dataTypeStr := fmt.Sprintf("%T", columnsData[i])
+				// Check for various Go types that could represent JSON data
+				isJSONByData = (strings.Contains(dataTypeStr, "map[") ||
+					strings.Contains(dataTypeStr, "[]interface") ||
+					strings.HasPrefix(dataTypeStr, "[]map"))
+			}
+
+			if (isJSONByType || isJSONByData) && columnsData[i] != nil {
+				// Convert the scanned data back to JSON string for proper display
+				if jsonBytes, err := json.Marshal(columnsData[i]); err == nil {
+					columnsData[i] = string(jsonBytes)
+				}
+			}
 		}
 
 		result.StreamRow(columnsData)
