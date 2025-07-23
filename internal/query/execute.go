@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"regexp"
@@ -44,6 +43,12 @@ func RunBatchSession(ctx context.Context, args []string, db *database.DuckDb) (i
 }
 
 func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, error) {
+	// Get column definitions first
+	colDefs, err := ExecuteDescribeQuery(query, db)
+	if err != nil {
+		return 0, err
+	}
+
 	// Run the query
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
@@ -55,7 +60,7 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 	}
 
 	// Execute the query
-	result, err := Execute(ctx, rows)
+	result, err := Execute(ctx, rows, colDefs)
 	if err != nil {
 		return 0, err
 	}
@@ -67,6 +72,48 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 		return rowErrors, fmt.Errorf("query execution failed")
 	}
 	return 0, nil
+}
+
+// ExecuteDescribeQuery executes a DESCRIBE query to get column definitions
+func ExecuteDescribeQuery(query string, db *database.DuckDb) ([]*queryresult.ColumnDef, error) {
+	// Create DESCRIBE query
+	describeQuery := fmt.Sprintf("DESCRIBE (%s)", query)
+
+	// Execute the describe query
+	rows, err := db.Query(describeQuery)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Initialize a slice to hold column definitions
+	var columnDefs []*queryresult.ColumnDef
+
+	// Process the DESCRIBE results
+	for rows.Next() {
+		var columnName, columnType string
+		var nullable, key, defaultValue, extra sql.NullString
+
+		// DESCRIBE returns: column_name, column_type, null, key, default, extra
+		err := rows.Scan(&columnName, &columnType, &nullable, &key, &defaultValue, &extra)
+		if err != nil {
+			return nil, err
+		}
+
+		columnDef := &queryresult.ColumnDef{
+			Name:         columnName,
+			DataType:     columnType,
+			OriginalName: columnName,
+		}
+
+		columnDefs = append(columnDefs, columnDef)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return columnDefs, nil
 }
 
 func handleMissingViewError(err error) error {
@@ -98,12 +145,7 @@ func (t TimingMetadata) GetTiming() any {
 	return t
 }
 
-func Execute(ctx context.Context, rows *sql.Rows) (res *queryresult.Result[TimingMetadata], err error) {
-
-	colDefs, err := fetchColumnDefs(rows)
-	if err != nil {
-		return nil, err
-	}
+func Execute(ctx context.Context, rows *sql.Rows, colDefs []*queryresult.ColumnDef) (res *queryresult.Result[TimingMetadata], err error) {
 
 	result := queryresult.NewResult[TimingMetadata](colDefs, TimingMetadata{})
 
@@ -145,68 +187,10 @@ func streamResults(ctx context.Context, rows *sql.Rows, result *queryresult.Resu
 			return
 		}
 
-		// Post-process JSON columns to convert them back to JSON strings
-		for i, colDef := range colDefs {
-			// Check for JSON columns using multiple criteria
-			dataType := strings.ToLower(colDef.DataType)
-
-			// Primary detection: Check if DuckDB reports this as a JSON type
-			isJSONByType := dataType == "json" || strings.Contains(dataType, "json")
-
-			// Secondary detection: Check if the data looks like JSON data structures
-			// This handles cases where DuckDB might not explicitly mark it as JSON type
-			isJSONByData := false
-			if columnsData[i] != nil {
-				dataTypeStr := fmt.Sprintf("%T", columnsData[i])
-				// Check for various Go types that could represent JSON data
-				isJSONByData = (strings.Contains(dataTypeStr, "map[") ||
-					strings.Contains(dataTypeStr, "[]interface") ||
-					strings.HasPrefix(dataTypeStr, "[]map"))
-			}
-
-			if (isJSONByType || isJSONByData) && columnsData[i] != nil {
-				// Convert the scanned data back to JSON string for proper display
-				if jsonBytes, err := json.Marshal(columnsData[i]); err == nil {
-					columnsData[i] = string(jsonBytes)
-				}
-			}
-		}
-
 		result.StreamRow(columnsData)
 		rowCount++
 
 		statushooks.SetStatus(ctx, fmt.Sprintf("Loading results: %3s", utils.HumanizeNumber(rowCount)))
 	}
 	statushooks.Done(ctx)
-}
-
-// FetchColumnDefs extracts column definitions from sql.Rows and returns a slice of ColumnDef.
-func fetchColumnDefs(rows *sql.Rows) ([]*queryresult.ColumnDef, error) {
-	// Get column names
-	columnNames, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-
-	// Get column types
-	columnTypes, err := rows.ColumnTypes()
-	if err != nil {
-		return nil, err
-	}
-
-	// Initialize a slice to hold column definitions
-	var columnDefs []*queryresult.ColumnDef
-
-	for i, colType := range columnTypes {
-		columnDef := &queryresult.ColumnDef{
-			Name:         columnNames[i],
-			DataType:     colType.DatabaseTypeName(),
-			OriginalName: columnNames[i], // Set this if you have a way to obtain the original name (optional) - this would be needed when multiple same columns are requested
-		}
-
-		// Append to the list of column definitions
-		columnDefs = append(columnDefs, columnDef)
-	}
-
-	return columnDefs, nil
 }
