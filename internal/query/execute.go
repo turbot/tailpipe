@@ -46,6 +46,8 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 	// Get column definitions first
 	colDefs, err := ExecuteDescribeQuery(query, db)
 	if err != nil {
+		// Handle missing view errors from DESCRIBE query as well
+		err := handleMissingViewError(err)
 		return 0, err
 	}
 
