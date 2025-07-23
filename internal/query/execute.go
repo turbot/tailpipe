@@ -76,8 +76,12 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 
 // ExecuteDescribeQuery executes a DESCRIBE query to get column definitions
 func ExecuteDescribeQuery(query string, db *database.DuckDb) ([]*queryresult.ColumnDef, error) {
+	// Remove trailing semicolon from query to avoid DESCRIBE syntax errors
+	cleanQuery := strings.TrimSpace(query)
+	cleanQuery = strings.TrimSuffix(cleanQuery, ";")
+
 	// Create DESCRIBE query
-	describeQuery := fmt.Sprintf("DESCRIBE (%s)", query)
+	describeQuery := fmt.Sprintf("DESCRIBE (%s)", cleanQuery)
 
 	// Execute the describe query
 	rows, err := db.Query(describeQuery)
