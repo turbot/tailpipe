@@ -20,7 +20,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.3.0
 	github.com/turbot/pipe-fittings/v2 v2.6.0
-	github.com/turbot/tailpipe-plugin-sdk v0.9.1
+	github.com/turbot/tailpipe-plugin-sdk v0.9.2
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
 
@@ -41,7 +41,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.5.9
 	github.com/marcboeker/go-duckdb/v2 v2.1.0
 	github.com/thediveo/enumflag/v2 v2.0.5
-	github.com/turbot/tailpipe-plugin-core v0.2.9
+	github.com/turbot/tailpipe-plugin-core v0.2.10
 	golang.org/x/sync v0.12.0
 	golang.org/x/text v0.23.0
 	google.golang.org/grpc v1.69.2
