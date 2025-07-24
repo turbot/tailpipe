@@ -4,7 +4,7 @@
 
 # update apt and install required packages
 apt-get update
-apt-get install -y tar ca-certificates jq gzip
+apt-get install -y tar ca-certificates jq
 
 # Extract the tailpipe binary
 tar -xzf /artifacts/linux.tar.gz -C /usr/local/bin
@@ -12,5 +12,9 @@ tar -xzf /artifacts/linux.tar.gz -C /usr/local/bin
 # Make the binary executable
 chmod +x /usr/local/bin/tailpipe
 
+# Create user, since tailpipe cannot be run as root
+useradd -m tailpipe
+
 # Make the scripts executable
+chown tailpipe:tailpipe /scripts/smoke_test.sh
 chmod +x /scripts/smoke_test.sh 

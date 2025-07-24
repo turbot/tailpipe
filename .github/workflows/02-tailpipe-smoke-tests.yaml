@@ -1,4 +1,4 @@
-name: "12 - Test: Linux Distros (Post-release)"
+name: "02 - Tailpipe: Smoke Tests"
 
 on:
   workflow_dispatch:
@@ -13,9 +13,8 @@ env:
   VERSION: ${{ github.event.inputs.version }}
   # Disable update checks during smoke tests
   TAILPIPE_UPDATE_CHECK: false
-  SLACK_WEBHOOK_URL: ${{ secrets.PIPELING_RELEASE_BOT_WEBHOOK_URL }}
 
-jobs:
+  jobs:
   smoke_test_ubuntu_24:
     name: Smoke test (Ubuntu 24, x86_64)
     runs-on: ubuntu-latest
@@ -27,11 +26,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "tailpipe.linux.amd64.tar.gz" \
+            --pattern "*linux_amd64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/tailpipe.linux.amd64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/*linux_amd64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -49,13 +48,13 @@ jobs:
         run: |
           docker exec ubuntu-24-test /scripts/linux_container_info.sh
 
-      - name: Install dependencies and setup environment
+      - name: Install dependencies, create user, and assign necessary permissions
         run: |
           docker exec ubuntu-24-test /scripts/prepare_ubuntu_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec ubuntu-24-test /scripts/smoke_test.sh
+          docker exec -u tailpipe ubuntu-24-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
@@ -73,11 +72,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "tailpipe.linux.amd64.tar.gz" \
+            --pattern "*linux_amd64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/tailpipe.linux.amd64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/*linux_amd64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -95,13 +94,13 @@ jobs:
         run: |
           docker exec centos-stream9-test /scripts/linux_container_info.sh
 
-      - name: Install dependencies and setup environment
+      - name: Install dependencies, create user, and assign necessary permissions
         run: |
           docker exec centos-stream9-test /scripts/prepare_centos_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec centos-stream9-test /scripts/smoke_test.sh
+          docker exec -u tailpipe centos-stream9-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
@@ -119,11 +118,11 @@ jobs:
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "tailpipe.linux.amd64.tar.gz" \
+            --pattern "*linux_amd64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/tailpipe.linux.amd64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/*linux_amd64.tar.gz ./artifacts/linux.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -141,86 +140,55 @@ jobs:
         run: |
           docker exec amazonlinux-2023-test /scripts/linux_container_info.sh
 
-      - name: Install dependencies and setup environment
+      - name: Install dependencies, create user, and assign necessary permissions
         run: |
           docker exec amazonlinux-2023-test /scripts/prepare_amazonlinux_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec amazonlinux-2023-test /scripts/smoke_test.sh
+          docker exec -u tailpipe amazonlinux-2023-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
           docker stop amazonlinux-2023-test
           docker rm amazonlinux-2023-test
 
-  smoke_test_linux_arm64:
-    name: Smoke test (Ubuntu 24, ARM64)
-    runs-on: ubuntu-24.04-arm
+  smoke_test_darwin_arm64:
+    name: Smoke test (macOS 14, ARM64)
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Download Linux ARM64 Release Artifact
+      - name: Download Darwin Release Artifact
         run: |
           mkdir -p ./artifacts
           gh release download ${{ env.VERSION }} \
-            --pattern "tailpipe.linux.arm64.tar.gz" \
+            --pattern "*darwin_arm64.tar.gz" \
             --dir ./artifacts \
             --repo ${{ github.repository }}
           # Rename to expected format
-          mv ./artifacts/tailpipe.linux.arm64.tar.gz ./artifacts/linux.tar.gz
+          mv ./artifacts/*darwin_arm64.tar.gz ./artifacts/darwin.tar.gz
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Linux Artifacts and Install Binary
+      - name: Extract Darwin Artifacts and Install Binary
         run: |
-          sudo tar -xzf ./artifacts/linux.tar.gz -C /usr/local/bin
+          mkdir -p /tmp/tailpipe
+          tar -xzf ./artifacts/darwin.tar.gz -C /tmp/tailpipe
+          sudo cp /tmp/tailpipe/tailpipe /usr/local/bin/
           sudo chmod +x /usr/local/bin/tailpipe
 
       - name: Install jq
         run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
+          brew install jq
 
       - name: Get runner/container info
         run: |
           uname -a
-          cat /etc/os-release
+          sw_vers
 
       - name: Run smoke tests
         run: |
-          chmod +x ${{ github.workspace }}/scripts/smoke_test.sh
-          ${{ github.workspace }}/scripts/smoke_test.sh
-
-  notify_completion:
-    name: Notify completion
-    runs-on: ubuntu-latest
-    needs:
-      [
-        smoke_test_ubuntu_24,
-        smoke_test_centos_9,
-        smoke_test_amazonlinux,
-        smoke_test_linux_arm64,
-      ]
-    if: always()
-    steps:
-      - name: Check results and notify
-        run: |
-          # Check if all jobs succeeded
-          UBUNTU_24_RESULT="${{ needs.smoke_test_ubuntu_24.result }}"
-          CENTOS_9_RESULT="${{ needs.smoke_test_centos_9.result }}"
-          AMAZONLINUX_RESULT="${{ needs.smoke_test_amazonlinux.result }}"
-          ARM64_RESULT="${{ needs.smoke_test_linux_arm64.result }}"
-
-          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
-          if [ "$UBUNTU_24_RESULT" = "success" ] && [ "$CENTOS_9_RESULT" = "success" ] && [ "$AMAZONLINUX_RESULT" = "success" ] && [ "$ARM64_RESULT" = "success" ]; then
-            MESSAGE="✅ Tailpipe ${{ env.VERSION }} smoke tests passed!\n\n🔗 View details: $WORKFLOW_URL"
-          else
-            MESSAGE="❌ Tailpipe ${{ env.VERSION }} smoke tests failed!\n\n🔗 View details: $WORKFLOW_URL"
-          fi
-
-          curl -X POST -H 'Content-type: application/json' \
-            --data "{\"text\":\"$MESSAGE\"}" \
-            ${{ env.SLACK_WEBHOOK_URL }}
+          chmod +x $GITHUB_WORKSPACE/scripts/smoke_test.sh
+          $GITHUB_WORKSPACE/scripts/smoke_test.sh

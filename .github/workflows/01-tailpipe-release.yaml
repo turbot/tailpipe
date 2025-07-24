@@ -5,12 +5,12 @@ on:
     inputs:
       environment:
         type: choice
-        description: "Select Release Type"
+        description: 'Select Release Type'
         options:
-          # to change the values in this option, we also need to update the condition test below in at least 3 location. Search for github.event.inputs.environment
-          - Development (alpha)
-          - Development (beta)
-          - Final (RC and final release)
+        # to change the values in this option, we also need to update the condition test below in at least 3 location. Search for github.event.inputs.environment
+        - Development (alpha)
+        - Development (beta)
+        - Final (RC and final release)
         required: true
       version:
         description: "Version (without 'v')"
@@ -132,7 +132,7 @@ jobs:
       # this is required, check golangci-lint-action docs
       - uses: actions/setup-go@19bb51245e9c80abacb2e91cc42b33fa478b8639 # v4.2.1
         with:
-          go-version: "1.23"
+          go-version: '1.23'
           cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
 
       - name: Setup release environment
@@ -223,117 +223,3 @@ jobs:
           git add .
           git commit -m "Versioning brew formulas"
           git push origin $VERSION
-
-  update_homebrew_tap:
-    name: Update homebrew-tap formula
-    if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}
-    needs: update_pr_for_versioning
-    runs-on: ubuntu-latest
-    steps:
-      - name: Calculate version
-        id: calculate_version
-        run: |
-          echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
-
-      - name: Parse semver string
-        id: semver_parser
-        uses: booxmedialtd/ws-action-parse-semver@7784200024d6b3fc01253e617ec0168daf603de3 # v1.4.7
-        with:
-          input_string: ${{ github.event.inputs.version }}
-
-      - name: Checkout
-        if: steps.semver_parser.outputs.prerelease == ''
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: turbot/homebrew-tap
-          token: ${{ secrets.GH_ACCESS_TOKEN }}
-          ref: main
-
-      - name: Get pull request title
-        if: steps.semver_parser.outputs.prerelease == ''
-        id: pr_title
-        run: >-
-          echo "PR_TITLE=$(
-            gh pr view $VERSION --json title | jq .title | tr -d '"'
-          )" >> $GITHUB_OUTPUT
-
-      - name: Output
-        if: steps.semver_parser.outputs.prerelease == ''
-        run: |
-          echo ${{ steps.pr_title.outputs.PR_TITLE }}
-          echo ${{ env.VERSION }}
-
-      - name: Fail if PR title does not match with version
-        if: steps.semver_parser.outputs.prerelease == ''
-        run: |
-          if [[ "${{ steps.pr_title.outputs.PR_TITLE }}" == "Tailpipe ${{ env.VERSION }}" ]]; then
-            echo "Correct version"
-          else
-            echo "Incorrect version"
-            exit 1
-          fi
-
-      - name: Merge pull request to update brew formula
-        if: steps.semver_parser.outputs.prerelease == ''
-        run: |
-          git fetch --all
-          gh pr merge $VERSION --squash --delete-branch
-          git push origin --delete bump-brew
-
-  trigger_smoke_tests:
-    name: Trigger smoke tests
-    if: ${{ github.event.inputs.environment == 'Final (RC and final release)' }}
-    needs: [update_homebrew_tap]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Calculate version
-        id: calculate_version
-        run: |
-          echo "VERSION=v${{ github.event.inputs.version }}" >> $GITHUB_ENV
-
-      - name: Parse semver string
-        id: semver_parser
-        uses: booxmedialtd/ws-action-parse-semver@3576f3a20a39f8752fe0d8195f5ed384090285dc # v1.3.0
-        with:
-          input_string: ${{ github.event.inputs.version }}
-
-      - name: Trigger smoke test workflow
-        if: steps.semver_parser.outputs.prerelease == ''
-        run: |
-          echo "Triggering smoke test workflow for version $VERSION..."
-          gh workflow run "12-test-post-release-linux-distros.yaml" \
-            --ref ${{ github.ref }} \
-            --field version=$VERSION \
-            --repo ${{ github.repository }}
-        env:
-          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
-
-      - name: Get smoke test workflow run URL
-        if: steps.semver_parser.outputs.prerelease == ''
-        run: |
-          echo "Waiting for smoke test workflow to start..."
-          sleep 10
-
-          # Get the most recent run of the smoke test workflow
-          RUN_ID=$(gh run list \
-            --workflow="12-test-post-release-linux-distros.yaml" \
-            --repo ${{ github.repository }} \
-            --limit 1 \
-            --json databaseId \
-            --jq '.[0].databaseId')
-
-          if [ -n "$RUN_ID" ]; then
-            WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/$RUN_ID"
-            echo "✅ Smoke test workflow triggered successfully!"
-            echo "🔗 Monitor progress at: $WORKFLOW_URL"
-            echo ""
-            echo "Workflow details:"
-            echo "  - Version: $VERSION"
-            echo "  - Workflow: 12-test-post-release-linux-distros.yaml"
-            echo "  - Run ID: $RUN_ID"
-          else
-            echo "⚠️  Could not retrieve workflow run ID. Check manually at:"
-            echo "https://github.com/${{ github.repository }}/actions/workflows/12-test-post-release-linux-distros.yaml"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
