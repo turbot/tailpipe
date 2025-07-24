@@ -44,9 +44,10 @@ func RunBatchSession(ctx context.Context, args []string, db *database.DuckDb) (i
 
 func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, error) {
 	// Get column definitions first
-	colDefs, err := ExecuteDescribeQuery(query, db)
+	colDefs, err := GetColumnDefsForQuery(query, db)
 	if err != nil {
-		// Handle missing view errors from DESCRIBE query as well
+		// if this error is due to trying to select a table which exists in partition config,
+		// but there is no view defined (as no rows have been collected), return a special error
 		err := handleMissingViewError(err)
 		return 0, err
 	}
@@ -57,7 +58,6 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 		// if this error is due to trying to select a table which exists in partition config,
 		// but there is no view defined (as no rows have been collected), return a special error
 		err := handleMissingViewError(err)
-
 		return 0, err
 	}
 
@@ -76,8 +76,8 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 	return 0, nil
 }
 
-// ExecuteDescribeQuery executes a DESCRIBE query to get column definitions
-func ExecuteDescribeQuery(query string, db *database.DuckDb) ([]*queryresult.ColumnDef, error) {
+// GetColumnDefsForQuery executes a DESCRIBE query to get column definitions
+func GetColumnDefsForQuery(query string, db *database.DuckDb) ([]*queryresult.ColumnDef, error) {
 	// Remove trailing semicolon from query to avoid DESCRIBE syntax errors
 	cleanQuery := strings.TrimSpace(query)
 	cleanQuery = strings.TrimSuffix(cleanQuery, ";")
