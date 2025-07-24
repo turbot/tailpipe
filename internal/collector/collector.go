@@ -158,11 +158,8 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 		return err
 	}
 
-	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
-	if !resolvedFromTime.Time.IsZero() {
-		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
-		c.partition.AddFilter(fmt.Sprintf("(tp_timestamp is null or tp_timestamp >= '%s')", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
-	}
+	// if we have a from or to time, add filters to the partition
+	c.addTimeRangeFilters(resolvedFromTime, toTime)
 
 	// create a parquet writer
 	parquetConvertor, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount)
@@ -175,6 +172,20 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	go c.listenToEvents(ctx)
 
 	return nil
+}
+
+// addTimeRangeFilters adds filters to the partition based on the from and to time
+func (c *Collector) addTimeRangeFilters(resolvedFromTime *row_source.ResolvedFromTime, toTime time.Time) {
+	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
+	if !resolvedFromTime.Time.IsZero() {
+		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
+		c.partition.AddFilter(fmt.Sprintf("(tp_timestamp is null or tp_timestamp >= '%s')", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
+	}
+	// if to time was set as arg, add that filter as well
+	if viper.IsSet(pconstants.ArgTo) {
+		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
+		c.partition.AddFilter(fmt.Sprintf("(tp_timestamp is null or tp_timestamp < '%s')", toTime.Format("2006-01-02T15:04:05")))
+	}
 }
 
 // Notify implements observer.Observer
