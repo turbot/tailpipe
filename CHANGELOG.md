@@ -1,8 +1,17 @@
+## v0.6.2 [2025-07-24]
+_Bug fixes_
+* Fix issue where `--to` was not respected for zero granularity data. ([#483](https://github.com/turbot/tailpipe/issues/483))
+* Fix issue where the relative time passed to `from/to` args were getting parsed incorrectly. ([#485](https://github.com/turbot/tailpipe/issues/485))
+* Fix issue where Tailpipe was crashing if the collection state file had nil trunk states from the previous collection. ([#489](https://github.com/turbot/tailpipe/issues/489))
+* Fix `.inspect` output to show the plugin name for custom tables. ([#360](https://github.com/turbot/tailpipe/issues/360))
+* Fix query JSON outputs to be consistent with DuckDB. ([#432](https://github.com/turbot/tailpipe/issues/432))
+
+_Dependencies_
+* Upgrade `go-viper/mapstructure/v2` and `oauth2` packages to remediate high and moderate vulnerabilities.
 
 ## v0.6.1 [2025-07-02]
 _Bug fixes_
 * Update core version to v0.2.9 - fix issue where collection state is not being saved for zero granularity collection. ([#251](https://github.com/turbot/tailpipe-plugin-sdk/issues/251))
-
 
 ## v0.6.0 [2025-07-02]
 _What's new_
