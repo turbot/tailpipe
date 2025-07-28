@@ -61,7 +61,10 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	// first clear out any old collection temp dirs
-	filepaths.CleanupCollectionTempDirs()
+	// get the collection directory for this workspace
+	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
+
+	filepaths.CleanupTempDirs(collectionDir)
 	// then create a new collection temp dir
 	collectionTempDir := filepaths.EnsureCollectionTempDir()
 
