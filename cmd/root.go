@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
@@ -14,7 +12,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
-	localfilepaths "github.com/turbot/tailpipe/internal/filepaths"
 )
 
 var exitCode int
@@ -74,14 +71,7 @@ func Execute() int {
 
 	utils.LogTime("cmd.root.Execute start")
 	defer utils.LogTime("cmd.root.Execute end")
-
-	// Clean up plugin temporary directories from previous crashes/interrupted installations
-	// This runs early to ensure cleanup happens for all commands, including --version
-	pluginDir := filepath.Join(app_specific.InstallDir, "plugins/temp")
-	localfilepaths.CleanupTempDirs(pluginDir)
-
 	rootCmd := rootCommand()
-
 	if err := rootCmd.Execute(); err != nil {
 		exitCode = -1
 	}

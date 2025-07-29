@@ -18,7 +18,8 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
+	localfilepaths "github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -64,9 +65,9 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	// get the collection directory for this workspace
 	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
 
-	filepaths.CleanupTempDirs(collectionDir)
+	filepaths.CleanupPidTempDirs(collectionDir)
 	// then create a new collection temp dir
-	collectionTempDir := filepaths.EnsureCollectionTempDir()
+	collectionTempDir := localfilepaths.EnsureCollectionTempDir()
 
 	// create the collector
 	c := &Collector{
@@ -301,7 +302,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 func (c *Collector) createTableView(ctx context.Context) error {
 	// so we are done writing chunks - now update the db to add a view to this data
 	// Open a DuckDB connection
-	db, err := database.NewDuckDb(database.WithDbFile(filepaths.TailpipeDbFilePath()))
+	db, err := database.NewDuckDb(database.WithDbFile(localfilepaths.TailpipeDbFilePath()))
 	if err != nil {
 		return err
 	}
