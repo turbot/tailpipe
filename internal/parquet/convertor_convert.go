@@ -140,13 +140,11 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 
 	var totalRowCount int64
 
-	slog.Debug("inserting into DuckLake table", "chunks", len(filenames))
 	rowCount, err := w.insertIntoDucklake(w.Partition.TableName)
 	if err != nil {
 		slog.Error("failed to insert into DuckLake table", "table", w.Partition.TableName, "error", err)
 		return err
 	}
-	slog.Debug("inserted rows into DuckLake table", "chunks", len(filenames), "count", rowCount, "error", err)
 
 	td := tempTime.Sub(t)
 	cd := time.Since(tempTime)
@@ -158,7 +156,7 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 	// update the row count
 	w.updateRowCount(rowCount)
 
-	slog.Info("inserted rows into DuckLake table", "temp time", td.Milliseconds(), "conversion time", cd.Milliseconds(), "total time ", total.Milliseconds())
+	slog.Debug("inserted rows into DuckLake table", "chunks", len(filenames), "row count", rowCount, "error", err, "temp time", td.Milliseconds(), "conversion time", cd.Milliseconds(), "total time ", total.Milliseconds())
 	return nil
 }
 
