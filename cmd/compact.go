@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"log/slog"
 	"os"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
@@ -16,7 +17,9 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
@@ -48,6 +51,12 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 			error_helpers.ShowError(ctx, err)
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	slog.Info("Compacting parquet files")
 
