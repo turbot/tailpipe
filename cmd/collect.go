@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -17,8 +18,10 @@ import (
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/parse"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
@@ -70,6 +73,12 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 			setExitCodeForCollectError(err)
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	err = doCollect(ctx, cancel, args)
 	if errors.Is(err, context.Canceled) {

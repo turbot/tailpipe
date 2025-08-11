@@ -51,7 +51,7 @@ func DisplayConfig() {
 		sort.Strings(lines)
 
 		var b strings.Builder
-		b.WriteString("\n================\nSteampipe Config\n================\n\n")
+		b.WriteString("\n================\nTailpipe Config\n================\n\n")
 
 		for _, line := range lines {
 			b.WriteString(line)
