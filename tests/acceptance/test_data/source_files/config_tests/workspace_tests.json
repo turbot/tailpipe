@@ -1,4 +1,42 @@
-[ 
+[ {
+    "test": "env variables set, no command line arguments set and no workspace env variable set",
+    "description": "",
+    "cmd": "query",
+    "setup": {
+      "env": [
+        "TAILPIPE_UPDATE_CHECK=false",
+        "TAILPIPE_MEMORY_MAX_MB=16384",
+        "TAILPIPE_PLUGIN_MEMORY_MAX_MB=2048",
+        "TAILPIPE_TEMP_DIR_MAX_MB=8192"
+      ],
+      "args": []
+    },
+    "expected": {
+      "update-check": "false",
+      "memory-max-mb": 16384,
+      "memory-max-mb-plugin": 2048,
+      "temp-dir-max-mb": 8192
+    }
+  },
+  {
+    "test": "only command line arguments set and no env variables set",
+    "description": "",
+    "cmd": "query",
+    "setup": {
+      "env": [],
+      "args": [
+        "--workspace=workspace_profiles"
+      ]
+    },
+    "expected": {
+      "workspace": "workspace_profiles",
+      "log-level": "trace",
+      "update-check": "false",
+      "memory-max-mb": 1024,
+      "memory-max-mb-plugin": 512,
+      "temp-dir-max-mb": 1024
+    }
+  },
   {
     "test": "workspace env variable set and no command line arguments set",
     "description": "",
@@ -25,7 +63,6 @@
     "setup": {
       "env": [
         "TAILPIPE_WORKSPACE=development",
-        "TAILPIPE_INSTALL_DIR=~/mypath",
         "TAILPIPE_LOG_LEVEL=debug",
         "TAILPIPE_UPDATE_CHECK=false",
         "TAILPIPE_MEMORY_MAX_MB=16384",
@@ -38,36 +75,11 @@
     },
     "expected": {
       "workspace": "workspace_profiles",
-      "install-dir": "~/mypath",
       "log-level": "trace",
       "update-check": "false",
       "memory-max-mb": 1024,
       "memory-max-mb-plugin": 512,
       "temp-dir-max-mb": 1024
-    }
-  },
-  {
-    "test": "env variables set, no command line arguments set and no workspace env variable set",
-    "description": "",
-    "cmd": "query",
-    "setup": {
-      "env": [
-        "TAILPIPE_INSTALL_DIR=~/mypath",
-        "TAILPIPE_LOG_LEVEL=debug",
-        "TAILPIPE_UPDATE_CHECK=false",
-        "TAILPIPE_MEMORY_MAX_MB=16384",
-        "TAILPIPE_MEMORY_MAX_MB_PLUGIN=2048",
-        "TAILPIPE_TEMP_DIR_MAX_MB=8192"
-      ],
-      "args": []
-    },
-    "expected": {
-      "install-dir": "~/mypath",
-      "log-level": "debug",
-      "update-check": "false",
-      "memory-max-mb": 16384,
-      "memory-max-mb-plugin": 2048,
-      "temp-dir-max-mb": 8192
     }
   },
   {
@@ -92,32 +104,12 @@
     }
   },
   {
-    "test": "only command line arguments set and no env variables set",
-    "description": "",
-    "cmd": "query",
-    "setup": {
-      "env": [],
-      "args": [
-        "--workspace=workspace_profiles"
-      ]
-    },
-    "expected": {
-      "workspace": "workspace_profiles",
-      "log-level": "trace",
-      "update-check": "false",
-      "memory-max-mb": 1024,
-      "memory-max-mb-plugin": 512,
-      "temp-dir-max-mb": 1024
-    }
-  },
-  {
     "test": "all env variables set including workspace env variable and no command line arguments set",
     "description": "",
     "cmd": "query",
     "setup": {
       "env": [
         "TAILPIPE_WORKSPACE=development",
-        "TAILPIPE_INSTALL_DIR=~/mypath",
         "TAILPIPE_LOG_LEVEL=debug",
         "TAILPIPE_UPDATE_CHECK=false",
         "TAILPIPE_MEMORY_MAX_MB=16384",
@@ -128,7 +120,6 @@
     },
     "expected": {
       "workspace": "development",
-      "install-dir": "~/mypath",
       "log-level": "warn",
       "update-check": "false",
       "memory-max-mb": 512,
@@ -142,7 +133,6 @@
     "cmd": "query",
     "setup": {
       "env": [
-        "TAILPIPE_INSTALL_DIR=~/mypath",
         "TAILPIPE_LOG_LEVEL=debug",
         "TAILPIPE_UPDATE_CHECK=false",
         "TAILPIPE_MEMORY_MAX_MB=16384",
@@ -155,7 +145,6 @@
     },
     "expected": {
       "workspace": "workspace_profiles",
-      "install-dir": "~/mypath",
       "log-level": "trace",
       "update-check": "false",
       "memory-max-mb": 1024,
