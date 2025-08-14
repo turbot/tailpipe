@@ -48,19 +48,11 @@ load "$LIB_BATS_SUPPORT/load.bash"
   
   # Test format_types and format_presets from core plugin (which has them)
   core_plugin_key="hub.tailpipe.io/plugins/turbot/core@latest"
-  
-  # First verify that format_types exists and is an array
-  format_types_type=$(echo "$versions_content" | jq -r --arg key "$core_plugin_key" '.plugins[$key].metadata.format_types | type')
-  assert_equal "$format_types_type" "array"
-  
+
   # Verify format_types content - should contain the expected types
   format_types=$(echo "$versions_content" | jq -r --arg key "$core_plugin_key" '.plugins[$key].metadata.format_types // [] | sort | join(",")')
   assert_equal "$format_types" "delimited,grok,jsonl,regex"
-  
-  # First verify that format_presets exists and is an array
-  format_presets_type=$(echo "$versions_content" | jq -r --arg key "$core_plugin_key" '.plugins[$key].metadata.format_presets | type')
-  assert_equal "$format_presets_type" "array"
-  
+
   # Verify format_presets content - should contain the expected presets
   format_presets=$(echo "$versions_content" | jq -r --arg key "$core_plugin_key" '.plugins[$key].metadata.format_presets // [] | sort | join(",")')
   assert_equal "$format_presets" "delimited.default,jsonl.default"
