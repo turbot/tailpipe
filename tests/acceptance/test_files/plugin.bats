@@ -23,14 +23,14 @@ load "$LIB_BATS_SUPPORT/load.bash"
   chaos_plugin_key="hub.tailpipe.io/plugins/turbot/chaos@latest"
   
   # Verify that metadata exists for the chaos plugin
-  metadata_exists=$(echo "$versions_content" | jq -r --arg key "$chaos_plugin_key" 'has($key) and (.[$key] | has("metadata"))')
+  metadata_exists=$(echo "$versions_content" | jq -r --arg key "$chaos_plugin_key" '.plugins | has($key) and (.[$key] | has("metadata"))')
   assert_equal "$metadata_exists" "true"
   
   # Verify tables metadata - chaos plugin should have specific tables
-  tables=$(echo "$versions_content" | jq -r --arg key "$chaos_plugin_key" '.[$key].metadata.tables // [] | sort | join(",")')
+  tables=$(echo "$versions_content" | jq -r --arg key "$chaos_plugin_key" '.plugins[$key].metadata.tables // [] | sort | join(",")')
   assert_equal "$tables" "chaos_all_columns,chaos_date_time,chaos_struct_columns"
   
   # Verify sources metadata - chaos plugin should have specific sources  
-  sources=$(echo "$versions_content" | jq -r --arg key "$chaos_plugin_key" '.[$key].metadata.sources // [] | sort | join(",")')
+  sources=$(echo "$versions_content" | jq -r --arg key "$chaos_plugin_key" '.plugins[$key].metadata.sources // [] | sort | join(",")')
   assert_equal "$sources" "chaos_all_columns,chaos_date_time,chaos_struct_columns"
 }
