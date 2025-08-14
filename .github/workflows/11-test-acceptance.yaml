@@ -47,10 +47,10 @@ jobs:
           token: ${{ secrets.GH_ACCESS_TOKEN }}
           ref: main
 
-       # this is required, check golangci-lint-action docs
+        # this is required, check golangci-lint-action docs
       - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
-          go-version: '1.23'
+          go-version: "1.23"
           cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
 
       - name: Run CLI Unit Tests
@@ -97,6 +97,7 @@ jobs:
           - "partition_delete"
           - "core_formats"
           - "table_block"
+          - "plugin"
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout
@@ -115,7 +116,7 @@ jobs:
         id: prepare-for-downloads
         run: |
           mkdir ~/artifacts
-  
+
       - name: Download Linux Build Artifacts
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         if: ${{ matrix.platform == 'ubuntu-latest' }}
@@ -128,7 +129,7 @@ jobs:
         run: |
           mkdir ~/build
           tar -xf ~/artifacts/linux.tar.gz -C ~/build
-      
+
       - name: Set PATH
         run: |
           echo "PATH=$PATH:$HOME/build:$GTIHUB_WORKSPACE/tailpipe/tests/acceptance/lib/bats-core/libexec" >> $GITHUB_ENV
