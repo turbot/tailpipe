@@ -37,12 +37,10 @@ func (c *TailpipeConnection) GetSubType() string {
 
 func (c *TailpipeConnection) ToProto() *proto.ConfigData {
 	return &proto.ConfigData{
-		//Target:  c.Name(),
-		// TODO fix connection parsing to populate name
+		// Target is of form `connection.<type>`
 		Target: "connection." + c.Plugin,
-
-		Hcl:   c.Hcl,
-		Range: proto.RangeToProto(c.DeclRange),
+		Hcl:    c.Hcl,
+		Range:  proto.RangeToProto(c.DeclRange),
 	}
 }
 
