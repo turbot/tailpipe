@@ -6,13 +6,12 @@ import (
 )
 
 const (
-	sourceFileColumnName = "__duckdb_source_file"
-	migrateTempTableName = "_raw_tp_data"
+// sourceFileColumnName = "__duckdb_source_file"
+// migrateTempTableName = "_raw_tp_data"
 )
 
+//nolint:unused // TODO re-add tp_index migration for DuckDB https://github.com/turbot/tailpipe/issues/475
 func migrateTpIndex(ctx context.Context, db *database.DuckDb, baseDir string, updateFunc func(CompactionStatus), patterns []PartitionPattern) error {
-	// TODO #DL reimplement for ducklake
-	//  https://github.com/turbot/tailpipe/issues/475
 	//fileRootProvider := &FileRootProvider{}
 	//for _, partition := range config.GlobalConfig.Partitions {
 	//	if PartitionMatchesPatterns(partition.TableName, partition.ShortName, patterns) {

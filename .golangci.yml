@@ -70,3 +70,4 @@ run:
 issues:
   exclude-dirs:
     - "tests/acceptance"
+    - "test_apps"

@@ -422,7 +422,11 @@ func (c *Collector) collectSynthetic(ctx context.Context, tableSchema *schema.Ta
 	// set the execution state to started
 	c.execution.state = ExecutionState_STARTED
 
-	c.Notify(ctx, &events.Started{ExecutionId: c.execution.id})
+	if err := c.Notify(ctx, &events.Started{ExecutionId: c.execution.id}); err != nil {
+		slog.Error("failed to notify started event", "error", err)
+		c.execution.completionChan <- fmt.Errorf("failed to notify started event: %w", err)
+		return
+	}
 
 	var chunkIdx int32 = 0
 	var totalRowsProcessed int64 = 0
@@ -469,23 +473,30 @@ func (c *Collector) collectSynthetic(ctx context.Context, tableSchema *schema.Ta
 			}
 		}
 		// send chunk event to the plugin
-		c.Notify(ctx, &events.Chunk{
-			ExecutionId: c.execution.id,
-			ChunkNumber: chunkIdx,
-		})
+		chunkEvent := &events.Chunk{ExecutionId: c.execution.id, ChunkNumber: chunkIdx}
+		if err := c.Notify(ctx, chunkEvent); err != nil {
+			slog.Error("failed to notify chunk event", "error", err)
+			c.execution.completionChan <- fmt.Errorf("failed to notify chunk event: %w", err)
+			return
+		}
 
 		totalRowsProcessed += int64(rows)
-		c.Notify(ctx, &events.Status{
-			ExecutionId:  c.execution.id,
-			RowsReceived: totalRowsProcessed,
-			RowsEnriched: totalRowsProcessed,
-		})
+		statusEvent := &events.Status{ExecutionId: c.execution.id, RowsReceived: totalRowsProcessed, RowsEnriched: totalRowsProcessed}
+		if err := c.Notify(ctx, statusEvent); err != nil {
+			slog.Error("failed to notify status event", "error", err)
+			c.execution.completionChan <- fmt.Errorf("failed to notify status event: %w", err)
+			return
+		}
 
 		chunkIdx++
 	}
 
 	// Send completion event
-	c.Notify(ctx, events.NewCompletedEvent(c.execution.id, int64(metadata.Rows), chunkIdx, nil))
+	if err := c.Notify(ctx, events.NewCompletedEvent(c.execution.id, int64(metadata.Rows), chunkIdx, nil)); err != nil {
+		slog.Error("failed to notify completed event", "error", err)
+		c.execution.completionChan <- fmt.Errorf("failed to notify completed event: %w", err)
+		return
+	}
 
 	// Signal completion
 	c.execution.completionChan <- nil
@@ -574,62 +585,62 @@ func generateStructValue(column *schema.ColumnSchema, rowIndex int) any {
 
 // writeOptimizedChunkToJSONL implements an optimized approach for faster JSONL writing
 // It uses buffered I/O and direct marshaling for better performance
-func writeOptimizedChunkToJSONL(filepath string, tableSchema *schema.TableSchema, rows int, startRowIndex int, partition *config.Partition, fromTime time.Time, timestampInterval time.Duration) error {
-	file, err := os.Create(filepath)
-	if err != nil {
-		return fmt.Errorf("failed to create file %s: %w", filepath, err)
-	}
-	defer file.Close()
-
-	// Use buffered writer for better I/O performance
-	bufWriter := bufio.NewWriter(file)
-	defer bufWriter.Flush()
-
-	// Pre-allocate the row map to avoid repeated allocations
-	rowMap := make(map[string]any, len(tableSchema.Columns))
-
-	// Write each row
-	for i := 0; i < rows; i++ {
-		rowIndex := startRowIndex + i
-		timestamp := fromTime.Add(time.Duration(rowIndex) * timestampInterval).Format("2006-01-02 15:04:05")
-
-		// Clear the map for reuse
-		for k := range rowMap {
-			delete(rowMap, k)
-		}
-
-		// Populate row map (skip tp_index and tp_date)
-		for _, column := range tableSchema.Columns {
-			if column.ColumnName == "tp_index" || column.ColumnName == "tp_date" {
-				continue
-			}
-
-			switch column.ColumnName {
-			case "tp_timestamp":
-				rowMap[column.ColumnName] = timestamp
-			case "tp_partition":
-				rowMap[column.ColumnName] = partition.ShortName
-			case "tp_table":
-				rowMap[column.ColumnName] = partition.TableName
-			default:
-				// Generate synthetic data for other columns
-				rowMap[column.ColumnName] = generateSyntheticValue(column, rowIndex)
-			}
-		}
-
-		// Marshal to bytes and write directly
-		data, err := json.Marshal(rowMap)
-		if err != nil {
-			return fmt.Errorf("failed to marshal row %d: %w", rowIndex, err)
-		}
-
-		if _, err := bufWriter.Write(data); err != nil {
-			return fmt.Errorf("failed to write row %d: %w", rowIndex, err)
-		}
-		if _, err := bufWriter.Write([]byte{'\n'}); err != nil {
-			return fmt.Errorf("failed to write newline for row %d: %w", rowIndex, err)
-		}
-	}
-
-	return nil
-}
+//func writeOptimizedChunkToJSONL(filepath string, tableSchema *schema.TableSchema, rows int, startRowIndex int, partition *config.Partition, fromTime time.Time, timestampInterval time.Duration) error {
+//	file, err := os.Create(filepath)
+//	if err != nil {
+//		return fmt.Errorf("failed to create file %s: %w", filepath, err)
+//	}
+//	defer file.Close()
+//
+//	// Use buffered writer for better I/O performance
+//	bufWriter := bufio.NewWriter(file)
+//	defer bufWriter.Flush()
+//
+//	// Pre-allocate the row map to avoid repeated allocations
+//	rowMap := make(map[string]any, len(tableSchema.Columns))
+//
+//	// Write each row
+//	for i := 0; i < rows; i++ {
+//		rowIndex := startRowIndex + i
+//		timestamp := fromTime.Add(time.Duration(rowIndex) * timestampInterval).Format("2006-01-02 15:04:05")
+//
+//		// Clear the map for reuse
+//		for k := range rowMap {
+//			delete(rowMap, k)
+//		}
+//
+//		// Populate row map (skip tp_index and tp_date)
+//		for _, column := range tableSchema.Columns {
+//			if column.ColumnName == "tp_index" || column.ColumnName == "tp_date" {
+//				continue
+//			}
+//
+//			switch column.ColumnName {
+//			case "tp_timestamp":
+//				rowMap[column.ColumnName] = timestamp
+//			case "tp_partition":
+//				rowMap[column.ColumnName] = partition.ShortName
+//			case "tp_table":
+//				rowMap[column.ColumnName] = partition.TableName
+//			default:
+//				// Generate synthetic data for other columns
+//				rowMap[column.ColumnName] = generateSyntheticValue(column, rowIndex)
+//			}
+//		}
+//
+//		// Marshal to bytes and write directly
+//		data, err := json.Marshal(rowMap)
+//		if err != nil {
+//			return fmt.Errorf("failed to marshal row %d: %w", rowIndex, err)
+//		}
+//
+//		if _, err := bufWriter.Write(data); err != nil {
+//			return fmt.Errorf("failed to write row %d: %w", rowIndex, err)
+//		}
+//		if _, err := bufWriter.Write([]byte{'\n'}); err != nil {
+//			return fmt.Errorf("failed to write newline for row %d: %w", rowIndex, err)
+//		}
+//	}
+//
+//	return nil
+//}
