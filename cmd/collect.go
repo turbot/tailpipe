@@ -219,7 +219,7 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 	}
 
 	if len(errorList) > 0 {
-		// TODO #errors better formating/error message https://github.com/turbot/tailpipe/issues/106
+		// TODO #errors better formating/error message https://github.com/turbot/tailpipe/issues/497
 		return nil, errors.Join(errorList...)
 	}
 
@@ -378,7 +378,7 @@ func setExitCodeForCollectError(err error) {
 		return
 	}
 
-	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/106
+	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/496
 	exitCode = 1
 }
 
