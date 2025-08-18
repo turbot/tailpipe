@@ -3,10 +3,12 @@ package parquet
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"log/slog"
-	"time"
 )
 
 type partitionFileCount struct {
@@ -25,6 +27,12 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 	partitionKeys, err := getPartitionKeysMatchingPattern(ctx, db, patterns)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
+	}
+
+	// fail early if no matches
+	if len(partitionKeys) == 0 {
+		slog.Info("No matching partitions found for compaction")
+		return status, nil
 	}
 
 	// now for each partition key which has more than on parquet file, compact the files by creating a new snapshot
@@ -54,7 +62,6 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 				"file_count", partitionKey.fileCount,
 				"error", err,
 			)
-
 			return nil, err
 		}
 
@@ -63,28 +70,35 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"tp_partition", partitionKey.tpPartition,
 			"tp_index", partitionKey.tpIndex,
 			"tp_date", partitionKey.tpDate,
-			"source file_count", partitionKey.fileCount,
+			"input_files", partitionKey.fileCount,
+			"output_files", 1,
 		)
 		// increment the destination file count by 1 for each partition key
 		status.Dest++
 	}
 	return status, nil
-
 }
 
 func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, partitionKey partitionFileCount) error {
 	// Create ordered snapshot for this partition combination
 	// Only process partitions that have multiple files (fileCount > 1)
 	snapshotQuery := fmt.Sprintf(`call ducklake.create_snapshot(
-			'%s', '%s',
-			snapshot_query => $$
-				SELECT * FROM "%s"
-				WHERE tp_partition = '%s' 
-				  AND tp_index = '%s'
-				  AND tp_date = '%s'
-				ORDER BY tp_timestamp
-			$$
-		)`, constants.DuckLakeCatalog, partitionKey.tpTable, partitionKey.tpTable, partitionKey.tpPartition, partitionKey.tpIndex, partitionKey.tpDate)
+		'%s', '%s',
+		snapshot_query => $$
+			SELECT * FROM "%s"
+			WHERE tp_partition = '%s' 
+			  AND tp_index = '%s'
+			  AND tp_date = '%s'
+			ORDER BY tp_timestamp
+		$$
+	)`,
+		SafeIdentifier(constants.DuckLakeCatalog),
+		SafeIdentifier(partitionKey.tpTable),
+		SafeIdentifier(partitionKey.tpTable),
+		escapeLiteral(partitionKey.tpPartition),
+		escapeLiteral(partitionKey.tpIndex),
+		partitionKey.tpDate.Format("2006-01-02"),
+	)
 
 	if _, err := db.ExecContext(ctx, snapshotQuery); err != nil {
 		return fmt.Errorf("failed to compact and order partition entries for tp_table %s, tp_partition %s, tp_index %s, date %s: %w",
@@ -108,6 +122,7 @@ func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, p
 	//
 	// We group by these partition keys and count files per combination,
 	// filtering for active files (end_snapshot is null)
+	// NOTE: Assumes partitions are defined in order: tp_partition (0), tp_index (1), tp_date (2)
 	query := `select 
   t.table_name as tp_table,
   fpv1.partition_value as tp_partition,
@@ -130,12 +145,13 @@ group by
   fpv2.partition_value,
   fpv3.partition_value
 order by file_count desc;`
+
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
 	}
-
 	defer rows.Close()
+
 	var partitionKeys []partitionFileCount
 	for rows.Next() {
 		var partitionKey partitionFileCount
@@ -147,6 +163,31 @@ order by file_count desc;`
 			partitionKeys = append(partitionKeys, partitionKey)
 		}
 	}
-
 	return partitionKeys, nil
+}
+
+// SafeIdentifier ensures that SQL identifiers (like table or column names)
+// are safely quoted using double quotes and escaped appropriately.
+//
+// For example:
+//
+//	input:  my_table         → output:  "my_table"
+//	input:  some"col         → output:  "some""col"
+//	input:  select           → output:  "select"    (reserved keyword)
+func SafeIdentifier(identifier string) string {
+	escaped := strings.ReplaceAll(identifier, `"`, `""`)
+	return `"` + escaped + `"`
+}
+
+// escapeLiteral safely escapes SQL string literals for use in WHERE clauses,
+// INSERTs, etc. It wraps the string in single quotes and escapes any internal
+// single quotes by doubling them.
+//
+// For example:
+//
+//	input:  O'Reilly         → output:  'O''Reilly'
+//	input:  2025-08-01       → output:  '2025-08-01'
+func escapeLiteral(literal string) string {
+	escaped := strings.ReplaceAll(literal, `'`, `''`)
+	return `'` + escaped + `'`
 }
