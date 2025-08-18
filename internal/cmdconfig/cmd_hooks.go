@@ -178,27 +178,11 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// load the connection config and HCL options (passing plugin versions
 	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(pluginVersionFile)
 
-	if loadConfigErrorsAndWarnings.Error != nil {
-		return loadConfigErrorsAndWarnings
+	if loadConfigErrorsAndWarnings.Error == nil {
+		// store global config
+		config.GlobalConfig = tailpipeConfig
+
 	}
 
-	if loadConfigErrorsAndWarnings.Warnings != nil {
-		for _, warning := range loadConfigErrorsAndWarnings.Warnings {
-			error_helpers.ShowWarning(warning)
-		}
-	}
-	// store global config
-	config.GlobalConfig = tailpipeConfig
-
-	// now validate all config values have appropriate values
-	return validateConfig()
-}
-
-// now validate  config values have appropriate values
-func validateConfig() error_helpers.ErrorAndWarnings {
-	var res = error_helpers.ErrorAndWarnings{}
-
-	// TODO #config validate
-
-	return res
+	return loadConfigErrorsAndWarnings
 }
