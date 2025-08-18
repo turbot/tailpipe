@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"golang.org/x/exp/maps"
+	"time"
 )
 
 type CompactionStatus struct {
@@ -14,6 +15,7 @@ type CompactionStatus struct {
 	MigrateSource             int               // number of source files migrated
 	MigrateDest               int               // number of destination files after migration
 	PartitionIndexExpressions map[string]string // the index expression used for migration for each partition
+	Duration                  time.Duration     // duration of the compaction process
 }
 
 func NewCompactionStatus() *CompactionStatus {
@@ -66,7 +68,7 @@ func (s *CompactionStatus) VerboseString() string {
 			if len(uncompactedString) > 0 {
 				uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
 			}
-			compactedString = fmt.Sprintf("Compacted %d files into %d files.%s\n", s.Source, s.Dest, uncompactedString)
+			compactedString = fmt.Sprintf("Compacted %d files into %d files in %0.2fs.%s\n", s.Source, s.Dest, s.Duration.Seconds(), uncompactedString)
 		} else {
 			// Nothing compacted; show only uncompacted note if present
 			compactedString = uncompactedString + "\n\n"
