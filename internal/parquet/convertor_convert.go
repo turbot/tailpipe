@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/marcboeker/go-duckdb/v2"
-	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 )
 
@@ -28,7 +27,7 @@ func (w *Converter) processChunks(chunksToProcess []int32) {
 
 			// TODO #DL re-add error handling
 			//  https://github.com/turbot/tailpipe/issues/480
-			fmt.Printf("Error processing chunks: %v\n", err)
+			slog.Error("Error processing chunks", "error", err)
 			// store the failed conversion
 			//w.failedConversions = append(w.failedConversions, failedConversion{
 			//	filenames: filenamesToProcess,
@@ -133,8 +132,6 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 	//	}()
 	//}
 
-	var totalRowCount int64
-
 	rowCount, err := w.insertIntoDucklake(w.Partition.TableName)
 	if err != nil {
 		slog.Error("failed to insert into DuckLake table", "table", w.Partition.TableName, "error", err)
@@ -146,7 +143,6 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 	total := time.Since(t)
 
 	// Update counters and advance to the next batch
-	totalRowCount += rowCount
 	// if we have an error, return it below
 	// update the row count
 	w.updateRowCount(rowCount)
@@ -200,41 +196,6 @@ create temp table temp_data as
 	return nil
 }
 
-// getPartitionRowCounts returns a slice of row counts,
-// where each count corresponds to a distinct combination of partition key columns
-// (tp_table, tp_partition, tp_index, tp_date) in the temp_data table.
-//
-// The counts are ordered by the partition key columns to allow us to efficiently select
-// full partitions based on row offsets without needing additional filtering.
-func (w *Converter) getPartitionRowCounts() ([]int64, error) {
-	// get the distinct partition key combinations
-	partitionColumns := []string{sdkconstants.TpTable, sdkconstants.TpPartition, sdkconstants.TpIndex, sdkconstants.TpDate}
-	partitionColumnsString := strings.Join(partitionColumns, ",")
-
-	query := fmt.Sprintf(`
-		select count(*) as row_count
-		from temp_data
-		group by %s
-		order by %s
-	`, partitionColumnsString, partitionColumnsString)
-
-	rows, err := w.db.Query(query)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var result []int64
-	for rows.Next() {
-		var count int64
-		if err := rows.Scan(&count); err != nil {
-			return nil, err
-		}
-		result = append(result, count)
-	}
-	return result, rows.Err()
-}
-
 // insertIntoDucklakeForBatch writes a batch of rows from the temp_data table to the specified target DuckDB table.
 //
 // It selects rows based on rowid, using the provided startRowId and rowCount to control the range:
@@ -275,8 +236,6 @@ func (w *Converter) insertIntoDucklake(targetTable string) (int64, error) {
 	return insertedRowCount, nil
 }
 
-// validateRows copies the data from the given select query to a temp table and validates required fields are non null
-// it also validates that the schema of the chunk is the same as the inferred schema and if it is not, reports a useful error
 // handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
 // infer the schema of this chunk and compare - if they are different, return that in an error
 func (w *Converter) handleSchemaChangeError(err error, jsonlFilePath string) error {

@@ -17,11 +17,7 @@ import (
 //  - think about max memory https://github.com/turbot/tailpipe/issues/478
 //  - validation https://github.com/turbot/tailpipe/issues/479
 
-const defaultParquetWorkerCount = 1
 const chunkBufferLength = 1000
-
-// the minimum memory to assign to each worker -
-const minWorkerMemoryMb = 512
 
 // Converter struct executes all the conversions for a single collection
 // it therefore has a unique execution executionId, and will potentially convert of multiple JSONL files
@@ -42,9 +38,10 @@ type Converter struct {
 	wg sync.WaitGroup
 
 	// the number of jsonl files processed so far
-	fileCount int32
+	//fileCount int32
+
 	// the number of conversions executed
-	conversionCount int32
+	//conversionCount int32
 
 	// the number of rows written
 	rowCount int64
@@ -212,6 +209,7 @@ func (w *Converter) WaitForConversions(ctx context.Context) error {
 	}
 }
 
+//nolint:unused // we will use this once we re-add conversion error handling
 func (w *Converter) addJobErrors(errorList ...error) {
 	var failedRowCount int64
 
@@ -235,14 +233,14 @@ func (w *Converter) updateRowCount(count int64) {
 }
 
 // updateCompletionCount atomically increments the completion count
-func (w *Converter) updateCompletionCount(fileCount, conversionCount int32) {
-	atomic.AddInt32(&w.fileCount, fileCount)
-	atomic.AddInt32(&w.conversionCount, conversionCount)
-}
-
-func (w *Converter) GetCompletionCount() int32 {
-	return atomic.LoadInt32(&w.fileCount)
-}
+//func (w *Converter) updateCompletionCount(fileCount, conversionCount int32) {
+//	atomic.AddInt32(&w.fileCount, fileCount)
+//	atomic.AddInt32(&w.conversionCount, conversionCount)
+//}
+//
+//func (w *Converter) GetCompletionCount() int32 {
+//	return atomic.LoadInt32(&w.fileCount)
+//}
 
 // TODO #DL think about memory
 //  https://github.com/turbot/tailpipe/issues/478
