@@ -38,6 +38,7 @@ func listTables(ctx context.Context, input *HandlerInput, views []string) error 
 
 	for _, view := range views {
 		// TODO look at using config.GetPluginForTable(ctx, view) instead of this - or perhaps add function
+		//  https://github.com/turbot/tailpipe/issues/500
 		// GetPluginAndVersionForTable?
 		// getPluginForTable looks at plugin binaries (slower but mre reliable)
 		p, _ := getPluginForTable(ctx, view)

@@ -44,7 +44,6 @@ func (s *CompactionStatus) VerboseString() string {
 			utils.Pluralize("partition", len(s.PartitionIndexExpressions)),
 		)
 		if s.MigrateSource != s.MigrateDest {
-
 			migratedString += fmt.Sprintf(" (%d %s migrated to %d %s)",
 				s.MigrateSource,
 				utils.Pluralize("file", s.MigrateSource),

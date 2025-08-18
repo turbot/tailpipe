@@ -617,7 +617,7 @@ func loadPluginVersionFile(ctx context.Context) (*versionfile.PluginVersionFile,
 		return nil, err
 	}
 
-	// TODO KAI CHECK THIS
+	// TODO CHECK THIS https://github.com/turbot/tailpipe/issues/507
 	// add any "local" plugins (i.e. plugins installed under the 'local' folder) into the version file
 	ew := pluginVersions.AddLocalPlugins(ctx)
 	if ew.Error != nil {

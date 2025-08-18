@@ -70,7 +70,7 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 	// show output
 	_, rowErrors := querydisplay.ShowOutput(ctx, result)
 	if rowErrors > 0 {
-		// TODO #errors find a way to return the error
+		// TODO #errors find a way to return the error https://github.com/turbot/pipe-fittings/issues/745
 		return rowErrors, fmt.Errorf("query execution failed")
 	}
 	return 0, nil

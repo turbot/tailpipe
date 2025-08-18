@@ -1,6 +1,6 @@
 package parse
 
-// TODO enable and fix this test
+// TODO enable and fix this test https://github.com/turbot/tailpipe/issues/506
 //func TestLoadTailpipeConfig(t *testing.T) {
 //	type args struct {
 //		configPath string
@@ -12,7 +12,7 @@ package parse
 //		want    *config.TailpipeConfig
 //		wantErr bool
 //	}{
-//		// TODO #testing add more test cases
+//		// TODO #testing add more test cases https://github.com/turbot/tailpipe/issues/506
 //		{
 //			name: "static tables",
 //			args: args{

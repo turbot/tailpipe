@@ -56,7 +56,8 @@ func (r *PartitionResource) GetListData() *printers.RowData {
 func ListPartitionResources(ctx context.Context, db *database.DuckDb) ([]*PartitionResource, error) {
 	var res []*PartitionResource
 
-	// TODO Add in unconfigured partitions to list output
+	// TODO Add in unconfigured partitions which exist in database but not configt to list output
+	//  https://github.com/turbot/tailpipe/issues/254
 	// load all partition names from the data
 	//partitionNames, err := database.ListPartitions(ctx)
 	//if err != nil {
