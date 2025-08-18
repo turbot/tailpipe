@@ -154,8 +154,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, ove
 	}
 
 	// validate the schema returned by the plugin
-	err = collectResponse.Schema.Validate()
-	if err != nil {
+	if err = collectResponse.Schema.Validate(); err != nil {
 		err := fmt.Errorf("table '%s' returned invalid schema: %w", c.partition.TableName, err)
 		// set execution to error
 		c.execution.done(err)
@@ -373,11 +372,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *events.Complete)
 	}
 
 	// wait for the conversions to complete
-	c.parquetConvertor.WaitForConversions(ctx)
-
-	slog.Info("handlePluginEvent - conversions all complete")
-
-	return nil
+	return c.parquetConvertor.WaitForConversions(ctx)
 }
 
 // listenToEvents listens to the events channel and handles events
@@ -442,7 +437,7 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 				slog.Error("error waiting for execution to complete", "error", err)
 				c.execution.done(err)
 			} else {
-				slog.Info("handlePluginEvent - conversions all complete")
+				slog.Info("all conversions complete")
 			}
 		}()
 	}
