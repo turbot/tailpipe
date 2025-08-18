@@ -95,8 +95,8 @@ func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, p
 		SafeIdentifier(constants.DuckLakeCatalog),
 		SafeIdentifier(partitionKey.tpTable),
 		SafeIdentifier(partitionKey.tpTable),
-		escapeLiteral(partitionKey.tpPartition),
-		escapeLiteral(partitionKey.tpIndex),
+		EscapeLiteral(partitionKey.tpPartition),
+		EscapeLiteral(partitionKey.tpIndex),
 		partitionKey.tpDate.Format("2006-01-02"),
 	)
 
@@ -174,12 +174,14 @@ order by file_count desc;`
 //	input:  my_table         → output:  "my_table"
 //	input:  some"col         → output:  "some""col"
 //	input:  select           → output:  "select"    (reserved keyword)
+//
+// TODO move to pipe-helpers https://github.com/turbot/tailpipe/issues/517
 func SafeIdentifier(identifier string) string {
 	escaped := strings.ReplaceAll(identifier, `"`, `""`)
 	return `"` + escaped + `"`
 }
 
-// escapeLiteral safely escapes SQL string literals for use in WHERE clauses,
+// EscapeLiteral safely escapes SQL string literals for use in WHERE clauses,
 // INSERTs, etc. It wraps the string in single quotes and escapes any internal
 // single quotes by doubling them.
 //
@@ -187,7 +189,9 @@ func SafeIdentifier(identifier string) string {
 //
 //	input:  O'Reilly         → output:  'O''Reilly'
 //	input:  2025-08-01       → output:  '2025-08-01'
-func escapeLiteral(literal string) string {
+//
+// TODO move to pipe-helpers https://github.com/turbot/tailpipe/issues/517
+func EscapeLiteral(literal string) string {
 	escaped := strings.ReplaceAll(literal, `'`, `''`)
 	return `'` + escaped + `'`
 }
