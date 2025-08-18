@@ -67,6 +67,7 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb) (*CompactionStat
 	slog.Info("Compacting DuckLake data files")
 
 	var status = NewCompactionStatus()
+	t := time.Now()
 
 	// get the starting file count
 	startingFileCount, err := parquetFileCount(ctx, db)
@@ -102,6 +103,8 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb) (*CompactionStat
 	}
 	// update status
 	status.Dest = finalFileCount
+	// set the compaction time
+	status.Duration = time.Since(t)
 	slog.Info("DuckLake compaction complete", "source_file_count", status.Source, "destination_file_count", status.Dest)
 	return status, nil
 }
@@ -126,7 +129,7 @@ func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 	slog.Info("Merging adjacent DuckLake parquet files")
 	defer slog.Info("DuckLake parquet file merge complete")
 
-	if _, err := db.ExecContext(ctx, "call merge_adjacent_files();"); err != nil {
+	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
 		if ctx.Err() != nil {
 			return err
 		}
