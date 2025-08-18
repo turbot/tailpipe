@@ -97,6 +97,7 @@ jobs:
           - "partition_delete"
           - "core_formats"
           - "table_block"
+          - "config_precedence"
           - "plugin"
     runs-on: ${{ matrix.platform }}
     steps:

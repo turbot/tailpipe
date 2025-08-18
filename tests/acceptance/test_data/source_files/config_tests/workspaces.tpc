@@ -1,0 +1,16 @@
+
+workspace "workspace_profiles" {
+  log_level     = "trace"
+  update_check  = false 
+  memory_max_mb = 1024
+  plugin_memory_max_mb = 512
+  temp_dir_max_mb = 1024
+}
+
+workspace "development"{
+  log_level     = "warn"
+  update_check  = false 
+  memory_max_mb = 512
+  plugin_memory_max_mb = 206
+  temp_dir_max_mb = 512
+}
