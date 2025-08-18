@@ -133,11 +133,6 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 	//	}()
 	//}
 
-	// TODO #DL look at partitioned_write_max_open_files  https://github.com/turbot/tailpipe/issues/478
-	//  from duck db docs https://duckdb.org/docs/stable/data/partitioning/partitioned_writes.html
-	//  To limit the maximum number of files the system can keep open before flushing to disk when writing using PARTITION_BY, use the partitioned_write_max_open_files configuration option (default: 100):
-	//	  SET partitioned_write_max_open_files = 10;
-
 	var totalRowCount int64
 
 	rowCount, err := w.insertIntoDucklake(w.Partition.TableName)

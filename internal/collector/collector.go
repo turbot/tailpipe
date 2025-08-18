@@ -92,7 +92,7 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	db, err := database.NewDuckDb(
 		database.WithDuckDbExtensions(pconstants.DuckDbExtensions),
 		database.WithDuckLakeEnabled(true),
-		// TODO #DL check whether we still need to limit max connections
+		// TODO #DL check whether we still need to limit max connections https://github.com/turbot/tailpipe/issues/498
 		database.WithMaxConnections(1), // limit to 1 connection for the collector
 	)
 
