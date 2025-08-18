@@ -455,15 +455,6 @@ func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 				slog.Info("handlePluginEvent - conversions all complete")
 			}
 		}()
-
-	case *events.Error:
-		// TODO #errors error events are deprecated an will only be sent for plugins not using sdk > v0.2.0
-		// TODO #errors decide what (if anything) we should do with error events from old plugins https://github.com/turbot/tailpipe/issues/297
-		//ev := e.GetErrorEvent()
-		//// for now just store errors and display at end
-		////c.execution.state = ExecutionState_ERROR
-		////c.execution.error = fmt.Errorf("plugin error: %s", ev.Error)
-		//slog.Warn("plugin error", "execution", ev.ExecutionId, "error", ev.Error)
 	}
 }
 
