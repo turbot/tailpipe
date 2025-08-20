@@ -271,7 +271,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	error_helpers.FailOnError(err)
 	defer db.Close()
 
-	filesDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
+	rowsDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
 	error_helpers.FailOnError(err)
 
 	// build the collection state path
@@ -298,14 +298,14 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		slog.Warn("DeletePartition failed to prune empty collection folders", "error", err)
 	}
 
-	msg := buildStatusMessage(filesDeleted, partitionName, fromStr)
+	msg := buildStatusMessage(rowsDeleted, partitionName, fromStr)
 	fmt.Println(msg) //nolint:forbidigo//expected output
 }
 
-func buildStatusMessage(filesDeleted int, partition string, fromStr string) interface{} {
-	var deletedStr = " (no parquet files deleted)"
-	if filesDeleted > 0 {
-		deletedStr = fmt.Sprintf(" (deleted %d parquet %s)", filesDeleted, utils.Pluralize("file", filesDeleted))
+func buildStatusMessage(rowsDeleted int, partition string, fromStr string) interface{} {
+	var deletedStr = " (nothing deleted)"
+	if rowsDeleted > 0 {
+		deletedStr = fmt.Sprintf(" (deleted %d %s)", rowsDeleted, utils.Pluralize("rows", rowsDeleted))
 	}
 
 	return fmt.Sprintf("\nDeleted partition '%s'%s%s.\n", partition, fromStr, deletedStr)

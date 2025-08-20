@@ -44,8 +44,7 @@ func connectCmd() *cobra.Command {
 func runConnectCmd(cmd *cobra.Command, _ []string) {
 	ctx := cmd.Context()
 	dataPath := config.GlobalWorkspaceProfile.GetDataDir()
-	metadataDir := config.GlobalWorkspaceProfile.GetMetadataDir()
-	dbFilePath := filepath.Join(metadataDir, "metadata.sqlite")
+	dbFilePath := filepath.Join(dataPath, "metadata.sqlite")
 
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {

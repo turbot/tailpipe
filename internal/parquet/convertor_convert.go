@@ -231,8 +231,6 @@ func (w *Converter) insertIntoDucklake(targetTable string) (int64, error) {
 		return 0, fmt.Errorf("failed to get number of affected rows: %w", err)
 	}
 
-	slog.Debug("inserted rows into ducklake table", "table", targetTable, "count", insertedRowCount)
-
 	return insertedRowCount, nil
 }
 
