@@ -132,6 +132,8 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 	//	}()
 	//}
 
+	slog.Debug("about to insert rows into ducklake table")
+
 	rowCount, err := w.insertIntoDucklake(w.Partition.TableName)
 	if err != nil {
 		slog.Error("failed to insert into DuckLake table", "table", w.Partition.TableName, "error", err)
