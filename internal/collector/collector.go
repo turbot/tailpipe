@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
@@ -287,6 +288,15 @@ func (c *Collector) Completed() {
 // deletePartitionData deletes all parquet files in the partition between the fromTime and toTime
 func (c *Collector) deletePartitionData(ctx context.Context, fromTime, toTime time.Time) error {
 	slog.Info("Deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
+
+	// show spinner only when progress UI is not enabled
+	var spinner *statushooks.StatusSpinner
+	if !viper.GetBool(pconstants.ArgProgress) {
+		spinner = statushooks.NewStatusSpinnerHook()
+		spinner.Show()
+		defer spinner.Hide()
+		spinner.SetStatus(fmt.Sprintf("Deleting partition %s", c.partition.Name))
+	}
 	_, err := parquet.DeletePartition(ctx, c.partition, fromTime, toTime, c.db)
 	if err != nil {
 		slog.Warn("Failed to delete parquet files after the from time", "partition", c.partition.Name, "from", fromTime, "error", err)

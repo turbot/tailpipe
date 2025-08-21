@@ -9,16 +9,11 @@ import (
 	"time"
 
 	"github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 )
 
 func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time, db *database.DuckDb) (rowCount int, err error) {
-	spinner := statushooks.NewStatusSpinnerHook()
-	spinner.Show()
-	defer spinner.Hide()
-	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
 	// TODO #DL https://github.com/turbot/tailpipe/issues/505
 	//  if we are using s3 do not delete for now as this does not work at present (need explicit S3 support I think)
 	//  remove before release https://github.com/turbot/tailpipe/issues/520
