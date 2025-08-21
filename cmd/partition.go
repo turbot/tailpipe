@@ -17,6 +17,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -252,6 +253,12 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
 	error_helpers.FailOnError(err)
 	defer db.Close()
+
+	// show spinner while deleting the partition
+	spinner := statushooks.NewStatusSpinnerHook()
+	spinner.Show()
+	defer spinner.Hide()
+	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
 
 	rowsDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
 	error_helpers.FailOnError(err)
