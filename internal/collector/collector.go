@@ -170,7 +170,13 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, ove
 
 	// if we are overwriting, we need to delete any existing data in the partition
 	if overwrite {
-		if err := c.deletePartitionData(ctx, resolvedFromTime.Time, toTime); err != nil {
+		// show spinner while deleting the partition
+		spinner := statushooks.NewStatusSpinnerHook()
+		spinner.SetStatus(fmt.Sprintf("Deleting partition %s", c.partition.TableName))
+		spinner.Show()
+		err := c.deletePartitionData(ctx, resolvedFromTime.Time, toTime)
+		spinner.Hide()
+		if err != nil {
 			// set execution to error
 			c.execution.done(err)
 			// and return error
@@ -288,15 +294,6 @@ func (c *Collector) Completed() {
 // deletePartitionData deletes all parquet files in the partition between the fromTime and toTime
 func (c *Collector) deletePartitionData(ctx context.Context, fromTime, toTime time.Time) error {
 	slog.Info("Deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
-
-	// show spinner only when progress UI is not enabled
-	var spinner *statushooks.StatusSpinner
-	if !viper.GetBool(pconstants.ArgProgress) {
-		spinner = statushooks.NewStatusSpinnerHook()
-		spinner.Show()
-		defer spinner.Hide()
-		spinner.SetStatus(fmt.Sprintf("Deleting partition %s", c.partition.Name))
-	}
 	_, err := parquet.DeletePartition(ctx, c.partition, fromTime, toTime, c.db)
 	if err != nil {
 		slog.Warn("Failed to delete parquet files after the from time", "partition", c.partition.Name, "from", fromTime, "error", err)

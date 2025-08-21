@@ -274,11 +274,10 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 
 	// show spinner while deleting the partition
 	spinner := statushooks.NewStatusSpinnerHook()
-	spinner.Show()
-	defer spinner.Hide()
 	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
-
+	spinner.Show()
 	rowsDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
+	spinner.Hide()
 	error_helpers.FailOnError(err)
 
 	// build the collection state path
