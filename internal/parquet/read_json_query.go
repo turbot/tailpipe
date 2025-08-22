@@ -2,37 +2,39 @@ package parquet
 
 import (
 	"fmt"
-	"github.com/turbot/tailpipe/internal/config"
 	"log/slog"
 	"strings"
+
+	"github.com/turbot/tailpipe/internal/config"
 
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
-// buildReadJsonQueryFormat builds a format string used to construct the conversion query which reads from the source ndjson file
+// buildReadJsonQueryFormat creates a SQL query template for reading JSONL files with DuckDB.
+//
+// Returns a format string with a %s placeholder for the JSON filename that gets filled in when executed.
+// The query is built by constructing a select clause for each field in the conversion schema,
+// adding tp_index from partition config, and applying any partition filters (e.g. date filer)
+//
+// Example output:
+//
+//	select "user_id" as "user_id", "name" as "user_name", "created_at" as "tp_timestamp",
+//	       "default" as "tp_index"
+//	from read_ndjson(%s, columns = {"user_id": 'varchar', "name": 'varchar', "created_at": 'timestamp'})
 func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partition *config.Partition) string {
-	var tpTimestampMapped bool
-
 	// first build the select clauses - use the table def columns
 	var selectClauses []string
 	for _, column := range conversionSchema.Columns {
 
 		var selectClause string
 		switch column.ColumnName {
-		case constants.TpDate:
-			// skip this column - it is derived from tp_timestamp
-			continue
 		case constants.TpIndex:
 			// NOTE: we ignore tp_index in the source data and ONLY add it based ont he default or configured value
 			slog.Warn("tp_index is a reserved column name and should not be used in the source data. It will be added automatically based on the configured value.")
 			// skip this column - it will be populated manually using the partition config
 			continue
-		case constants.TpTimestamp:
-			tpTimestampMapped = true
-			// fallthrough to populate the select clasue as normal
-			fallthrough
 		default:
 			selectClause = getSelectSqlForField(column)
 		}
@@ -43,14 +45,6 @@ func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partiti
 	// add the tp_index - this is determined by the partition - it defaults to "default" but may be overridden in the partition config
 	// NOTE: we DO NOT wrap the tp_index expression in quotes - that will have already been done as part of partition config validation
 	selectClauses = append(selectClauses, fmt.Sprintf("\t%s as \"tp_index\"", partition.TpIndexColumn))
-
-	// if we have a mapping for tp_timestamp, add tp_date as well
-	if tpTimestampMapped {
-		// Add tp_date after tp_timestamp is defined
-		selectClauses = append(selectClauses, `	case
-		when tp_timestamp is not null then date_trunc('day', tp_timestamp::timestamp)
-	end as tp_date`)
-	}
 
 	// build column definitions - these will be passed to the read_json function
 	columnDefinitions := getReadJSONColumnDefinitions(conversionSchema.SourceColumns)
@@ -88,7 +82,10 @@ func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string
 	return str.String()
 }
 
-// Return the SQL line to select the given field
+// getSelectSqlForField builds a SELECT clause for a single field based on its schema definition.
+// - If the field has a transform defined, it uses that transform expression.
+// - For struct fields, it creates a struct_pack expression to properly construct the nested structure from the source JSON data.
+// - All other field types are handled with simple column references.
 func getSelectSqlForField(column *schema.ColumnSchema) string {
 
 	// If the column has a transform, use it

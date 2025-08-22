@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe/internal/database"
@@ -15,7 +14,8 @@ type partitionFileCount struct {
 	tpTable     string
 	tpPartition string
 	tpIndex     string
-	tpDate      time.Time
+	year        string // year(tp_timestamp) from partition value
+	month       string // month(tp_timestamp) from partition value
 	fileCount   int
 }
 
@@ -48,7 +48,8 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"tp_table", partitionKey.tpTable,
 			"tp_partition", partitionKey.tpPartition,
 			"tp_index", partitionKey.tpIndex,
-			"tp_date", partitionKey.tpDate,
+			"year", partitionKey.year,
+			"month", partitionKey.month,
 			"file_count", partitionKey.fileCount,
 		)
 		// increment the source file count by the file count for this partition key
@@ -58,7 +59,8 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 				"tp_table", partitionKey.tpTable,
 				"tp_partition", partitionKey.tpPartition,
 				"tp_index", partitionKey.tpIndex,
-				"tp_date", partitionKey.tpDate,
+				"year", partitionKey.year,
+				"month", partitionKey.month,
 				"file_count", partitionKey.fileCount,
 				"error", err,
 			)
@@ -69,7 +71,8 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"tp_table", partitionKey.tpTable,
 			"tp_partition", partitionKey.tpPartition,
 			"tp_index", partitionKey.tpIndex,
-			"tp_date", partitionKey.tpDate,
+			"year", partitionKey.year,
+			"month", partitionKey.month,
 			"input_files", partitionKey.fileCount,
 			"output_files", 1,
 		)
@@ -88,7 +91,8 @@ func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, p
 			SELECT * FROM "%s"
 			WHERE tp_partition = '%s' 
 			  AND tp_index = '%s'
-			  AND tp_date = '%s'
+			  AND year(tp_timestamp) = '%s'
+			  AND month(tp_timestamp) = '%s'
 			ORDER BY tp_timestamp
 		$$
 	)`,
@@ -97,12 +101,13 @@ func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, p
 		SafeIdentifier(partitionKey.tpTable),
 		EscapeLiteral(partitionKey.tpPartition),
 		EscapeLiteral(partitionKey.tpIndex),
-		partitionKey.tpDate.Format("2006-01-02"),
+		EscapeLiteral(partitionKey.year),
+		EscapeLiteral(partitionKey.month),
 	)
 
 	if _, err := db.ExecContext(ctx, snapshotQuery); err != nil {
-		return fmt.Errorf("failed to compact and order partition entries for tp_table %s, tp_partition %s, tp_index %s, date %s: %w",
-			partitionKey.tpTable, partitionKey.tpPartition, partitionKey.tpIndex, partitionKey.tpDate.Format("2006-01-02"), err)
+		return fmt.Errorf("failed to compact and order partition entries for tp_table %s, tp_partition %s, tp_index %s, year %s, month %s: %w",
+			partitionKey.tpTable, partitionKey.tpPartition, partitionKey.tpIndex, partitionKey.year, partitionKey.month, err)
 	}
 	return nil
 }
@@ -118,16 +123,18 @@ func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, p
 	// The partition key structure is:
 	// - fpv1 (index 0): tp_partition (e.g., "2024-07")
 	// - fpv2 (index 1): tp_index (e.g., "index1")
-	// - fpv3 (index 2): tp_date
+	// - fpv3 (index 2): year(tp_timestamp) (e.g., "2024")
+	// - fpv4 (index 3): month(tp_timestamp) (e.g., "7")
 	//
 	// We group by these partition keys and count files per combination,
 	// filtering for active files (end_snapshot is null)
-	// NOTE: Assumes partitions are defined in order: tp_partition (0), tp_index (1), tp_date (2)
+	// NOTE: Assumes partitions are defined in order: tp_partition (0), tp_index (1), year(tp_timestamp) (2), month(tp_timestamp) (3)
 	query := `select 
   t.table_name as tp_table,
   fpv1.partition_value as tp_partition,
   fpv2.partition_value as tp_index,
-  fpv3.partition_value as tp_date,
+  fpv3.partition_value as year,
+  fpv4.partition_value as month,
   count(*) as file_count
 from __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df
 join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv1
@@ -136,6 +143,8 @@ join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv2
   on df.data_file_id = fpv2.data_file_id and fpv2.partition_key_index = 1
 join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv3
   on df.data_file_id = fpv3.data_file_id and fpv3.partition_key_index = 2
+join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv4
+  on df.data_file_id = fpv4.data_file_id and fpv4.partition_key_index = 3
 join __ducklake_metadata_tailpipe_ducklake.ducklake_table t
   on df.table_id = t.table_id
 where df.end_snapshot is null
@@ -143,7 +152,8 @@ group by
   t.table_name,
   fpv1.partition_value,
   fpv2.partition_value,
-  fpv3.partition_value
+  fpv3.partition_value,
+  fpv4.partition_value
 order by file_count desc;`
 
 	rows, err := db.QueryContext(ctx, query)
@@ -155,7 +165,7 @@ order by file_count desc;`
 	var partitionKeys []partitionFileCount
 	for rows.Next() {
 		var partitionKey partitionFileCount
-		if err := rows.Scan(&partitionKey.tpTable, &partitionKey.tpPartition, &partitionKey.tpIndex, &partitionKey.tpDate, &partitionKey.fileCount); err != nil {
+		if err := rows.Scan(&partitionKey.tpTable, &partitionKey.tpPartition, &partitionKey.tpIndex, &partitionKey.year, &partitionKey.month, &partitionKey.fileCount); err != nil {
 			return nil, fmt.Errorf("failed to scan partition key row: %w", err)
 		}
 		// check whether this partition key matches any of the provided patterns

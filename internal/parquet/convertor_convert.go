@@ -3,6 +3,7 @@ package parquet
 import (
 	"errors"
 	"fmt"
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"log"
 	"log/slog"
 	"os"
@@ -77,16 +78,21 @@ func (w *Converter) processChunks(chunksToProcess []int32) {
 
 func (w *Converter) chunkNumbersToFilenames(chunks []int32) ([]string, error) {
 	var filenames = make([]string, len(chunks))
+	var missingFiles []string
 	for i, chunkNumber := range chunks {
 		// build the source filename
 		jsonlFilePath := filepath.Join(w.sourceDir, table.ExecutionIdToJsonlFileName(w.executionId, chunkNumber))
 		// verify file exists
 		if _, err := os.Stat(jsonlFilePath); os.IsNotExist(err) {
-			return nil, NewConversionError(errors.New("file does not exist"), 0, jsonlFilePath)
+			missingFiles = append(missingFiles, jsonlFilePath)
 		}
 		// remove single quotes from the file path to avoid issues with SQL queries
 		escapedPath := strings.ReplaceAll(jsonlFilePath, "'", "''")
 		filenames[i] = escapedPath
+	}
+	if len(missingFiles) > 0 {
+		return filenames, NewConversionError(fmt.Errorf("%s not found", utils.Pluralize("file", len(missingFiles))), 0, missingFiles...)
+
 	}
 	return filenames, nil
 }
@@ -177,11 +183,7 @@ func (w *Converter) copyChunkToTempTable(jsonlFilePaths []string) error {
 	// Step: Prepare the temp table from JSONL input
 	//
 	// - Drop the temp table if it exists
-	// - Create a new temp table by reading from the JSONL file
-	// - Add a row ID (row_number) for stable ordering and chunking
-	// - Wrap the original select query to allow dot-notation filtering on nested structs later
-	// - Sort the data by partition key columns (only tp_index, tp_date - there will only be a single table and partition)
-	// so that full partitions can be selected using only row offsets (because partitions are stored contiguously)
+	// - Create a new temp table by executing the dselect query
 	queryBuilder.WriteString(fmt.Sprintf(`
 drop table if exists temp_data;
 

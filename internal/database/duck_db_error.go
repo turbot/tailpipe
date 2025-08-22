@@ -7,6 +7,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -161,20 +162,34 @@ func newInvalidParquetError(parquetFilePath string) error {
 		parquetFilePath: parquetFilePath,
 	}
 
+	var year, month int
+
 	// Extract table, partition and date from path components
 	parts := strings.Split(parquetFilePath, "/")
 	for _, part := range parts {
-		if strings.HasPrefix(part, "tp_table=") {
+		switch {
+
+		case strings.HasPrefix(part, "tp_table="):
 			err.table = strings.TrimPrefix(part, "tp_table=")
-		} else if strings.HasPrefix(part, "tp_partition=") {
+		case strings.HasPrefix(part, "tp_partition="):
 			err.partition = strings.TrimPrefix(part, "tp_partition=")
-		} else if strings.HasPrefix(part, "tp_date=") {
-			dateString := strings.TrimPrefix(part, "tp_date=")
-			date, parseErr := time.Parse("2006-01-02", dateString)
+		case strings.HasPrefix(part, "year="):
+			yearString := strings.TrimPrefix(part, "year=")
+			y, parseErr := strconv.Atoi(yearString)
 			if parseErr == nil {
-				err.date = date
+				year = y
+			}
+		case strings.HasPrefix(part, "month="):
+			monthString := strings.TrimPrefix(part, "month=")
+			m, parseErr := strconv.Atoi(monthString)
+			if parseErr == nil {
+				month = m
 			}
 		}
+	}
+	// if we have a year and month, set the error date
+	if year > 0 && month > 0 {
+		err.date = time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	}
 	return err
 }

@@ -110,8 +110,8 @@ func Test_executeWithParquetErrorRetry(t *testing.T) {
 
 	// Helper function to create a test file with proper path structure
 	mkTestFile := func(attempt int) string {
-		// Create a path that matches the expected format: tp_table=aws_cloudtrail/tp_partition=cloudtrail/tp_date=2024-03-20/test.parquet.N
-		path := filepath.Join(tmpDir, "tp_table=aws_cloudtrail", "tp_partition=cloudtrail", "tp_date=2024-03-20")
+		// Create a path that matches the expected format: tp_table=aws_cloudtrail/tp_partition=cloudtrail/year=2024/month=03/test.parquet
+		path := filepath.Join(tmpDir, "tp_table=aws_cloudtrail", "tp_partition=cloudtrail", "year=2024", "month=03")
 		if err := os.MkdirAll(path, 0755); err != nil {
 			t.Fatalf("failed to create test directory: %v", err)
 		}

@@ -230,9 +230,9 @@ func generateRowData(rowIndex int, partition *config.Partition, tableSchema *sch
 	rowMap := make(map[string]any, len(tableSchema.Columns))
 	timestamp := fromTime.Add(time.Duration(rowIndex) * timestampInterval).Format("2006-01-02 15:04:05")
 
-	// Populate row map (skip tp_index and tp_date)
+	// Populate row map (skip tp_index)
 	for _, column := range tableSchema.Columns {
-		if column.ColumnName == "tp_index" || column.ColumnName == "tp_date" {
+		if column.ColumnName == "tp_index" {
 			continue
 		}
 
@@ -360,7 +360,7 @@ func buildsyntheticchema(columns int) *schema.TableSchema {
 	// Create a basic schema with the required number of columns
 	// Start with required tp_ fields
 	s := &schema.TableSchema{
-		Columns: make([]*schema.ColumnSchema, 0, columns+5), // +5 for tp_ fields (including tp_index and tp_date)
+		Columns: make([]*schema.ColumnSchema, 0, columns+4), // +4 for tp_ fields
 	}
 
 	// Add required tp_ fields first
@@ -373,7 +373,6 @@ func buildsyntheticchema(columns int) *schema.TableSchema {
 		{"tp_partition", "VARCHAR", "Partition identifier"},
 		{"tp_table", "VARCHAR", "Table identifier"},
 		{"tp_index", "VARCHAR", "Index identifier"},
-		{"tp_date", "VARCHAR", "Date identifier"},
 	}
 
 	for _, tpField := range tpFields {
@@ -582,65 +581,3 @@ func generateStructValue(column *schema.ColumnSchema, rowIndex int) any {
 	}
 	return result
 }
-
-// writeOptimizedChunkToJSONL implements an optimized approach for faster JSONL writing
-// It uses buffered I/O and direct marshaling for better performance
-//func writeOptimizedChunkToJSONL(filepath string, tableSchema *schema.TableSchema, rows int, startRowIndex int, partition *config.Partition, fromTime time.Time, timestampInterval time.Duration) error {
-//	file, err := os.Create(filepath)
-//	if err != nil {
-//		return fmt.Errorf("failed to create file %s: %w", filepath, err)
-//	}
-//	defer file.Close()
-//
-//	// Use buffered writer for better I/O performance
-//	bufWriter := bufio.NewWriter(file)
-//	defer bufWriter.Flush()
-//
-//	// Pre-allocate the row map to avoid repeated allocations
-//	rowMap := make(map[string]any, len(tableSchema.Columns))
-//
-//	// Write each row
-//	for i := 0; i < rows; i++ {
-//		rowIndex := startRowIndex + i
-//		timestamp := fromTime.Add(time.Duration(rowIndex) * timestampInterval).Format("2006-01-02 15:04:05")
-//
-//		// Clear the map for reuse
-//		for k := range rowMap {
-//			delete(rowMap, k)
-//		}
-//
-//		// Populate row map (skip tp_index and tp_date)
-//		for _, column := range tableSchema.Columns {
-//			if column.ColumnName == "tp_index" || column.ColumnName == "tp_date" {
-//				continue
-//			}
-//
-//			switch column.ColumnName {
-//			case "tp_timestamp":
-//				rowMap[column.ColumnName] = timestamp
-//			case "tp_partition":
-//				rowMap[column.ColumnName] = partition.ShortName
-//			case "tp_table":
-//				rowMap[column.ColumnName] = partition.TableName
-//			default:
-//				// Generate synthetic data for other columns
-//				rowMap[column.ColumnName] = generateSyntheticValue(column, rowIndex)
-//			}
-//		}
-//
-//		// Marshal to bytes and write directly
-//		data, err := json.Marshal(rowMap)
-//		if err != nil {
-//			return fmt.Errorf("failed to marshal row %d: %w", rowIndex, err)
-//		}
-//
-//		if _, err := bufWriter.Write(data); err != nil {
-//			return fmt.Errorf("failed to write row %d: %w", rowIndex, err)
-//		}
-//		if _, err := bufWriter.Write([]byte{'\n'}); err != nil {
-//			return fmt.Errorf("failed to write newline for row %d: %w", rowIndex, err)
-//		}
-//	}
-//
-//	return nil
-//}

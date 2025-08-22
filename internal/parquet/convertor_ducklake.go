@@ -35,9 +35,7 @@ func (w *Converter) createDuckLakeTable(tableName string) error {
 
 	// Set partitioning using ALTER TABLE
 	// TODO need to investigate impact of ordering issues wrt to merge_adjacent files etc https://github.com/turbot/tailpipe/issues/503
-	//partitionColumns := []string{constants.TpPartition, constants.TpIndex, constants.TpDate}
-	//partitionColumns := []string{constants.TpPartition, constants.TpIndex, fmt.Sprintf("month(%s)", constants.TpTimestamp)}
-	// partition by the year and month
+	// partition by the partition, index, year and month
 	partitionColumns := []string{constants.TpPartition, constants.TpIndex, fmt.Sprintf("year(%s)", constants.TpTimestamp), fmt.Sprintf("month(%s)", constants.TpTimestamp)}
 	alterTableSQL := fmt.Sprintf(`alter table "%s" set partitioned by (%s);`,
 		tableName,

@@ -40,7 +40,7 @@ func DeletePartition(ctx context.Context, partition *config.Partition, from, to 
 
 	// build a delete query for the partition
 	// Note: table names cannot be parameterized, so we use string formatting for the table name
-	query := fmt.Sprintf(`delete from "%s" where tp_partition = ? and tp_date >= ? and tp_date <= ?`, partition.TableName)
+	query := fmt.Sprintf(`delete from "%s" where tp_partition = ? and tp_timestamp >= ? and tp_timestamp <= ?`, partition.TableName)
 	// Execute the query with parameters for the partition and date range
 	result, err := db.ExecContext(ctx, query, partition.ShortName, from, to)
 	if err != nil {
