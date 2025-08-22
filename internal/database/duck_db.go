@@ -61,7 +61,8 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	}
 	if w.ducklakeEnabled {
 		dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-		// TODO #DL for now check env for data dir override https://github.com/turbot/tailpipe/issues/499
+		// TODO #DL tactical - for now check env for data dir override
+		// remove this for prod release https://github.com/turbot/tailpipe/issues/520
 		if envDir := os.Getenv("TAILPIPE_DATA_DIR"); envDir != "" {
 			dataDir = envDir
 		}

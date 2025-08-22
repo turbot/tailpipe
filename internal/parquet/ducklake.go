@@ -16,6 +16,7 @@ import (
 func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time, db *database.DuckDb) (rowCount int, err error) {
 	// TODO #DL https://github.com/turbot/tailpipe/issues/505
 	//  if we are using s3 do not delete for now as this does not work at present (need explicit S3 support I think)
+	//  remove before release https://github.com/turbot/tailpipe/issues/520
 	if envDir := os.Getenv("TAILPIPE_DATA_DIR"); strings.HasPrefix(envDir, "s3") {
 		slog.Warn("Skipping partition deletion for S3 data source",
 			"partition", partition.TableName,
