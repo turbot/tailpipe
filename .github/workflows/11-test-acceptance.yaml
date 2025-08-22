@@ -16,7 +16,7 @@ env:
 jobs:
   goreleaser:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: macos-13
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -69,16 +69,16 @@ jobs:
           ls -al $GITHUB_WORKSPACE/tailpipe
           sudo chown -R runner:docker $GITHUB_WORKSPACE/tailpipe/dist
           mkdir ~/artifacts
-          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.linux.amd64.tar.gz ~/artifacts/linux.tar.gz
+          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.darwin.amd64.tar.gz ~/artifacts/darwin.tar.gz
 
       - name: List Build Artifacts
         run: ls -l ~/artifacts
 
-      - name: Save Linux Build Artifact
+      - name: Save Darwin Build Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: build-artifact-linux
-          path: ~/artifacts/linux.tar.gz
+          name: build-artifact-darwin
+          path: ~/artifacts/darwin.tar.gz
           if-no-files-found: error
 
   acceptance_test:
@@ -87,7 +87,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-latest]
+        platform: [macos-13]
         test_block:
           - "all_column_types"
           - "from_and_to"
@@ -120,17 +120,17 @@ jobs:
 
       - name: Download Linux Build Artifacts
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
-        if: ${{ matrix.platform == 'ubuntu-latest' }}
+        if: ${{ matrix.platform == 'macos-13' }}
         with:
-          name: build-artifact-linux
+          name: build-artifact-darwin
           path: ~/artifacts
 
-      - name: Extract Ubuntu Artifacts and Install Binary
-        if: ${{ matrix.platform == 'ubuntu-latest' }}
+      - name: Extract Darwin Artifacts and Install Binary
+        if: ${{ matrix.platform == 'macos-13' }}
         run: |
           mkdir ~/build
-          tar -xf ~/artifacts/linux.tar.gz -C ~/build
-
+          tar -xf ~/artifacts/darwin.tar.gz -C ~/build
+      
       - name: Set PATH
         run: |
           echo "PATH=$PATH:$HOME/build:$GTIHUB_WORKSPACE/tailpipe/tests/acceptance/lib/bats-core/libexec" >> $GITHUB_ENV
@@ -177,10 +177,10 @@ jobs:
     # if: ${{ needs.acceptance_test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Clean up Linux Build
+      - name: Clean up Darwin Build
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
-          name: build-artifact-linux
+          name: build-artifact-darwin
           failOnError: true
 
       - name: Clean up Darwin Build
