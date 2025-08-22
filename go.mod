@@ -23,7 +23,6 @@ require (
 	github.com/turbot/tailpipe-plugin-sdk v0.9.2
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
-
 )
 
 require (

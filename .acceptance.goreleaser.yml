@@ -5,13 +5,13 @@ builds:
   - id: tailpipe-linux-amd64
     binary: tailpipe
     goos:
-      - linux
+      - darwin
     goarch:
       - amd64
 
     env:
-      - CC=x86_64-linux-gnu-gcc
-      - CXX=x86_64-linux-gnu-g++
+      - CC=oa64-clang
+      - CXX=oa64-clang++
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
