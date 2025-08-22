@@ -37,7 +37,6 @@ func TestLoadTailpipeConfig(t *testing.T) {
 			want: &config.TailpipeConfig{
 				PluginVersions: map[string]*versionfile.InstalledVersion{},
 				Partitions: map[string]*config.Partition{
-					
 					"aws_cloudtrail_log.cloudtrail_logs": {
 						TableName: "aws_cloudtrail_log",
 						Source: config.Source{
@@ -89,8 +88,8 @@ func TestLoadTailpipeConfig(t *testing.T) {
 								),
 								Range: hclhelpers.NewRange(hcl.Range{
 									Filename: "test_data/static_table_config/resources.tpc",
-									Start:    hcl.Pos{Line: 15, Column: 6, Byte:408},
-									End:      hcl.Pos{Line: 21, Column: 28, Byte:628},
+									Start:    hcl.Pos{Line: 15, Column: 6, Byte: 408},
+									End:      hcl.Pos{Line: 21, Column: 28, Byte: 628},
 								}),
 							},
 						},
@@ -98,8 +97,8 @@ func TestLoadTailpipeConfig(t *testing.T) {
 						Config: []byte("    plugin = \"aws\"\n"),
 						ConfigRange: hclhelpers.NewRange(hcl.Range{
 							Filename: "test_data/static_table_config/resources.tpc",
-							Start:    hcl.Pos{Line: 13, Column: 5, Byte:357},
-							End:      hcl.Pos{Line: 13, Column: 19, Byte:371},
+							Start:    hcl.Pos{Line: 13, Column: 5, Byte: 357},
+							End:      hcl.Pos{Line: 13, Column: 19, Byte: 371},
 						}),
 					},
 				},
@@ -207,8 +206,8 @@ func TestLoadTailpipeConfig(t *testing.T) {
 						},
 					},
 				},
-				Connections:  map[string]*config.TailpipeConnection{},
-				Formats:      map[string]*config.Format{
+				Connections: map[string]*config.TailpipeConnection{},
+				Formats: map[string]*config.Format{
 					"delimited.csv_default_logs": {
 						Type: "delimited",
 						HclResourceImpl: modconfig.HclResourceImpl{
@@ -258,8 +257,8 @@ func TestLoadTailpipeConfig(t *testing.T) {
 							),
 							Range: hclhelpers.NewRange(hcl.Range{
 								Filename: "test_data/static_table_config/resources.tpc",
-								Start:    hcl.Pos{Line: 38, Column: 5, Byte:687},
-								End:      hcl.Pos{Line: 39, Column: 30, Byte:741},
+								Start:    hcl.Pos{Line: 38, Column: 5, Byte: 687},
+								End:      hcl.Pos{Line: 39, Column: 30, Byte: 741},
 							}),
 						},
 					},
