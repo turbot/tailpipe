@@ -5,6 +5,7 @@
 *.so
 *.dylib
 /test_apps/
+/memtest
 # Editor cache and lock files
 *.swp
 *.swo
