@@ -59,6 +59,11 @@ jobs:
           go clean -testcache
           go test -timeout 30s ./... -test.v
 
+      - name: Build Sysroot for C++17/C++20 Support
+        run: |-
+          cd tailpipe
+          make build-sysroot
+
       - name: Build
         run: |-
           cd tailpipe
@@ -69,16 +74,16 @@ jobs:
           ls -al $GITHUB_WORKSPACE/tailpipe
           sudo chown -R runner:docker $GITHUB_WORKSPACE/tailpipe/dist
           mkdir ~/artifacts
-          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.darwin.amd64.tar.gz ~/artifacts/darwin.tar.gz
+          mv $GITHUB_WORKSPACE/tailpipe/dist/tailpipe.linux.amd64.tar.gz ~/artifacts/linux.tar.gz
 
       - name: List Build Artifacts
         run: ls -l ~/artifacts
 
-      - name: Save Darwin Build Artifact
+      - name: Save Linux Build Artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: build-artifact-darwin
-          path: ~/artifacts/darwin.tar.gz
+          name: build-artifact-linux
+          path: ~/artifacts/linux.tar.gz
           if-no-files-found: error
 
   acceptance_test:
@@ -87,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-13]
+        platform: [ubuntu-latest]
         test_block:
           - "all_column_types"
           - "from_and_to"
@@ -118,16 +123,16 @@ jobs:
   
       - name: Download Linux Build Artifacts
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
-        if: ${{ matrix.platform == 'macos-13' }}
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
         with:
-          name: build-artifact-darwin
+          name: build-artifact-linux
           path: ~/artifacts
 
-      - name: Extract Darwin Artifacts and Install Binary
-        if: ${{ matrix.platform == 'macos-13' }}
+      - name: Extract Linux Artifacts and Install Binary
+        if: ${{ matrix.platform == 'ubuntu-latest' }}
         run: |
           mkdir ~/build
-          tar -xf ~/artifacts/darwin.tar.gz -C ~/build
+          tar -xf ~/artifacts/tailpipe.linux.amd64.tar.gz -C ~/build
       
       - name: Set PATH
         run: |
@@ -175,14 +180,14 @@ jobs:
     # if: ${{ needs.acceptance_test.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Clean up Darwin Build
+      - name: Clean up Linux Build
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
-          name: build-artifact-darwin
+          name: build-artifact-linux
           failOnError: true
 
-      - name: Clean up Darwin Build
+      - name: Clean up Linux Build
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
-          name: build-artifact-darwin
+          name: build-artifact-linux
           failOnError: true
