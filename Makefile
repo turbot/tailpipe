@@ -14,8 +14,8 @@ build:
 
 .PHONY: build-sysroot
 build-sysroot:
-	docker build -f Dockerfile.sysroot -t tailpipe-sysroot:bookworm .
-	docker create --name temp-sysroot tailpipe-sysroot:bookworm
+	docker build -f Dockerfile.sysroot -t tailpipe-sysroot:noble .
+	docker create --name temp-sysroot tailpipe-sysroot:noble
 	docker cp temp-sysroot:/sysroot ./sysroot
 	docker rm temp-sysroot
 
@@ -24,12 +24,12 @@ release-dry-run: build-sysroot
 	@docker run \
 		--rm \
 		-e CGO_ENABLED=1 \
-		-e PKG_CONFIG_SYSROOT_DIR=/sysroot/linux/amd64-bookworm \
-		-e PKG_CONFIG_PATH=/sysroot/linux/amd64-bookworm/usr/local/lib/pkgconfig \
-		-e CC=/sysroot/linux/amd64-bookworm/usr/bin/gcc \
-		-e CXX=/sysroot/linux/amd64-bookworm/usr/bin/g++ \
-		-e CGO_LDFLAGS="-L/sysroot/linux/amd64-bookworm/usr/lib/x86_64-linux-gnu -L/sysroot/linux/amd64-bookworm/lib/x86_64-linux-gnu -lstdc++ -static-libstdc++" \
-		-e CGO_CXXFLAGS="-I/sysroot/linux/amd64-bookworm/usr/include/c++/12 -I/sysroot/linux/amd64-bookworm/usr/include/x86_64-linux-gnu/c++/12" \
+		-e PKG_CONFIG_SYSROOT_DIR=/sysroot/linux/amd64-noble \
+		-e PKG_CONFIG_PATH=/sysroot/linux/amd64-noble/usr/local/lib/pkgconfig \
+		-e CC=/sysroot/linux/amd64-noble/usr/bin/gcc-13 \
+		-e CXX=/sysroot/linux/amd64-noble/usr/bin/g++-13 \
+		-e CGO_LDFLAGS="-L/sysroot/linux/amd64-noble/usr/lib/x86_64-linux-gnu -L/sysroot/linux/amd64-noble/lib/x86_64-linux-gnu -lstdc++ -static-libstdc++" \
+		-e CGO_CXXFLAGS="-I/sysroot/linux/amd64-noble/usr/include/c++/13 -I/sysroot/linux/amd64-noble/usr/include/x86_64-linux-gnu/c++/13" \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
@@ -45,12 +45,12 @@ release-acceptance: build-sysroot
 	@docker run \
 		--rm \
 		-e CGO_ENABLED=1 \
-		-e PKG_CONFIG_SYSROOT_DIR=/sysroot/linux/amd64-bookworm \
-		-e PKG_CONFIG_PATH=/sysroot/linux/amd64-bookworm/usr/local/lib/pkgconfig \
-		-e CC=/sysroot/linux/amd64-bookworm/usr/bin/gcc \
-		-e CXX=/sysroot/linux/amd64-bookworm/usr/bin/g++ \
-		-e CGO_LDFLAGS="-L/sysroot/linux/amd64-bookworm/usr/lib/x86_64-linux-gnu -L/sysroot/linux/amd64-bookworm/lib/x86_64-linux-gnu -lstdc++ -static-libstdc++" \
-		-e CGO_CXXFLAGS="-I/sysroot/linux/amd64-bookworm/usr/include/c++/12 -I/sysroot/linux/amd64-bookworm/usr/include/x86_64-linux-gnu/c++/12" \
+		-e PKG_CONFIG_SYSROOT_DIR=/sysroot/linux/amd64-noble \
+		-e PKG_CONFIG_PATH=/sysroot/linux/amd64-noble/usr/local/lib/pkgconfig \
+		-e CC=/sysroot/linux/amd64-noble/usr/bin/gcc-13 \
+		-e CXX=/sysroot/linux/amd64-noble/usr/bin/g++-13 \
+		-e CGO_LDFLAGS="-L/sysroot/linux/amd64-noble/usr/lib/x86_64-linux-gnu -L/sysroot/linux/amd64-noble/lib/x86_64-linux-gnu -lstdc++ -static-libstdc++" \
+		-e CGO_CXXFLAGS="-I/sysroot/linux/amd64-noble/usr/include/c++/13 -I/sysroot/linux/amd64-noble/usr/include/x86_64-linux-gnu/c++/13" \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
@@ -70,12 +70,12 @@ release: build-sysroot
 	docker run \
 		--rm \
 		-e CGO_ENABLED=1 \
-		-e PKG_CONFIG_SYSROOT_DIR=/sysroot/linux/amd64-bookworm \
-		-e PKG_CONFIG_PATH=/sysroot/linux/amd64-bookworm/usr/local/lib/pkgconfig \
-		-e CC=/sysroot/linux/amd64-bookworm/usr/bin/gcc \
-		-e CXX=/sysroot/linux/amd64-bookworm/usr/bin/g++ \
-		-e CGO_LDFLAGS="-L/sysroot/linux/amd64-bookworm/usr/lib/x86_64-linux-gnu -L/sysroot/linux/amd64-bookworm/lib/x86_64-linux-gnu -lstdc++ -static-libstdc++" \
-		-e CGO_CXXFLAGS="-I/sysroot/linux/amd64-bookworm/usr/include/c++/12 -I/sysroot/linux/amd64-bookworm/usr/include/x86_64-linux-gnu/c++/12" \
+		-e PKG_CONFIG_SYSROOT_DIR=/sysroot/linux/amd64-noble \
+		-e PKG_CONFIG_PATH=/sysroot/linux/amd64-noble/usr/local/lib/pkgconfig \
+		-e CC=/sysroot/linux/amd64-noble/usr/bin/gcc-13 \
+		-e CXX=/sysroot/linux/amd64-noble/usr/bin/g++-13 \
+		-e CGO_LDFLAGS="-L/sysroot/linux/amd64-noble/usr/lib/x86_64-linux-gnu -L/sysroot/linux/amd64-noble/lib/x86_64-linux-gnu -lstdc++ -static-libstdc++" \
+		-e CGO_CXXFLAGS="-I/sysroot/linux/amd64-noble/usr/include/c++/13 -I/sysroot/linux/amd64-noble/usr/include/x86_64-linux-gnu/c++/13" \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \

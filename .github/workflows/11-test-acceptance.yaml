@@ -63,6 +63,8 @@ jobs:
         run: |-
           cd tailpipe
           make build-sysroot
+          echo "=== Verifying AMD64 Libraries ==="
+          find sysroot/ -name "libstdc++.so*" -path "*/x86_64-linux-gnu/*" | head -3
 
       - name: Build
         run: |-

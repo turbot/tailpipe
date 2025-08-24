@@ -17,8 +17,8 @@ jobs:
         
       - name: Build Sysroot
         run: |
-          docker build -f Dockerfile.sysroot -t tailpipe-sysroot:bookworm .
-          docker create --name temp-sysroot tailpipe-sysroot:bookworm
+          docker build -f Dockerfile.sysroot -t tailpipe-sysroot:noble .
+          docker create --name temp-sysroot tailpipe-sysroot:noble
           docker cp temp-sysroot:/sysroot ./sysroot
           docker rm temp-sysroot
           
@@ -28,6 +28,8 @@ jobs:
           find sysroot/ -type f -name "libstdc++*" | head -10
           echo "=== AMD64 Libraries ==="
           find sysroot/ -name "*x86_64*" -o -name "*amd64*" | head -10
+          echo "=== C++ Standard Library Version ==="
+          find sysroot/ -name "libstdc++.so*" -path "*/x86_64-linux-gnu/*" | head -5
           
       - name: Test Release Build
         run: |

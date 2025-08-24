@@ -1,20 +1,26 @@
-FROM debian:bookworm-slim
+FROM ubuntu:noble
 
 # Install the newer C++ standard library and development packages
 RUN apt-get update && apt-get install -y \
-    libstdc++-12-dev \
-    libgcc-12-dev \
+    gcc-13 \
+    g++-13 \
+    libstdc++-13-dev \
+    libgcc-13-dev \
     libc6-dev \
     libc6 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a clean sysroot structure
-RUN mkdir -p /sysroot/linux/amd64-bookworm
+RUN mkdir -p /sysroot/linux/amd64-noble
 
-# Copy the essential libraries and headers from the current image
-COPY --from=debian:bookworm-slim /lib /sysroot/linux/amd64-bookworm/lib
-RUN if [ -d "/lib64" ]; then cp -r /lib64 /sysroot/linux/amd64-bookworm/; fi
-COPY --from=debian:bookworm-slim /usr /sysroot/linux/amd64-bookworm/usr
-COPY --from=debian:bookworm-slim /bin /sysroot/linux/amd64-bookworm/bin
+# Copy the essential libraries and headers from the current image (after package installation)
+RUN cp -r /lib /sysroot/linux/amd64-noble/ && \
+    if [ -d "/lib64" ]; then cp -r /lib64 /sysroot/linux/amd64-noble/; fi && \
+    cp -r /usr /sysroot/linux/amd64-noble/ && \
+    cp -r /bin /sysroot/linux/amd64-noble/
 
-# The sysroot is now ready to be mounted into goreleaser-cross
+# Verify we have the newer C++ standard library
+RUN echo "=== C++ Standard Library Version ===" && \
+    find /sysroot/linux/amd64-noble -name "libstdc++*" -type f | head -5 && \
+    echo "=== GCC Version ===" && \
+    /usr/bin/gcc-13 --version | head -1
