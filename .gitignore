@@ -30,3 +30,6 @@ go.work
 
 # Dist directory is created by goreleaser
 /dist
+
+# Sysroot directory is created by make build-sysroot
+/sysroot
