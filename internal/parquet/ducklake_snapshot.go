@@ -2,9 +2,12 @@ package parquet
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/turbot/tailpipe/internal/database"
 )
@@ -19,26 +22,42 @@ type partitionKey struct {
 }
 
 func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
-
 	// get a list of partition key combinations which match any of the patterns
-	// partitionKeys is a list of partitionKey structs
 	partitionKeys, err := getPartitionKeysMatchingPattern(ctx, db, patterns)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
 	}
 
 	var uncompacted = 0
-	// fail early if no matches
 	if len(partitionKeys) == 0 {
 		slog.Info("No matching partitions found for compaction")
 		return 0, nil
 	}
 
-	// now for each partition key which has more than on parquet file, compact the files by creating a new snapshot
+	// get the current max snapshot id
+	var maxSnapshotID int64
+	maxSnapshotQuery := `select max(snapshot_id) from __ducklake_metadata_tailpipe_ducklake.ducklake_snapshot`
+	if err = db.QueryRowContext(ctx, maxSnapshotQuery).Scan(&maxSnapshotID); err != nil {
+		return 0, fmt.Errorf("failed to get max snapshot ID: %w", err)
+	}
+	slog.Debug("got max snapshot ID", "max_snapshot_id", maxSnapshotID)
+
+	// Start a transaction for all partition processing
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			if rbErr := tx.Rollback(); rbErr != nil {
+				slog.Error("failed to rollback transaction", "error", rbErr)
+			}
+		}
+	}()
+
+	// Process each partition
 	for _, partitionKey := range partitionKeys {
 		if partitionKey.fileCount <= 1 {
-			// if the file count is 1 or less, we do not need to compact
-			// no need to compact, just increment the uncompacted count
 			uncompacted += partitionKey.fileCount
 			continue
 		}
@@ -51,16 +70,8 @@ func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"month", partitionKey.month,
 			"file_count", partitionKey.fileCount,
 		)
-		if err := compactAndOrderPartitionEntries(ctx, db, partitionKey); err != nil {
-			slog.Error("Failed to compact and order partition entries",
-				"tp_table", partitionKey.tpTable,
-				"tp_partition", partitionKey.tpPartition,
-				"tp_index", partitionKey.tpIndex,
-				"year", partitionKey.year,
-				"month", partitionKey.month,
-				"file_count", partitionKey.fileCount,
-				"error", err,
-			)
+
+		if err := compactAndOrderPartitionEntries(ctx, tx, partitionKey); err != nil {
 			return 0, err
 		}
 
@@ -73,99 +84,60 @@ func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"input_files", partitionKey.fileCount,
 			"output_files", 1,
 		)
+		// now delete all entries for this partition key for previou ssnapshots
+		if err := deletePreveSnapshotsForPartitionKey(ctx, tx, partitionKey, maxSnapshotID); err != nil {
+			return 0, err
+		}
+		uncompacted += partitionKey.fileCount - 1
+
 	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return uncompacted, nil
 }
 
-func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, partitionKey partitionKey) error {
-	// Start a transaction to ensure all operations succeed or fail together
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			// Rollback on error
-			if rbErr := tx.Rollback(); rbErr != nil {
-				// Log rollback error but return the original error
-				slog.Error("failed to rollback transaction", "error", rbErr)
-			}
+func compactAndOrderPartitionEntries(ctx context.Context, tx *sql.Tx, partitionKey partitionKey) error {
+	// Get the year and month as integers for date calculations
+	year, _ := strconv.Atoi(partitionKey.year)
+	month, _ := strconv.Atoi(partitionKey.month)
+
+	// Get the number of days in this month
+	daysInMonth := time.Date(year, time.Month(month+1), 0, 0, 0, 0, 0, time.UTC).Day()
+
+	// Process each day separately
+	for day := 1; day <= daysInMonth; day++ {
+		// Calculate start and end of day
+		startDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+		endDate := startDate.Add(24 * time.Hour)
+
+		// Insert ordered data for this dayshanpsti
+		insertQuery := fmt.Sprintf(`insert into "%s" 
+			select * from "%s" 
+			where tp_partition = %s
+			  and tp_index = %s
+			  and year(tp_timestamp) = %s
+			  and month(tp_timestamp) = %s
+			  and tp_timestamp >= %s
+			  and tp_timestamp < %s
+			order by tp_timestamp`,
+			partitionKey.tpTable, partitionKey.tpTable,
+			EscapeLiteral(partitionKey.tpPartition),
+			EscapeLiteral(partitionKey.tpIndex),
+			EscapeLiteral(partitionKey.year),
+			EscapeLiteral(partitionKey.month),
+			EscapeLiteral(startDate.Format("2006-01-02 15:04:05")),
+			EscapeLiteral(endDate.Format("2006-01-02 15:04:05")))
+
+		slog.Debug("compacting and ordering partition entries", "month", month, "day", day)
+		if _, err := tx.ExecContext(ctx, insertQuery); err != nil {
+			return fmt.Errorf("failed to insert ordered data for day %d: %w", day, err)
 		}
-	}()
-
-	// First, create a temporary table with the ordered data
-	tempTableName := fmt.Sprintf("temp_compact_%s_%s_%s_%s_%s",
-		partitionKey.tpTable, partitionKey.tpPartition, partitionKey.tpIndex, partitionKey.year, partitionKey.month)
-
-	createTempQuery := fmt.Sprintf(`create temp table "%s" as 
-		select * from "%s" 
-		where tp_partition = %s
-		  and tp_index = %s
-		  and year(tp_timestamp) = %s
-		  and month(tp_timestamp) = %s
-		order by tp_timestamp`,
-		tempTableName, partitionKey.tpTable,
-		EscapeLiteral(partitionKey.tpPartition),
-		EscapeLiteral(partitionKey.tpIndex),
-		EscapeLiteral(partitionKey.year),
-		EscapeLiteral(partitionKey.month))
-
-	slog.Debug("Inserting date into temp table", "query", createTempQuery)
-
-	if _, err = tx.ExecContext(ctx, createTempQuery); err != nil {
-		return fmt.Errorf("failed to create temp table for compaction: %w", err)
+		slog.Debug("finished compacting and ordering partition entries", "month", month, "day", day)
 	}
-
-	// Delete the original data
-
-	deleteQuery := fmt.Sprintf(`delete from "%s" 
-		where tp_partition = %s
-		  and tp_index = %s
-		  and year(tp_timestamp) = %s
-		  and month(tp_timestamp) = %s`,
-		partitionKey.tpTable,
-		EscapeLiteral(partitionKey.tpPartition),
-		EscapeLiteral(partitionKey.tpIndex),
-		EscapeLiteral(partitionKey.year),
-		EscapeLiteral(partitionKey.month))
-
-	slog.Debug("Temp table created, now deleting original data", "query", deleteQuery)
-
-	if _, err = tx.ExecContext(ctx, deleteQuery); err != nil {
-		return fmt.Errorf("failed to delete original partition data: %w", err)
-	}
-
-	// Insert the ordered data back
-	insertQuery := fmt.Sprintf(`insert into "%s" select * from "%s"`,
-		partitionKey.tpTable, tempTableName)
-
-	slog.Debug("Old data deleted, now inserting ordered data", "query", insertQuery)
-
-	if _, err = tx.ExecContext(ctx, insertQuery); err != nil {
-		return fmt.Errorf("failed to insert compacted data: %w", err)
-	}
-
-	// Drop the temporary table
-	dropQuery := fmt.Sprintf(`drop table "%s"`, tempTableName)
-	slog.Debug("Compacted and ordered data inserted, dropping temp table", "query", dropQuery)
-
-	if _, err = tx.ExecContext(ctx, dropQuery); err != nil {
-		return fmt.Errorf("failed to drop temp table: %w", err)
-	}
-
-	slog.Debug("temp table dropped, committing transaction")
-	// Commit the transaction
-	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("failed to commit transaction: %w", err)
-	}
-
-	slog.Debug("Compaction complete",
-		"tp_table", partitionKey.tpTable,
-		"tp_partition", partitionKey.tpPartition,
-		"tp_index", partitionKey.tpIndex,
-		"year", partitionKey.year,
-		"month", partitionKey.month,
-		"file_count", partitionKey.fileCount)
 
 	return nil
 }
@@ -262,4 +234,35 @@ func SafeIdentifier(identifier string) string {
 func EscapeLiteral(literal string) string {
 	escaped := strings.ReplaceAll(literal, `'`, `''`)
 	return `'` + escaped + `'`
+}
+
+// deletePreveSnapshotsForPartitionKey deletes all entries for a specific partition key
+// that have snapshot IDs less than or equal to the given snapshot ID
+func deletePreveSnapshotsForPartitionKey(ctx context.Context, tx *sql.Tx, partitionKey partitionKey, oldMaxSnapshotId int64) error {
+	deleteQuery := fmt.Sprintf(`delete from "%s" 
+	where tp_partition = %s
+	  and tp_index = %s
+	  and year(tp_timestamp) = %s
+	  and month(tp_timestamp) = %s
+	  and snapshot_id <= %d`,
+		partitionKey.tpTable,
+		EscapeLiteral(partitionKey.tpPartition),
+		EscapeLiteral(partitionKey.tpIndex),
+		EscapeLiteral(partitionKey.year),
+		EscapeLiteral(partitionKey.month),
+		oldMaxSnapshotId)
+
+	slog.Debug("deleting previous snapshots for partition",
+		"tp_table", partitionKey.tpTable,
+		"tp_partition", partitionKey.tpPartition,
+		"tp_index", partitionKey.tpIndex,
+		"year", partitionKey.year,
+		"month", partitionKey.month,
+		"delete_before_snapshot_id", oldMaxSnapshotId)
+
+	if _, err := tx.ExecContext(ctx, deleteQuery); err != nil {
+		return fmt.Errorf("failed to delete previous snapshots for partition: %w", err)
+	}
+
+	return nil
 }

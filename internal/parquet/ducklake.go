@@ -80,22 +80,31 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []Parti
 	status.Source = startingFileCount
 
 	// expire previous snapshots
-	if err := expirePrevSnapshots(ctx, db); err != nil {
-		slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
-		return nil, err
-	}
-
-	// merge the the parquet files in the duckdb database
-	//if err := mergeParquetFiles(ctx, db); err != nil {
-	//	slog.Error("Failed to merge DuckLake parquet files", "error", err)
+	//if err := expirePrevSnapshots(ctx, db); err != nil {
+	//	slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
 	//	return nil, err
 	//}
+
 	uncompacted, err := compactDataFilesManual(ctx, db, patterns)
 	if err != nil {
 		slog.Error("Failed to compact DuckLake parquet files", "error", err)
 		return nil, err
 	}
 	status.Uncompacted = uncompacted
+
+	// now expire unused snapshots
+	if err := expirePrevSnapshots(ctx, db); err != nil {
+		slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
+		return nil, err
+	}
+
+	// so we should now have multiple, time ordered parquet files
+	// now merge the the parquet files in the duckdb database
+	// the will minimise the parquet file count to the optimum
+	if err := mergeParquetFiles(ctx, db); err != nil {
+		slog.Error("Failed to merge DuckLake parquet files", "error", err)
+		return nil, err
+	}
 
 	// delete unused files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
