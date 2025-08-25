@@ -18,6 +18,8 @@ builds:
       - CXX=o64-clang++
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
 
   # Darwin ARM64 build with clang
   - id: tailpipe-darwin-arm64
@@ -31,6 +33,8 @@ builds:
       - CXX=oa64-clang++
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
 
 archives:
   - id: darwin
