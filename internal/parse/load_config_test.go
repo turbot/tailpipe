@@ -2,6 +2,8 @@ package parse
 
 import (
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -14,7 +16,305 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-// TODO enable and fix this test https://github.com/turbot/tailpipe/issues/506
+func equalPluginVersions(got, want map[string]*versionfile.InstalledVersion) bool {
+	if (got == nil) != (want == nil) {
+		return false
+	}
+	if got == nil {
+		return true
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	for k, v := range got {
+		wv, ok := want[k]
+		if !ok || (v == nil) != (wv == nil) {
+			return false
+		}
+		if v != nil {
+			if v.Name != wv.Name || v.Version != wv.Version || v.ImageDigest != wv.ImageDigest || v.BinaryDigest != wv.BinaryDigest || v.BinaryArchitecture != wv.BinaryArchitecture || v.InstalledFrom != wv.InstalledFrom || v.StructVersion != wv.StructVersion {
+				return false
+			}
+			if (v.Metadata == nil) != (wv.Metadata == nil) {
+				return false
+			}
+			if v.Metadata != nil {
+				if len(v.Metadata) != len(wv.Metadata) {
+					return false
+				}
+				for mk, ma := range v.Metadata {
+					mb, ok := wv.Metadata[mk]
+					if !ok || len(ma) != len(mb) {
+						return false
+					}
+					maCopy, mbCopy := append([]string(nil), ma...), append([]string(nil), mb...)
+					sort.Strings(maCopy)
+					sort.Strings(mbCopy)
+					for i := range maCopy {
+						if maCopy[i] != mbCopy[i] {
+							return false
+						}
+					}
+				}
+			}
+		}
+	}
+	return true
+}
+
+func equalConnections(got, want map[string]*config.TailpipeConnection) bool {
+	if (got == nil) != (want == nil) {
+		return false
+	}
+	if got == nil {
+		return true
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	for k, conn := range got {
+		wconn, ok := want[k]
+		if !ok || (conn == nil) != (wconn == nil) {
+			return false
+		}
+		if conn != nil {
+			if conn.HclResourceImpl.FullName != wconn.HclResourceImpl.FullName || conn.HclResourceImpl.ShortName != wconn.HclResourceImpl.ShortName || conn.HclResourceImpl.UnqualifiedName != wconn.HclResourceImpl.UnqualifiedName || conn.HclResourceImpl.BlockType != wconn.HclResourceImpl.BlockType {
+				return false
+			}
+			if conn.Plugin != wconn.Plugin {
+				return false
+			}
+			// HclRange: presence mismatch fails; when both present, use DeepEqual
+			zero := hclhelpers.Range{}
+			connZero := conn.HclRange == zero
+			wconnZero := wconn.HclRange == zero
+			if connZero != wconnZero {
+				return false
+			}
+			if !connZero && !wconnZero {
+				if !reflect.DeepEqual(conn.HclRange, wconn.HclRange) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func equalCustomTables(got, want map[string]*config.Table) bool {
+	if (got == nil) != (want == nil) {
+		return false
+	}
+	if got == nil {
+		return true
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	for k, ct := range got {
+		wct, ok := want[k]
+		if !ok || (ct == nil) != (wct == nil) {
+			return false
+		}
+		if ct != nil {
+			if ct.HclResourceImpl.FullName != wct.HclResourceImpl.FullName || ct.HclResourceImpl.ShortName != wct.HclResourceImpl.ShortName || ct.HclResourceImpl.UnqualifiedName != wct.HclResourceImpl.UnqualifiedName || ct.HclResourceImpl.BlockType != wct.HclResourceImpl.BlockType {
+				return false
+			}
+			if ct.DefaultSourceFormat != nil && wct.DefaultSourceFormat != nil {
+				if ct.DefaultSourceFormat.Type != wct.DefaultSourceFormat.Type || ct.DefaultSourceFormat.PresetName != wct.DefaultSourceFormat.PresetName {
+					return false
+				}
+				if ct.DefaultSourceFormat.HclResourceImpl.FullName != wct.DefaultSourceFormat.HclResourceImpl.FullName || ct.DefaultSourceFormat.HclResourceImpl.ShortName != wct.DefaultSourceFormat.HclResourceImpl.ShortName || ct.DefaultSourceFormat.HclResourceImpl.UnqualifiedName != wct.DefaultSourceFormat.HclResourceImpl.UnqualifiedName || ct.DefaultSourceFormat.HclResourceImpl.BlockType != wct.DefaultSourceFormat.HclResourceImpl.BlockType {
+					return false
+				}
+			}
+			if len(ct.Columns) != len(wct.Columns) {
+				return false
+			}
+			for i := range ct.Columns {
+				ac, bc := ct.Columns[i], wct.Columns[i]
+				if ac.Name != bc.Name {
+					return false
+				}
+				if ac.Type != nil && bc.Type != nil && *ac.Type != *bc.Type {
+					return false
+				}
+				if ac.Source != nil && bc.Source != nil && *ac.Source != *bc.Source {
+					return false
+				}
+				if ac.Description != nil && bc.Description != nil && *ac.Description != *bc.Description {
+					return false
+				}
+				if ac.Required != nil && bc.Required != nil && *ac.Required != *bc.Required {
+					return false
+				}
+				if ac.NullIf != nil && bc.NullIf != nil && *ac.NullIf != *bc.NullIf {
+					return false
+				}
+				if ac.Transform != nil && bc.Transform != nil && *ac.Transform != *bc.Transform {
+					return false
+				}
+			}
+			// map_fields
+			mfA := append([]string(nil), ct.MapFields...)
+			if len(mfA) == 0 {
+				mfA = []string{"*"}
+			}
+			mfB := append([]string(nil), wct.MapFields...)
+			if len(mfB) == 0 {
+				mfB = []string{"*"}
+			}
+			sort.Strings(mfA)
+			sort.Strings(mfB)
+			if len(mfA) != len(mfB) {
+				return false
+			}
+			for i := range mfA {
+				if mfA[i] != mfB[i] {
+					return false
+				}
+			}
+			if ct.NullIf != wct.NullIf {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func equalFormats(got, want map[string]*config.Format) bool {
+	if (got == nil) != (want == nil) {
+		return false
+	}
+	if got == nil {
+		return true
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	for k, f := range got {
+		wf, ok := want[k]
+		if !ok || (f == nil) != (wf == nil) {
+			return false
+		}
+		if f != nil {
+			if f.Type != wf.Type {
+				return false
+			}
+			if f.HclResourceImpl.FullName != wf.HclResourceImpl.FullName || f.HclResourceImpl.ShortName != wf.HclResourceImpl.ShortName || f.HclResourceImpl.UnqualifiedName != wf.HclResourceImpl.UnqualifiedName || f.HclResourceImpl.BlockType != wf.HclResourceImpl.BlockType {
+				return false
+			}
+			if f.PresetName != "" && wf.PresetName != "" && f.PresetName != wf.PresetName {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func equalPartitions(got, want map[string]*config.Partition) bool {
+	if (got == nil) != (want == nil) {
+		return false
+	}
+	if got == nil {
+		return true
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	for k, p := range got {
+		wp, ok := want[k]
+		if !ok || (p == nil) != (wp == nil) {
+			return false
+		}
+		if p != nil {
+			// identity
+			if p.HclResourceImpl.FullName != wp.HclResourceImpl.FullName || p.HclResourceImpl.ShortName != wp.HclResourceImpl.ShortName || p.HclResourceImpl.UnqualifiedName != wp.HclResourceImpl.UnqualifiedName || p.HclResourceImpl.BlockType != wp.HclResourceImpl.BlockType {
+				return false
+			}
+			if p.TableName != wp.TableName {
+				return false
+			}
+			// source
+			if p.Source.Type != wp.Source.Type {
+				return false
+			}
+			if (p.Source.Connection == nil) != (wp.Source.Connection == nil) {
+				return false
+			}
+			if p.Source.Connection != nil && wp.Source.Connection != nil {
+				if p.Source.Connection.HclResourceImpl.UnqualifiedName != wp.Source.Connection.HclResourceImpl.UnqualifiedName {
+					return false
+				}
+			}
+			if (p.Source.Format == nil) != (wp.Source.Format == nil) {
+				return false
+			}
+			if p.Source.Format != nil && wp.Source.Format != nil {
+				pf, of := p.Source.Format, wp.Source.Format
+				if pf.Type != of.Type || pf.PresetName != of.PresetName {
+					return false
+				}
+				if pf.HclResourceImpl.FullName != of.HclResourceImpl.FullName || pf.HclResourceImpl.ShortName != of.HclResourceImpl.ShortName || pf.HclResourceImpl.UnqualifiedName != of.HclResourceImpl.UnqualifiedName || pf.HclResourceImpl.BlockType != of.HclResourceImpl.BlockType {
+					return false
+				}
+			}
+			if (p.Source.Config == nil) != (wp.Source.Config == nil) {
+				return false
+			}
+			if p.Source.Config != nil && p.Source.Config.Range != wp.Source.Config.Range {
+				return false
+			}
+			// partition config
+			if !(len(p.Config) == 0 && len(wp.Config) == 0) {
+				if string(p.Config) != string(wp.Config) || p.ConfigRange != wp.ConfigRange {
+					return false
+				}
+			}
+			if p.Filter != wp.Filter || p.TpIndexColumn != wp.TpIndexColumn {
+				return false
+			}
+			if (p.CustomTable == nil) != (wp.CustomTable == nil) {
+				return false
+			}
+			if p.CustomTable != nil && wp.CustomTable != nil {
+				if !reflect.DeepEqual(p.CustomTable, wp.CustomTable) {
+					return false
+				}
+			}
+			// plugin
+			if p.Plugin != nil && wp.Plugin != nil {
+				if p.Plugin.Instance != wp.Plugin.Instance || p.Plugin.Alias != wp.Plugin.Alias || p.Plugin.Plugin != wp.Plugin.Plugin {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func equalTailpipeConfig(got, want *config.TailpipeConfig) bool {
+	if got == nil || want == nil {
+		return got == want
+	}
+	if !equalPluginVersions(got.PluginVersions, want.PluginVersions) {
+		return false
+	}
+	if !equalPartitions(got.Partitions, want.Partitions) {
+		return false
+	}
+	if !equalConnections(got.Connections, want.Connections) {
+		return false
+	}
+	if !equalCustomTables(got.CustomTables, want.CustomTables) {
+		return false
+	}
+	if !equalFormats(got.Formats, want.Formats) {
+		return false
+	}
+	return true
+}
+
 func TestLoadTailpipeConfig(t *testing.T) {
 	type args struct {
 		configPath string
@@ -166,6 +466,16 @@ func TestLoadTailpipeConfig(t *testing.T) {
 						},
 						Source: config.Source{
 							Type: "file_system",
+							Format: &config.Format{
+								Type:       "delimited",
+								PresetName: "",
+								HclResourceImpl: modconfig.HclResourceImpl{
+									FullName:        "delimited.csv_logs",
+									ShortName:       "csv_logs",
+									UnqualifiedName: "delimited.csv_logs",
+									BlockType:       "format",
+								},
+							},
 							Config: &config.HclBytes{
 								Hcl: []byte("extensions = [\".csv\"]\npaths = [\"/Users/kai/tailpipe_data/logs\"]"),
 								Range: hclhelpers.NewRange(hcl.Range{
@@ -321,7 +631,7 @@ func TestLoadTailpipeConfig(t *testing.T) {
 			// }
 
 			// use TailpipeConfig.EqualConfig for all cases (ignores Source.Config.Hcl differences)
-			if !tailpipeConfig.EqualConfig(tt.want) {
+			if !equalTailpipeConfig(tailpipeConfig, tt.want) {
 				t.Errorf("TailpipeConfig.EqualConfig() mismatch")
 				return
 			}

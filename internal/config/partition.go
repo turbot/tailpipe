@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
@@ -238,87 +237,4 @@ func (p *Partition) FormatSupportsDirectConversion() bool {
 		return false
 	}
 	return table.FormatSupportsDirectConversion(format.Type)
-}
-
-// EqualConfig compares 2 partitions for configuration equality, excluding Source.Config.Hcl bytes
-func (p *Partition) EqualConfig(other *Partition) bool {
-	if p == nil || other == nil {
-		return p == other
-	}
-	// Hcl resource identity/stable metadata (ignore DeclRange for stability)
-	if p.HclResourceImpl.FullName != other.HclResourceImpl.FullName ||
-		p.HclResourceImpl.ShortName != other.HclResourceImpl.ShortName ||
-		p.HclResourceImpl.UnqualifiedName != other.HclResourceImpl.UnqualifiedName ||
-		p.HclResourceImpl.BlockType != other.HclResourceImpl.BlockType {
-		return false
-	}
-	if p.TableName != other.TableName {
-		return false
-	}
-	// Source (exclude Config.Hcl as its ordering is not stable)
-	if p.Source.Type != other.Source.Type {
-		return false
-	}
-	if (p.Source.Connection == nil) != (other.Source.Connection == nil) {
-		return false
-	}
-	if p.Source.Connection != nil && other.Source.Connection != nil {
-		// compare referenced connection identity by unqualified name only
-		if p.Source.Connection.HclResourceImpl.UnqualifiedName != other.Source.Connection.HclResourceImpl.UnqualifiedName {
-			return false
-		}
-	}
-	// Compare Source.Format by stable identity only when both present (ignore presence differences)
-	if p.Source.Format != nil && other.Source.Format != nil {
-		pf := p.Source.Format
-		of := other.Source.Format
-		if pf.Type != of.Type {
-			return false
-		}
-		if pf.PresetName != of.PresetName {
-			return false
-		}
-		if pf.HclResourceImpl.FullName != of.HclResourceImpl.FullName ||
-			pf.HclResourceImpl.ShortName != of.HclResourceImpl.ShortName ||
-			pf.HclResourceImpl.UnqualifiedName != of.HclResourceImpl.UnqualifiedName ||
-			pf.HclResourceImpl.BlockType != of.HclResourceImpl.BlockType {
-			return false
-		}
-	}
-	if (p.Source.Config == nil) != (other.Source.Config == nil) {
-		return false
-	}
-	if p.Source.Config != nil && !reflect.DeepEqual(p.Source.Config.Range, other.Source.Config.Range) {
-		return false
-	}
-	// Partition-level config: treat nil and empty as equal; compare range only when there is content
-	if !(len(p.Config) == 0 && len(other.Config) == 0) {
-		if !reflect.DeepEqual(p.Config, other.Config) {
-			return false
-		}
-		if !reflect.DeepEqual(p.ConfigRange, other.ConfigRange) {
-			return false
-		}
-	}
-	if p.Filter != other.Filter || p.TpIndexColumn != other.TpIndexColumn {
-		return false
-	}
-	// Custom table presence
-	if (p.CustomTable == nil) != (other.CustomTable == nil) {
-		return false
-	}
-	if p.CustomTable != nil && other.CustomTable != nil {
-		if !reflect.DeepEqual(p.CustomTable, other.CustomTable) {
-			return false
-		}
-	}
-	// Plugin: compare only stable identity when both present (ignore presence differences)
-	if p.Plugin != nil && other.Plugin != nil {
-		if p.Plugin.Instance != other.Plugin.Instance ||
-			p.Plugin.Alias != other.Plugin.Alias ||
-			p.Plugin.Plugin != other.Plugin.Plugin {
-			return false
-		}
-	}
-	return true
 }
