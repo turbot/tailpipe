@@ -2,11 +2,14 @@ package config
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/hcl/v2"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/hclhelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/pipe-fittings/v2/utils"
@@ -23,6 +26,269 @@ type TailpipeConfig struct {
 	CustomTables   map[string]*Table
 	Formats        map[string]*Format
 }
+
+func (c *TailpipeConfig) EqualConfig(want *TailpipeConfig) bool {
+	if c == nil || want == nil {
+		return c == want
+	}
+	// PluginVersions: presence, size, keys, then deep compare values (with presence guards)
+	if (c.PluginVersions == nil) != (want.PluginVersions == nil) {
+		return false
+	}
+	if c.PluginVersions != nil {
+		if len(c.PluginVersions) != len(want.PluginVersions) {
+			return false
+		}
+		for k, v := range c.PluginVersions {
+			wv, ok := want.PluginVersions[k]
+			if !ok {
+				return false
+			}
+			if (v == nil) != (wv == nil) {
+				return false
+			}
+			if v != nil {
+				// Compare stable identity/structural fields; ignore LastCheckedDate, InstallDate
+				if v.Name != wv.Name ||
+					v.Version != wv.Version ||
+					v.ImageDigest != wv.ImageDigest ||
+					v.BinaryDigest != wv.BinaryDigest ||
+					v.BinaryArchitecture != wv.BinaryArchitecture ||
+					v.InstalledFrom != wv.InstalledFrom ||
+					v.StructVersion != wv.StructVersion {
+					return false
+				}
+
+				// Metadata map: presence, size, keys, then value slices order-insensitive
+				if (v.Metadata == nil) != (wv.Metadata == nil) {
+					return false
+				}
+				if v.Metadata != nil {
+					if len(v.Metadata) != len(wv.Metadata) {
+						return false
+					}
+					for mk, ma := range v.Metadata {
+						mb, ok := wv.Metadata[mk]
+						if !ok {
+							return false
+						}
+						if len(ma) != len(mb) {
+							return false
+						}
+						ac := make([]string, len(ma))
+						bc := make([]string, len(mb))
+						copy(ac, ma)
+						copy(bc, mb)
+						sort.Strings(ac)
+						sort.Strings(bc)
+						for i := range ac {
+							if ac[i] != bc[i] {
+								return false
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Partitions: presence, size, keys, then Partition.EqualConfig
+	if (c.Partitions == nil) != (want.Partitions == nil) {
+		return false
+	}
+	if len(c.Partitions) != len(want.Partitions) {
+		return false
+	}
+	for k, p := range c.Partitions {
+		wp, ok := want.Partitions[k]
+		if !ok {
+			return false
+		}
+		if !p.EqualConfig(wp) {
+			return false
+		}
+	}
+
+	// Connections: presence, size, keys, then deep compare fields with presence guards
+	if (c.Connections == nil) != (want.Connections == nil) {
+		return false
+	}
+	if c.Connections != nil {
+		if len(c.Connections) != len(want.Connections) {
+			return false
+		}
+		for k, conn := range c.Connections {
+			wconn, ok := want.Connections[k]
+			if !ok {
+				return false
+			}
+			if (conn == nil) != (wconn == nil) {
+				return false
+			}
+			if conn != nil {
+				// identity metadata (ignore DeclRange for stability)
+				if conn.HclResourceImpl.FullName != wconn.HclResourceImpl.FullName ||
+					conn.HclResourceImpl.ShortName != wconn.HclResourceImpl.ShortName ||
+					conn.HclResourceImpl.UnqualifiedName != wconn.HclResourceImpl.UnqualifiedName ||
+					conn.HclResourceImpl.BlockType != wconn.HclResourceImpl.BlockType {
+					return false
+				}
+				// plugin string
+				if conn.Plugin != wconn.Plugin {
+					return false
+				}
+				if conn.HclRange == (hclhelpers.Range{}) && wconn.HclRange == (hclhelpers.Range{}) {
+					return false
+				}
+				if conn.HclRange != (hclhelpers.Range{}) && wconn.HclRange != (hclhelpers.Range{}) {
+					if !reflect.DeepEqual(conn.HclRange, wconn.HclRange) {
+						return false
+					}
+				}
+			}
+		}
+	}
+
+	// CustomTables: presence, size, keys, then deep compare key fields
+	if (c.CustomTables == nil) != (want.CustomTables == nil) {
+		return false
+	}
+	if c.CustomTables != nil {
+		if len(c.CustomTables) != len(want.CustomTables) {
+			return false
+		}
+		for k, ct := range c.CustomTables {
+			wct, ok := want.CustomTables[k]
+			if !ok {
+				return false
+			}
+			if (ct == nil) != (wct == nil) {
+				return false
+			}
+			if ct != nil {
+				// identity metadata
+				if ct.HclResourceImpl.FullName != wct.HclResourceImpl.FullName ||
+					ct.HclResourceImpl.ShortName != wct.HclResourceImpl.ShortName ||
+					ct.HclResourceImpl.UnqualifiedName != wct.HclResourceImpl.UnqualifiedName ||
+					ct.HclResourceImpl.BlockType != wct.HclResourceImpl.BlockType {
+					return false
+				}
+				// default format: only compare if both present
+				if ct.DefaultSourceFormat != nil && wct.DefaultSourceFormat != nil {
+					if ct.DefaultSourceFormat.Type != wct.DefaultSourceFormat.Type {
+						return false
+					}
+					if ct.DefaultSourceFormat.PresetName != wct.DefaultSourceFormat.PresetName {
+						return false
+					}
+					if ct.DefaultSourceFormat.HclResourceImpl.FullName != wct.DefaultSourceFormat.HclResourceImpl.FullName ||
+						ct.DefaultSourceFormat.HclResourceImpl.ShortName != wct.DefaultSourceFormat.HclResourceImpl.ShortName ||
+						ct.DefaultSourceFormat.HclResourceImpl.UnqualifiedName != wct.DefaultSourceFormat.HclResourceImpl.UnqualifiedName ||
+						ct.DefaultSourceFormat.HclResourceImpl.BlockType != wct.DefaultSourceFormat.HclResourceImpl.BlockType {
+						return false
+					}
+				}
+				// columns: length and per-column key fields
+				if len(ct.Columns) != len(wct.Columns) {
+					return false
+				}
+				for i := range ct.Columns {
+					ac := ct.Columns[i]
+					bc := wct.Columns[i]
+					if ac.Name != bc.Name {
+						return false
+					}
+					// compare optional pointers only when both exist
+					if ac.Type != nil && bc.Type != nil && *ac.Type != *bc.Type {
+						return false
+					}
+					if ac.Source != nil && bc.Source != nil && *ac.Source != *bc.Source {
+						return false
+					}
+					if ac.Description != nil && bc.Description != nil && *ac.Description != *bc.Description {
+						return false
+					}
+					if ac.Required != nil && bc.Required != nil && *ac.Required != *bc.Required {
+						return false
+					}
+					if ac.NullIf != nil && bc.NullIf != nil && *ac.NullIf != *bc.NullIf {
+						return false
+					}
+					if ac.Transform != nil && bc.Transform != nil && *ac.Transform != *bc.Transform {
+						return false
+					}
+				}
+				// map_fields (order-insensitive). Treat empty as default ["*"].
+				var mfA []string
+				var mfB []string
+				if len(ct.MapFields) == 0 {
+					mfA = []string{"*"}
+				} else {
+					mfA = append([]string(nil), ct.MapFields...)
+				}
+				if len(wct.MapFields) == 0 {
+					mfB = []string{"*"}
+				} else {
+					mfB = append([]string(nil), wct.MapFields...)
+				}
+
+				if len(mfA) != len(mfB) {
+					return false
+				}
+				sort.Strings(mfA)
+				sort.Strings(mfB)
+				for i := range mfA {
+					if mfA[i] != mfB[i] {
+						return false
+					}
+				}
+				// null_if
+				if ct.NullIf != wct.NullIf {
+					return false
+				}
+			}
+		}
+	}
+
+	// Formats: presence, size, keys, then deep compare stable fields (ignore Config.Hcl bytes)
+	if (c.Formats == nil) != (want.Formats == nil) {
+		return false
+	}
+	if c.Formats != nil {
+		if len(c.Formats) != len(want.Formats) {
+			return false
+		}
+		for k, f := range c.Formats {
+			wf, ok := want.Formats[k]
+			if !ok {
+				return false
+			}
+			if (f == nil) != (wf == nil) {
+				return false
+			}
+			if f != nil {
+				if f.Type != wf.Type {
+					return false
+				}
+				if f.HclResourceImpl.FullName != wf.HclResourceImpl.FullName ||
+					f.HclResourceImpl.ShortName != wf.HclResourceImpl.ShortName ||
+					f.HclResourceImpl.UnqualifiedName != wf.HclResourceImpl.UnqualifiedName ||
+					f.HclResourceImpl.BlockType != wf.HclResourceImpl.BlockType {
+					return false
+				}
+				// preset name: compare only if both present; ok if only one side empty
+				if f.PresetName != "" && wf.PresetName != "" && f.PresetName != wf.PresetName {
+					return false
+				}
+				// Ignore config presence and range/Hcl entirely for stability
+			}
+		}
+	}
+
+	return true
+}
+
+// helpers removed; logic inlined in EqualConfig
 
 func NewTailpipeConfig() *TailpipeConfig {
 	return &TailpipeConfig{

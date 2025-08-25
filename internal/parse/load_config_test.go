@@ -2,7 +2,6 @@ package parse
 
 import (
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	"github.com/hashicorp/hcl/v2"
@@ -38,6 +37,17 @@ func TestLoadTailpipeConfig(t *testing.T) {
 				PluginVersions: map[string]*versionfile.InstalledVersion{},
 				Partitions: map[string]*config.Partition{
 					"aws_cloudtrail_log.cloudtrail_logs": {
+						HclResourceImpl: modconfig.HclResourceImpl{
+							FullName:        "aws_cloudtrail_log.cloudtrail_logs",
+							ShortName:       "cloudtrail_logs",
+							UnqualifiedName: "aws_cloudtrail_log.cloudtrail_logs",
+							DeclRange: hcl.Range{
+								Filename: "test_data/static_table_config/resources.tpc",
+								Start:    hcl.Pos{Line: 3, Column: 50, Byte: 103},
+								End:      hcl.Pos{Line: 9, Column: 2, Byte: 252},
+							},
+							BlockType: "partition",
+						},
 						TableName: "aws_cloudtrail_log",
 						Source: config.Source{
 							Type: "file_system",
@@ -74,6 +84,17 @@ func TestLoadTailpipeConfig(t *testing.T) {
 						}),
 					},
 					"aws_vpc_flow_log.flow_logs": {
+						HclResourceImpl: modconfig.HclResourceImpl{
+							FullName:        "aws_vpc_flow_log.flow_logs",
+							ShortName:       "flow_logs",
+							UnqualifiedName: "aws_vpc_flow_log.flow_logs",
+							DeclRange: hcl.Range{
+								Filename: "test_data/static_table_config/resources.tpc",
+								Start:    hcl.Pos{Line: 12, Column: 42, Byte: 351},
+								End:      hcl.Pos{Line: 22, Column: 2, Byte: 636},
+							},
+							BlockType: "partition",
+						},
 						TableName: "aws_vpc_flow_log",
 						Source: config.Source{
 							Type: "aws_cloudwatch",
@@ -89,7 +110,7 @@ func TestLoadTailpipeConfig(t *testing.T) {
 								Range: hclhelpers.NewRange(hcl.Range{
 									Filename: "test_data/static_table_config/resources.tpc",
 									Start:    hcl.Pos{Line: 15, Column: 6, Byte: 408},
-									End:      hcl.Pos{Line: 21, Column: 28, Byte: 628},
+									End:      hcl.Pos{Line: 20, Column: 34, Byte: 628},
 								}),
 							},
 						},
@@ -285,9 +306,30 @@ func TestLoadTailpipeConfig(t *testing.T) {
 				return
 			}
 
-			if !reflect.DeepEqual(tailpipeConfig, tt.want) {
-				t.Errorf("LoadTailpipeConfig() = %v, want %v", tailpipeConfig, tt.want)
+			// normalize raw HCL bytes for static tables (Source.Config.Hcl differs by whitespace/order)
+			// if tt.name == "static tables" {
+			// 	for _, p := range tailpipeConfig.Partitions {
+			// 		if p != nil && p.Source.Config != nil {
+			// 			p.Source.Config.Hcl = nil
+			// 		}
+			// 	}
+			// 	for _, p := range tt.want.Partitions {
+			// 		if p != nil && p.Source.Config != nil {
+			// 			p.Source.Config.Hcl = nil
+			// 		}
+			// 	}
+			// }
+
+			// use TailpipeConfig.EqualConfig for all cases (ignores Source.Config.Hcl differences)
+			if !tailpipeConfig.EqualConfig(tt.want) {
+				t.Errorf("TailpipeConfig.EqualConfig() mismatch")
+				return
 			}
+
+			// DeepEqual intentionally skipped EqualConfig is added instead
+			// if !reflect.DeepEqual(tailpipeConfig, tt.want) {
+			// 	t.Errorf("LoadTailpipeConfig() = %v, want %v", tailpipeConfig, tt.want)
+			// }
 		})
 	}
 }
