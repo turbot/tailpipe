@@ -63,7 +63,8 @@ func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStat
 	}
 
 	if s.compactionStatus == nil {
-		s.compactionStatus = parquet.NewCompactionStatus()
+		s.compactionStatus = compactionStatus
+		return
 	}
 
 	s.compactionStatus.Update(*compactionStatus)

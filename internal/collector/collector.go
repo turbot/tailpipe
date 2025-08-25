@@ -262,7 +262,7 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	compactionStatus, err := parquet.CompactDataFiles(ctx, c.db)
+	compactionStatus, err := parquet.CompactDataFiles(ctx, c.db, nil)
 
 	c.statusLock.Lock()
 	defer c.statusLock.Unlock()

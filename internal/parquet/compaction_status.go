@@ -34,6 +34,7 @@ func (s *CompactionStatus) Update(other CompactionStatus) {
 	if s.PartitionIndexExpressions == nil {
 		s.PartitionIndexExpressions = make(map[string]string)
 	}
+	s.Duration = other.Duration
 	maps.Copy(s.PartitionIndexExpressions, other.PartitionIndexExpressions)
 }
 

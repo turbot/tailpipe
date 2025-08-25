@@ -6,11 +6,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-type partitionFileCount struct {
+type partitionKey struct {
 	tpTable     string
 	tpPartition string
 	tpIndex     string
@@ -19,20 +18,20 @@ type partitionFileCount struct {
 	fileCount   int
 }
 
-func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (*CompactionStatus, error) {
-	var status = NewCompactionStatus()
+func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
 
 	// get a list of partition key combinations which match any of the patterns
-	// partitionKeys is a list of partitionFileCount structs
+	// partitionKeys is a list of partitionKey structs
 	partitionKeys, err := getPartitionKeysMatchingPattern(ctx, db, patterns)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
+		return 0, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
 	}
 
+	var uncompacted = 0
 	// fail early if no matches
 	if len(partitionKeys) == 0 {
 		slog.Info("No matching partitions found for compaction")
-		return status, nil
+		return 0, nil
 	}
 
 	// now for each partition key which has more than on parquet file, compact the files by creating a new snapshot
@@ -40,7 +39,7 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 		if partitionKey.fileCount <= 1 {
 			// if the file count is 1 or less, we do not need to compact
 			// no need to compact, just increment the uncompacted count
-			status.Uncompacted += partitionKey.fileCount
+			uncompacted += partitionKey.fileCount
 			continue
 		}
 
@@ -52,8 +51,6 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"month", partitionKey.month,
 			"file_count", partitionKey.fileCount,
 		)
-		// increment the source file count by the file count for this partition key
-		status.Source += partitionKey.fileCount
 		if err := compactAndOrderPartitionEntries(ctx, db, partitionKey); err != nil {
 			slog.Error("Failed to compact and order partition entries",
 				"tp_table", partitionKey.tpTable,
@@ -64,7 +61,7 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 				"file_count", partitionKey.fileCount,
 				"error", err,
 			)
-			return nil, err
+			return 0, err
 		}
 
 		slog.Info("Compacted and ordered partition entries",
@@ -76,45 +73,106 @@ func CompactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"input_files", partitionKey.fileCount,
 			"output_files", 1,
 		)
-		// increment the destination file count by 1 for each partition key
-		status.Dest++
 	}
-	return status, nil
+	return uncompacted, nil
 }
 
-func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, partitionKey partitionFileCount) error {
-	// Create ordered snapshot for this partition combination
-	// Only process partitions that have multiple files (fileCount > 1)
-	snapshotQuery := fmt.Sprintf(`call ducklake.create_snapshot(
-		'%s', '%s',
-		snapshot_query => $$
-			SELECT * FROM "%s"
-			WHERE tp_partition = '%s' 
-			  AND tp_index = '%s'
-			  AND year(tp_timestamp) = '%s'
-			  AND month(tp_timestamp) = '%s'
-			ORDER BY tp_timestamp
-		$$
-	)`,
-		SafeIdentifier(constants.DuckLakeCatalog),
-		SafeIdentifier(partitionKey.tpTable),
-		SafeIdentifier(partitionKey.tpTable),
+func compactAndOrderPartitionEntries(ctx context.Context, db *database.DuckDb, partitionKey partitionKey) error {
+	// Start a transaction to ensure all operations succeed or fail together
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			// Rollback on error
+			if rbErr := tx.Rollback(); rbErr != nil {
+				// Log rollback error but return the original error
+				slog.Error("failed to rollback transaction", "error", rbErr)
+			}
+		}
+	}()
+
+	// First, create a temporary table with the ordered data
+	tempTableName := fmt.Sprintf("temp_compact_%s_%s_%s_%s_%s",
+		partitionKey.tpTable, partitionKey.tpPartition, partitionKey.tpIndex, partitionKey.year, partitionKey.month)
+
+	createTempQuery := fmt.Sprintf(`create temp table "%s" as 
+		select * from "%s" 
+		where tp_partition = %s
+		  and tp_index = %s
+		  and year(tp_timestamp) = %s
+		  and month(tp_timestamp) = %s
+		order by tp_timestamp`,
+		tempTableName, partitionKey.tpTable,
 		EscapeLiteral(partitionKey.tpPartition),
 		EscapeLiteral(partitionKey.tpIndex),
 		EscapeLiteral(partitionKey.year),
-		EscapeLiteral(partitionKey.month),
-	)
+		EscapeLiteral(partitionKey.month))
 
-	if _, err := db.ExecContext(ctx, snapshotQuery); err != nil {
-		return fmt.Errorf("failed to compact and order partition entries for tp_table %s, tp_partition %s, tp_index %s, year %s, month %s: %w",
-			partitionKey.tpTable, partitionKey.tpPartition, partitionKey.tpIndex, partitionKey.year, partitionKey.month, err)
+	slog.Debug("Inserting date into temp table", "query", createTempQuery)
+
+	if _, err = tx.ExecContext(ctx, createTempQuery); err != nil {
+		return fmt.Errorf("failed to create temp table for compaction: %w", err)
 	}
+
+	// Delete the original data
+
+	deleteQuery := fmt.Sprintf(`delete from "%s" 
+		where tp_partition = %s
+		  and tp_index = %s
+		  and year(tp_timestamp) = %s
+		  and month(tp_timestamp) = %s`,
+		partitionKey.tpTable,
+		EscapeLiteral(partitionKey.tpPartition),
+		EscapeLiteral(partitionKey.tpIndex),
+		EscapeLiteral(partitionKey.year),
+		EscapeLiteral(partitionKey.month))
+
+	slog.Debug("Temp table created, now deleting original data", "query", deleteQuery)
+
+	if _, err = tx.ExecContext(ctx, deleteQuery); err != nil {
+		return fmt.Errorf("failed to delete original partition data: %w", err)
+	}
+
+	// Insert the ordered data back
+	insertQuery := fmt.Sprintf(`insert into "%s" select * from "%s"`,
+		partitionKey.tpTable, tempTableName)
+
+	slog.Debug("Old data deleted, now inserting ordered data", "query", insertQuery)
+
+	if _, err = tx.ExecContext(ctx, insertQuery); err != nil {
+		return fmt.Errorf("failed to insert compacted data: %w", err)
+	}
+
+	// Drop the temporary table
+	dropQuery := fmt.Sprintf(`drop table "%s"`, tempTableName)
+	slog.Debug("Compacted and ordered data inserted, dropping temp table", "query", dropQuery)
+
+	if _, err = tx.ExecContext(ctx, dropQuery); err != nil {
+		return fmt.Errorf("failed to drop temp table: %w", err)
+	}
+
+	slog.Debug("temp table dropped, committing transaction")
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	slog.Debug("Compaction complete",
+		"tp_table", partitionKey.tpTable,
+		"tp_partition", partitionKey.tpPartition,
+		"tp_index", partitionKey.tpIndex,
+		"year", partitionKey.year,
+		"month", partitionKey.month,
+		"file_count", partitionKey.fileCount)
+
 	return nil
 }
 
 // query the ducklake_data_file table to get all partition keys combinations which satisfy the provided patterns,
 // along with the file count for each partition key combination
-func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) ([]partitionFileCount, error) {
+func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) ([]partitionKey, error) {
 	// This query joins the DuckLake metadata tables to get partition key combinations:
 	// - ducklake_data_file: contains file metadata and links to tables
 	// - ducklake_file_partition_value: contains partition values for each file
@@ -162,9 +220,9 @@ order by file_count desc;`
 	}
 	defer rows.Close()
 
-	var partitionKeys []partitionFileCount
+	var partitionKeys []partitionKey
 	for rows.Next() {
-		var partitionKey partitionFileCount
+		var partitionKey partitionKey
 		if err := rows.Scan(&partitionKey.tpTable, &partitionKey.tpPartition, &partitionKey.tpIndex, &partitionKey.year, &partitionKey.month, &partitionKey.fileCount); err != nil {
 			return nil, fmt.Errorf("failed to scan partition key row: %w", err)
 		}

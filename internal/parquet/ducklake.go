@@ -64,7 +64,7 @@ func DeletePartition(ctx context.Context, partition *config.Partition, from, to 
 	return rowCount, nil
 }
 
-func CompactDataFiles(ctx context.Context, db *database.DuckDb) (*CompactionStatus, error) {
+func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (*CompactionStatus, error) {
 	slog.Info("Compacting DuckLake data files")
 
 	var status = NewCompactionStatus()
@@ -86,10 +86,16 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb) (*CompactionStat
 	}
 
 	// merge the the parquet files in the duckdb database
-	if err := mergeParquetFiles(ctx, db); err != nil {
-		slog.Error("Failed to merge DuckLake parquet files", "error", err)
+	//if err := mergeParquetFiles(ctx, db); err != nil {
+	//	slog.Error("Failed to merge DuckLake parquet files", "error", err)
+	//	return nil, err
+	//}
+	uncompacted, err := compactDataFilesManual(ctx, db, patterns)
+	if err != nil {
+		slog.Error("Failed to compact DuckLake parquet files", "error", err)
 		return nil, err
 	}
+	status.Uncompacted = uncompacted
 
 	// delete unused files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
