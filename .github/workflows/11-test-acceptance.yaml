@@ -59,12 +59,12 @@ jobs:
           go clean -testcache
           go test -timeout 30s ./... -test.v
 
-      - name: Build Sysroot for C++17/C++20 Support
+      - name: Build Custom Goreleaser Cross Image for Linux
         run: |-
           cd tailpipe
-          make build-sysroot
-          echo "=== Verifying AMD64 Libraries ==="
-          find sysroot/ -name "libstdc++.so*" -path "*/x86_64-linux-gnu/*" | head -3
+          make build-goreleaser-image
+          echo "=== Verifying GCC 13 ==="
+          docker run --rm tailpipe-goreleaser-cross:gcc13 gcc-13 --version | head -1
 
       - name: Build
         run: |-
