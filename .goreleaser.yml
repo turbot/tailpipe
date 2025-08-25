@@ -19,6 +19,8 @@ builds:
       - CGO_LDFLAGS=-lstdc++ -static-libstdc++
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
 
   # Linux ARM64 build with GCC 13+
   - id: tailpipe-linux-arm64
@@ -34,6 +36,8 @@ builds:
       - CGO_LDFLAGS=-lstdc++ -static-libstdc++
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
 
 release:
   prerelease: auto

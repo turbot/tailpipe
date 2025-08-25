@@ -1,4 +1,6 @@
 # Acceptance testing configuration - builds only Linux AMD64 for faster testing
+version: 2
+
 before:
   hooks:
     - go mod tidy
@@ -18,6 +20,9 @@ builds:
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+    flags:
+      - -buildvcs=false
 
 archives:
   - id: homebrew
