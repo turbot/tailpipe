@@ -17,18 +17,18 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-func equalPluginVersions(left, right map[string]*versionfile.InstalledVersion) (bool, string) {
-	if (left == nil) != (right == nil) {
+func pluginVersionsEqual(l, r map[string]*versionfile.InstalledVersion) (bool, string) {
+	if (l == nil) != (r == nil) {
 		return false, "PluginVersions presence mismatch"
 	}
-	if left == nil {
+	if l == nil {
 		return true, ""
 	}
-	if len(left) != len(right) {
-		return false, fmt.Sprintf("PluginVersions length mismatch: got %d want %d", len(left), len(right))
+	if len(l) != len(r) {
+		return false, fmt.Sprintf("PluginVersions length mismatch: got %d want %d", len(l), len(r))
 	}
-	for k, v := range left {
-		wv, ok := right[k]
+	for k, v := range l {
+		wv, ok := r[k]
 		if !ok {
 			return false, fmt.Sprintf("PluginVersions missing key '%s' in want", k)
 		}
@@ -87,18 +87,18 @@ func equalPluginVersions(left, right map[string]*versionfile.InstalledVersion) (
 	return true, ""
 }
 
-func equalConnections(left, right map[string]*config.TailpipeConnection) (bool, string) {
-	if (left == nil) != (right == nil) {
+func connectionsEqual(l, r map[string]*config.TailpipeConnection) (bool, string) {
+	if (l == nil) != (r == nil) {
 		return false, "Connections presence mismatch"
 	}
-	if left == nil {
+	if l == nil {
 		return true, ""
 	}
-	if len(left) != len(right) {
-		return false, fmt.Sprintf("Connections length mismatch: got %d want %d", len(left), len(right))
+	if len(l) != len(r) {
+		return false, fmt.Sprintf("Connections length mismatch: got %d want %d", len(l), len(r))
 	}
-	for k, conn := range left {
-		wconn, ok := right[k]
+	for k, conn := range l {
+		wconn, ok := r[k]
 		if !ok {
 			return false, fmt.Sprintf("Connections missing key '%s' in want", k)
 		}
@@ -140,18 +140,18 @@ func equalConnections(left, right map[string]*config.TailpipeConnection) (bool, 
 	return true, ""
 }
 
-func equalCustomTables(left, right map[string]*config.Table) (bool, string) {
-	if (left == nil) != (right == nil) {
+func customTablesEqual(l, r map[string]*config.Table) (bool, string) {
+	if (l == nil) != (r == nil) {
 		return false, "CustomTables presence mismatch"
 	}
-	if left == nil {
+	if l == nil {
 		return true, ""
 	}
-	if len(left) != len(right) {
-		return false, fmt.Sprintf("CustomTables length mismatch: got %d want %d", len(left), len(right))
+	if len(l) != len(r) {
+		return false, fmt.Sprintf("CustomTables length mismatch: got %d want %d", len(l), len(r))
 	}
-	for k, ct := range left {
-		wct, ok := right[k]
+	for k, ct := range l {
+		wct, ok := r[k]
 		if !ok {
 			return false, fmt.Sprintf("CustomTables missing key '%s' in want", k)
 		}
@@ -171,7 +171,6 @@ func equalCustomTables(left, right map[string]*config.Table) (bool, string) {
 			if ct.HclResourceImpl.BlockType != wct.HclResourceImpl.BlockType {
 				return false, fmt.Sprintf("CustomTables['%s'].HclResourceImpl.BlockType mismatch: got '%s' want '%s'", k, ct.HclResourceImpl.BlockType, wct.HclResourceImpl.BlockType)
 			}
-			// DeclRange: presence mismatch fails; when both present, compare ranges
 			{
 				zero := hcl.Range{}
 				aZero := ct.HclResourceImpl.DeclRange == zero
@@ -207,7 +206,6 @@ func equalCustomTables(left, right map[string]*config.Table) (bool, string) {
 				if ct.DefaultSourceFormat.HclResourceImpl.BlockType != wct.DefaultSourceFormat.HclResourceImpl.BlockType {
 					return false, fmt.Sprintf("CustomTables['%s'].DefaultSourceFormat.HclResourceImpl.BlockType mismatch: got '%s' want '%s'", k, ct.DefaultSourceFormat.HclResourceImpl.BlockType, wct.DefaultSourceFormat.HclResourceImpl.BlockType)
 				}
-				// DeclRange for DefaultSourceFormat
 				{
 					zero := hcl.Range{}
 					aZero := ct.DefaultSourceFormat.HclResourceImpl.DeclRange == zero
@@ -278,18 +276,18 @@ func equalCustomTables(left, right map[string]*config.Table) (bool, string) {
 	return true, ""
 }
 
-func equalFormats(left, right map[string]*config.Format) (bool, string) {
-	if (left == nil) != (right == nil) {
+func formatsEqual(l, r map[string]*config.Format) (bool, string) {
+	if (l == nil) != (r == nil) {
 		return false, "Formats presence mismatch"
 	}
-	if left == nil {
+	if l == nil {
 		return true, ""
 	}
-	if len(left) != len(right) {
-		return false, fmt.Sprintf("Formats length mismatch: got %d want %d", len(left), len(right))
+	if len(l) != len(r) {
+		return false, fmt.Sprintf("Formats length mismatch: got %d want %d", len(l), len(r))
 	}
-	for k, f := range left {
-		wf, ok := right[k]
+	for k, f := range l {
+		wf, ok := r[k]
 		if !ok {
 			return false, fmt.Sprintf("Formats missing key '%s' in want", k)
 		}
@@ -312,7 +310,6 @@ func equalFormats(left, right map[string]*config.Format) (bool, string) {
 			if f.HclResourceImpl.BlockType != wf.HclResourceImpl.BlockType {
 				return false, fmt.Sprintf("Formats['%s'].HclResourceImpl.BlockType mismatch: got '%s' want '%s'", k, f.HclResourceImpl.BlockType, wf.HclResourceImpl.BlockType)
 			}
-			// DeclRange: presence mismatch fails; when both present, compare ranges
 			{
 				zero := hcl.Range{}
 				aZero := f.HclResourceImpl.DeclRange == zero
@@ -337,18 +334,18 @@ func equalFormats(left, right map[string]*config.Format) (bool, string) {
 	return true, ""
 }
 
-func equalPartitions(left, right map[string]*config.Partition) (bool, string) {
-	if (left == nil) != (right == nil) {
+func partitionsEqual(l, r map[string]*config.Partition) (bool, string) {
+	if (l == nil) != (r == nil) {
 		return false, "Partitions presence mismatch"
 	}
-	if left == nil {
+	if l == nil {
 		return true, ""
 	}
-	if len(left) != len(right) {
-		return false, fmt.Sprintf("Partitions length mismatch: got %d want %d", len(left), len(right))
+	if len(l) != len(r) {
+		return false, fmt.Sprintf("Partitions length mismatch: got %d want %d", len(l), len(r))
 	}
-	for k, p := range left {
-		wp, ok := right[k]
+	for k, p := range l {
+		wp, ok := r[k]
 		if !ok {
 			return false, fmt.Sprintf("Partitions missing key '%s' in want", k)
 		}
@@ -368,7 +365,6 @@ func equalPartitions(left, right map[string]*config.Partition) (bool, string) {
 			if p.HclResourceImpl.BlockType != wp.HclResourceImpl.BlockType {
 				return false, fmt.Sprintf("Partitions['%s'].HclResourceImpl.BlockType mismatch: got '%s' want '%s'", k, p.HclResourceImpl.BlockType, wp.HclResourceImpl.BlockType)
 			}
-			// DeclRange: presence mismatch fails; when both present, compare ranges
 			{
 				zero := hcl.Range{}
 				aZero := p.HclResourceImpl.DeclRange == zero
@@ -464,32 +460,32 @@ func equalPartitions(left, right map[string]*config.Partition) (bool, string) {
 	return true, ""
 }
 
-func equalTailpipeConfig(left, right *config.TailpipeConfig) (bool, string) {
-	if left == nil || right == nil {
-		if left == right {
+func tailpipeConfigEqual(l, r *config.TailpipeConfig) (bool, string) {
+	if l == nil || r == nil {
+		if l == r {
 			return true, ""
 		}
 		return false, "nil vs non-nil TailpipeConfig"
 	}
-	if ok, msg := equalPluginVersions(left.PluginVersions, right.PluginVersions); !ok {
+	if ok, msg := pluginVersionsEqual(l.PluginVersions, r.PluginVersions); !ok {
 		return false, msg
 	}
-	if ok, msg := equalPartitions(left.Partitions, right.Partitions); !ok {
+	if ok, msg := partitionsEqual(l.Partitions, r.Partitions); !ok {
 		return false, msg
 	}
-	if ok, msg := equalConnections(left.Connections, right.Connections); !ok {
+	if ok, msg := connectionsEqual(l.Connections, r.Connections); !ok {
 		return false, msg
 	}
-	if ok, msg := equalCustomTables(left.CustomTables, right.CustomTables); !ok {
+	if ok, msg := customTablesEqual(l.CustomTables, r.CustomTables); !ok {
 		return false, msg
 	}
-	if ok, msg := equalFormats(left.Formats, right.Formats); !ok {
+	if ok, msg := formatsEqual(l.Formats, r.Formats); !ok {
 		return false, msg
 	}
 	return true, ""
 }
 
-func TestLoadTailpipeConfig(t *testing.T) {
+func TestParseTailpipeConfig(t *testing.T) {
 	type args struct {
 		configPath string
 		partition  string
@@ -505,7 +501,7 @@ func TestLoadTailpipeConfig(t *testing.T) {
 			name: "static tables",
 			args: args{
 				configPath: "test_data/static_table_config",
-				// partition:  "partition.aws_cloudtrail_log.cloudtrail_logs",
+				partition:  "partition.aws_cloudtrail_log.cloudtrail_logs",
 			},
 			want: &config.TailpipeConfig{
 				PluginVersions: map[string]*versionfile.InstalledVersion{},
@@ -803,6 +799,51 @@ func TestLoadTailpipeConfig(t *testing.T) {
 			want:    nil,
 			wantErr: true,
 		},
+		{
+			name: "connections config",
+			args: args{
+				configPath: "test_data/connections_config",
+			},
+			want: &config.TailpipeConfig{
+				PluginVersions: map[string]*versionfile.InstalledVersion{},
+				Partitions: map[string]*config.Partition{
+					"aws_alb_connection_log.aws_alb_connection_log": {
+						HclResourceImpl: modconfig.HclResourceImpl{
+							FullName:        "aws_alb_connection_log.aws_alb_connection_log",
+							ShortName:       "aws_alb_connection_log",
+							UnqualifiedName: "aws_alb_connection_log.aws_alb_connection_log",
+							DeclRange:       hcl.Range{Filename: "test_data/connections_config/resources.tpc", Start: hcl.Pos{Line: 8, Column: 61, Byte: 155}, End: hcl.Pos{Line: 13, Column: 2, Byte: 278}},
+							BlockType:       "partition",
+						},
+						TableName: "aws_alb_connection_log",
+						Source: config.Source{
+							Type: "aws_s3_bucket",
+							Connection: &config.TailpipeConnection{
+								HclResourceImpl: modconfig.HclResourceImpl{UnqualifiedName: "aws.primary"},
+							},
+							Config: &config.HclBytes{
+								Range: hclhelpers.NewRange(hcl.Range{Filename: "test_data/connections_config/resources.tpc", Start: hcl.Pos{Line: 11, Column: 5, Byte: 228}, End: hcl.Pos{Line: 11, Column: 49, Byte: 272}}),
+							},
+						},
+					},
+				},
+				Connections: map[string]*config.TailpipeConnection{
+					"aws.primary": {
+						HclResourceImpl: modconfig.HclResourceImpl{
+							FullName:        "aws.primary",
+							ShortName:       "primary",
+							UnqualifiedName: "aws.primary",
+							BlockType:       "connection",
+						},
+						Plugin:   "aws",
+						HclRange: hclhelpers.NewRange(hcl.Range{Filename: "test_data/connections_config/resources.tpc", Start: hcl.Pos{Line: 2, Column: 3, Byte: 31}, End: hcl.Pos{Line: 4, Column: 23, Byte: 90}}),
+					},
+				},
+				CustomTables: map[string]*config.Table{},
+				Formats:      map[string]*config.Format{},
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -820,30 +861,12 @@ func TestLoadTailpipeConfig(t *testing.T) {
 				return
 			}
 
-			// normalize raw HCL bytes for static tables (Source.Config.Hcl differs by whitespace/order)
-			// if tt.name == "static tables" {
-			// 	for _, p := range tailpipeConfig.Partitions {
-			// 		if p != nil && p.Source.Config != nil {
-			// 			p.Source.Config.Hcl = nil
-			// 		}
-			// 	}
-			// 	for _, p := range tt.want.Partitions {
-			// 		if p != nil && p.Source.Config != nil {
-			// 			p.Source.Config.Hcl = nil
-			// 		}
-			// 	}
-			// }
-
 			// use TailpipeConfig.EqualConfig for all cases (ignores Source.Config.Hcl differences)
-			if ok, msg := equalTailpipeConfig(tailpipeConfig, tt.want); !ok {
+			if ok, msg := tailpipeConfigEqual(tailpipeConfig, tt.want); !ok {
 				t.Errorf("TailpipeConfig mismatch: %s", msg)
 				return
 			}
 
-			// DeepEqual intentionally skipped EqualConfig is added instead
-			// if !reflect.DeepEqual(tailpipeConfig, tt.want) {
-			// 	t.Errorf("LoadTailpipeConfig() = %v, want %v", tailpipeConfig, tt.want)
-			// }
 		})
 	}
 }
