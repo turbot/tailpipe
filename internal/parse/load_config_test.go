@@ -16,20 +16,23 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-func equalPluginVersions(got, want map[string]*versionfile.InstalledVersion) bool {
-	if (got == nil) != (want == nil) {
-		return false
+func equalPluginVersions(left, right map[string]*versionfile.InstalledVersion) (bool, string) {
+	if (left == nil) != (right == nil) {
+		return false, "PluginVersions presence mismatch"
 	}
-	if got == nil {
-		return true
+	if left == nil {
+		return true, ""
 	}
-	if len(got) != len(want) {
-		return false
+	if len(left) != len(right) {
+		return false, fmt.Sprintf("PluginVersions length mismatch: got %d want %d", len(left), len(right))
 	}
-	for k, v := range got {
-		wv, ok := want[k]
-		if !ok || (v == nil) != (wv == nil) {
-			return false
+	for k, v := range left {
+		wv, ok := right[k]
+		if !ok {
+			return false, fmt.Sprintf("PluginVersions missing key '%s' in want", k)
+		}
+		if (v == nil) != (wv == nil) {
+			return false, fmt.Sprintf("PluginVersions['%s'] presence mismatch", k)
 		}
 		if v != nil {
 			if v.Name != wv.Name || v.Version != wv.Version || v.ImageDigest != wv.ImageDigest || v.BinaryDigest != wv.BinaryDigest || v.BinaryArchitecture != wv.BinaryArchitecture || v.InstalledFrom != wv.InstalledFrom || v.StructVersion != wv.StructVersion {
@@ -62,20 +65,23 @@ func equalPluginVersions(got, want map[string]*versionfile.InstalledVersion) boo
 	return true
 }
 
-func equalConnections(got, want map[string]*config.TailpipeConnection) bool {
-	if (got == nil) != (want == nil) {
-		return false
+func equalConnections(left, right map[string]*config.TailpipeConnection) (bool, string) {
+	if (left == nil) != (right == nil) {
+		return false, "Connections presence mismatch"
 	}
-	if got == nil {
-		return true
+	if left == nil {
+		return true, ""
 	}
-	if len(got) != len(want) {
-		return false
+	if len(left) != len(right) {
+		return false, fmt.Sprintf("Connections length mismatch: got %d want %d", len(left), len(right))
 	}
-	for k, conn := range got {
-		wconn, ok := want[k]
-		if !ok || (conn == nil) != (wconn == nil) {
-			return false
+	for k, conn := range left {
+		wconn, ok := right[k]
+		if !ok {
+			return false, fmt.Sprintf("Connections missing key '%s' in want", k)
+		}
+		if (conn == nil) != (wconn == nil) {
+			return false, fmt.Sprintf("Connections['%s'] presence mismatch", k)
 		}
 		if conn != nil {
 			if conn.HclResourceImpl.FullName != wconn.HclResourceImpl.FullName || conn.HclResourceImpl.ShortName != wconn.HclResourceImpl.ShortName || conn.HclResourceImpl.UnqualifiedName != wconn.HclResourceImpl.UnqualifiedName || conn.HclResourceImpl.BlockType != wconn.HclResourceImpl.BlockType {
@@ -93,7 +99,10 @@ func equalConnections(got, want map[string]*config.TailpipeConnection) bool {
 			}
 			if !connZero && !wconnZero {
 				if !reflect.DeepEqual(conn.HclRange, wconn.HclRange) {
-					return false
+					gr, wr := conn.HclRange, wconn.HclRange
+					return false, fmt.Sprintf("Connections['%s'].HclRange mismatch: got %s:(%d,%d,%d)-(%d,%d,%d) want %s:(%d,%d,%d)-(%d,%d,%d)", k,
+						gr.Filename, gr.Start.Line, gr.Start.Column, gr.Start.Byte, gr.End.Line, gr.End.Column, gr.End.Byte,
+						wr.Filename, wr.Start.Line, wr.Start.Column, wr.Start.Byte, wr.End.Line, wr.End.Column, wr.End.Byte)
 				}
 			}
 		}
@@ -101,20 +110,23 @@ func equalConnections(got, want map[string]*config.TailpipeConnection) bool {
 	return true
 }
 
-func equalCustomTables(got, want map[string]*config.Table) bool {
-	if (got == nil) != (want == nil) {
-		return false
+func equalCustomTables(left, right map[string]*config.Table) (bool, string) {
+	if (left == nil) != (right == nil) {
+		return false, "CustomTables presence mismatch"
 	}
-	if got == nil {
-		return true
+	if left == nil {
+		return true, ""
 	}
-	if len(got) != len(want) {
-		return false
+	if len(left) != len(right) {
+		return false, fmt.Sprintf("CustomTables length mismatch: got %d want %d", len(left), len(right))
 	}
-	for k, ct := range got {
-		wct, ok := want[k]
-		if !ok || (ct == nil) != (wct == nil) {
-			return false
+	for k, ct := range left {
+		wct, ok := right[k]
+		if !ok {
+			return false, fmt.Sprintf("CustomTables missing key '%s' in want", k)
+		}
+		if (ct == nil) != (wct == nil) {
+			return false, fmt.Sprintf("CustomTables['%s'] presence mismatch", k)
 		}
 		if ct != nil {
 			if ct.HclResourceImpl.FullName != wct.HclResourceImpl.FullName || ct.HclResourceImpl.ShortName != wct.HclResourceImpl.ShortName || ct.HclResourceImpl.UnqualifiedName != wct.HclResourceImpl.UnqualifiedName || ct.HclResourceImpl.BlockType != wct.HclResourceImpl.BlockType {
@@ -182,20 +194,23 @@ func equalCustomTables(got, want map[string]*config.Table) bool {
 	return true
 }
 
-func equalFormats(got, want map[string]*config.Format) bool {
-	if (got == nil) != (want == nil) {
-		return false
+func equalFormats(left, right map[string]*config.Format) (bool, string) {
+	if (left == nil) != (right == nil) {
+		return false, "Formats presence mismatch"
 	}
-	if got == nil {
-		return true
+	if left == nil {
+		return true, ""
 	}
-	if len(got) != len(want) {
-		return false
+	if len(left) != len(right) {
+		return false, fmt.Sprintf("Formats length mismatch: got %d want %d", len(left), len(right))
 	}
-	for k, f := range got {
-		wf, ok := want[k]
-		if !ok || (f == nil) != (wf == nil) {
-			return false
+	for k, f := range left {
+		wf, ok := right[k]
+		if !ok {
+			return false, fmt.Sprintf("Formats missing key '%s' in want", k)
+		}
+		if (f == nil) != (wf == nil) {
+			return false, fmt.Sprintf("Formats['%s'] presence mismatch", k)
 		}
 		if f != nil {
 			if f.Type != wf.Type {
@@ -212,20 +227,23 @@ func equalFormats(got, want map[string]*config.Format) bool {
 	return true
 }
 
-func equalPartitions(got, want map[string]*config.Partition) bool {
-	if (got == nil) != (want == nil) {
-		return false
+func equalPartitions(left, right map[string]*config.Partition) (bool, string) {
+	if (left == nil) != (right == nil) {
+		return false, "Partitions presence mismatch"
 	}
-	if got == nil {
-		return true
+	if left == nil {
+		return true, ""
 	}
-	if len(got) != len(want) {
-		return false
+	if len(left) != len(right) {
+		return false, fmt.Sprintf("Partitions length mismatch: got %d want %d", len(left), len(right))
 	}
-	for k, p := range got {
-		wp, ok := want[k]
-		if !ok || (p == nil) != (wp == nil) {
-			return false
+	for k, p := range left {
+		wp, ok := right[k]
+		if !ok {
+			return false, fmt.Sprintf("Partitions missing key '%s' in want", k)
+		}
+		if (p == nil) != (wp == nil) {
+			return false, fmt.Sprintf("Partitions['%s'] presence mismatch", k)
 		}
 		if p != nil {
 			// identity
@@ -293,24 +311,27 @@ func equalPartitions(got, want map[string]*config.Partition) bool {
 	return true
 }
 
-func equalTailpipeConfig(got, want *config.TailpipeConfig) bool {
-	if got == nil || want == nil {
-		return got == want
+func equalTailpipeConfig(left, right *config.TailpipeConfig) (bool, string) {
+	if left == nil || right == nil {
+		if left == right {
+			return true, ""
+		}
+		return false, "nil vs non-nil TailpipeConfig"
 	}
-	if !equalPluginVersions(got.PluginVersions, want.PluginVersions) {
-		return false
+	if ok, msg := equalPluginVersions(left.PluginVersions, right.PluginVersions); !ok {
+		return false, msg
 	}
-	if !equalPartitions(got.Partitions, want.Partitions) {
-		return false
+	if ok, msg := equalPartitions(left.Partitions, right.Partitions); !ok {
+		return false, msg
 	}
-	if !equalConnections(got.Connections, want.Connections) {
-		return false
+	if ok, msg := equalConnections(left.Connections, right.Connections); !ok {
+		return false, msg
 	}
-	if !equalCustomTables(got.CustomTables, want.CustomTables) {
-		return false
+	if ok, msg := equalCustomTables(left.CustomTables, right.CustomTables); !ok {
+		return false, msg
 	}
-	if !equalFormats(got.Formats, want.Formats) {
-		return false
+	if ok, msg := equalFormats(left.Formats, right.Formats); !ok {
+		return false, msg
 	}
 	return true
 }
@@ -598,6 +619,36 @@ func TestLoadTailpipeConfig(t *testing.T) {
 			},
 
 			wantErr: false,
+		},
+		{
+			name: "invalid path",
+			args: args{
+				configPath: "test_data/does_not_exist",
+			},
+			want: &config.TailpipeConfig{
+				PluginVersions: map[string]*versionfile.InstalledVersion{},
+				Partitions:     map[string]*config.Partition{},
+				Connections:    map[string]*config.TailpipeConnection{},
+				CustomTables:   map[string]*config.Table{},
+				Formats:        map[string]*config.Format{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "malformed hcl",
+			args: args{
+				configPath: "test_data/malformed_config",
+			},
+			want:    nil,
+			wantErr: true,
+		},
+		{
+			name: "invalid partition labels",
+			args: args{
+				configPath: "test_data/invalid_partition_labels",
+			},
+			want:    nil,
+			wantErr: true,
 		},
 	}
 
