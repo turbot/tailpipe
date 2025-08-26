@@ -86,7 +86,6 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []Parti
 		slog.Error("Failed to compact DuckLake parquet files", "error", err)
 		return nil, err
 	}
-	// TODO think about uncompacted file totals
 	status.Uncompacted = uncompacted
 
 	slog.Info("Expiring old DuckLake snapshots")
@@ -168,10 +167,26 @@ func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
 		return fmt.Errorf("failed to get latest snapshot timestamp: %w", err)
 	}
 
+	// Parse the snapshot time
+	// NOTE: rather than cast as timestamp, we read as a string then remove any timezone component
+	// THis is because of the dubious behaviour of ducklake_expire_snapshots described below
+	parsedTime, err := time.Parse("2006-01-02 15:04:05.999-07", latestTimestamp)
+	if err != nil {
+		if err != nil {
+			return fmt.Errorf("failed to parse snapshot time '%s': %w", latestTimestamp, err)
+		}
+	}
+	// format the time
+	// TODO Note: ducklake_expire_snapshots expects a local time without timezone,
+	//  i.e if the time is '2025-08-26 13:25:10.365 +0100', we should pass '2025-08-26 13:25:10.365'
+	//  We need to raise a ducklake issue
+	formattedTime := parsedTime.Format("2006-01-02 15:04:05.000")
+
 	slog.Debug("Latest snapshot timestamp", "timestamp", latestTimestamp)
+
 	// 2) expire all snapshots older than the latest one
 	// Note: ducklake_expire_snapshots uses named parameters which cannot be parameterized with standard SQL placeholders
-	expireQuery := fmt.Sprintf(`call ducklake_expire_snapshots('%s', older_than => '%s')`, constants.DuckLakeCatalog, latestTimestamp)
+	expireQuery := fmt.Sprintf(`call ducklake_expire_snapshots('%s', older_than => '%s')`, constants.DuckLakeCatalog, formattedTime)
 
 	_, err = db.ExecContext(ctx, expireQuery)
 	if err != nil {
