@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"io"
 	"log"
 	"os"
@@ -22,11 +21,13 @@ import (
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/parse"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/parquet"
+	"golang.org/x/exp/maps"
 )
 
 // variable used to assign the output mode flag
@@ -72,6 +73,12 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		setExitCodeForConnectError(err)
 		displayOutput(ctx, databaseFilePath, err)
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	databaseFilePath, err = generateDbFile(ctx)
 
