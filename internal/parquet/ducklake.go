@@ -79,25 +79,24 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []Parti
 	// update status
 	status.Source = startingFileCount
 
-	// expire previous snapshots
-	//if err := expirePrevSnapshots(ctx, db); err != nil {
-	//	slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
-	//	return nil, err
-	//}
+	slog.Info("Starting DuckLake compaction - ordering parquet data", "source_file_count", status.Source)
 
-	uncompacted, err := compactDataFilesManual(ctx, db, patterns)
+	uncompacted, err := orderDataFiles(ctx, db, patterns)
 	if err != nil {
 		slog.Error("Failed to compact DuckLake parquet files", "error", err)
 		return nil, err
 	}
+	// TODO think about uncompacted file totals
 	status.Uncompacted = uncompacted
 
+	slog.Info("Expiring old DuckLake snapshots")
 	// now expire unused snapshots
 	if err := expirePrevSnapshots(ctx, db); err != nil {
 		slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
 		return nil, err
 	}
 
+	slog.Info("Merging adjacent DuckLake parquet files")
 	// so we should now have multiple, time ordered parquet files
 	// now merge the the parquet files in the duckdb database
 	// the will minimise the parquet file count to the optimum
@@ -106,6 +105,7 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []Parti
 		return nil, err
 	}
 
+	slog.Info("Cleaning up expired files in DuckLake")
 	// delete unused files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
 		slog.Error("Failed to cleanup expired files", "error", err)
@@ -140,11 +140,7 @@ func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
 }
 
 // mergeParquetFiles combines adjacent parquet files in the DuckDB database.
-// thisa is how we achieve compaction
 func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
-	slog.Info("Merging adjacent DuckLake parquet files")
-	defer slog.Info("DuckLake parquet file merge complete")
-
 	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
 		if ctx.Err() != nil {
 			return err

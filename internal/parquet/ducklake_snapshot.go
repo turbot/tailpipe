@@ -2,12 +2,12 @@ package parquet
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/turbot/pipe-fittings/v2/constants"
 
 	"github.com/turbot/tailpipe/internal/database"
 )
@@ -21,7 +21,18 @@ type partitionKey struct {
 	fileCount   int
 }
 
-func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
+func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
+	slog.Info("Ordering DuckLake data files, 1 day at a time")
+
+	/* we order data files as follows:
+	 - get list of partition keys matching patterns
+	 - for each  key , order entries <potentially split into day chunks>:
+		- get max row id of rows with that partition key
+	   	- reinsert ordered data for partition key
+		- dedupe: delete rows for partition key with rowid <= prev max row id
+
+	*/
+
 	// get a list of partition key combinations which match any of the patterns
 	partitionKeys, err := getPartitionKeysMatchingPattern(ctx, db, patterns)
 	if err != nil {
@@ -42,27 +53,31 @@ func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 	}
 	slog.Debug("got max snapshot ID", "max_snapshot_id", maxSnapshotID)
 
+	// TODO #compact benchmark and re-add trasactions
 	// Start a transaction for all partition processing
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	}
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(); rbErr != nil {
-				slog.Error("failed to rollback transaction", "error", rbErr)
-			}
-		}
-	}()
+	//tx, err := db.BeginTx(ctx, nil)
+	//if err != nil {
+	//	return 0, fmt.Errorf("failed to begin transaction: %w", err)
+	//}
+	//defer func() {
+	//	if err != nil {
+	//		if rbErr := tx.Rollback(); rbErr != nil {
+	//			slog.Error("failed to rollback transaction", "error", rbErr)
+	//		}
+	//	}
+	//}()
 
 	// Process each partition
 	for _, partitionKey := range partitionKeys {
-		if partitionKey.fileCount <= 1 {
-			uncompacted += partitionKey.fileCount
-			continue
-		}
+		// TODO #compact determine how fragmented this partition key is and only order if needed (unless 'force' is set?)
+		// even a single parquet file might be unordered
+		//if partitionKey.fileCount <= 1 {
+		//	//
+		//	uncompacted += partitionKey.fileCount
+		//	continue
+		//}
 
-		slog.Debug("Compacting partition entries",
+		slog.Info("Compacting partition entries",
 			"tp_table", partitionKey.tpTable,
 			"tp_partition", partitionKey.tpPartition,
 			"tp_index", partitionKey.tpIndex,
@@ -71,73 +86,108 @@ func compactDataFilesManual(ctx context.Context, db *database.DuckDb, patterns [
 			"file_count", partitionKey.fileCount,
 		)
 
-		if err := compactAndOrderPartitionEntries(ctx, tx, partitionKey); err != nil {
+		if err := compactAndOrderPartitionKeyEntries(ctx, db, partitionKey); err != nil {
 			return 0, err
 		}
 
-		slog.Info("Compacted and ordered partition entries",
+		slog.Info("Compacted and ordered all partition entries",
 			"tp_table", partitionKey.tpTable,
 			"tp_partition", partitionKey.tpPartition,
 			"tp_index", partitionKey.tpIndex,
 			"year", partitionKey.year,
 			"month", partitionKey.month,
 			"input_files", partitionKey.fileCount,
-			"output_files", 1,
 		)
-		// now delete all entries for this partition key for previou ssnapshots
-		if err := deletePreveSnapshotsForPartitionKey(ctx, tx, partitionKey, maxSnapshotID); err != nil {
+		// now delete all entries for this partition key for previous snapshots
+		if err := expirePrevSnapshotsForPartitionKey(ctx, db, partitionKey, maxSnapshotID); err != nil {
 			return 0, err
 		}
-		uncompacted += partitionKey.fileCount - 1
-
+		// TODO #compact think about file count totals
+		//uncompacted += partitionKey.fileCount - 1
 	}
 
-	// Commit the transaction
-	if err = tx.Commit(); err != nil {
-		return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	}
+	// TODO #compact benchmark and re-add trasactions
+	//// Commit the transaction
+	//if err = tx.Commit(); err != nil {
+	//	return 0, fmt.Errorf("failed to commit transaction: %w", err)
+	//}
 
+	slog.Info("Finished ordering DuckLake data file")
 	return uncompacted, nil
 }
 
-func compactAndOrderPartitionEntries(ctx context.Context, tx *sql.Tx, partitionKey partitionKey) error {
+func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey) error {
+	// determine how many rows there are in the partition key and limit to 500K per query
+	// TODO #cursor get row count and max rowid for partition key
+	var maxRowId, rowCount int
+
+	// todo #cursor determine how may chunks we need to split the dat ainto to limit to max 500K per chunk, and determine the interval
+	//  (if full partition key is a month - split it)
+	// then if there is more than one chunk, loop round processing one interval at a time, constructing timestamp filter
+
 	// Get the year and month as integers for date calculations
-	year, _ := strconv.Atoi(partitionKey.year)
-	month, _ := strconv.Atoi(partitionKey.month)
+	//year, _ := strconv.Atoi(partitionKey.year)
+	//month, _ := strconv.Atoi(partitionKey.month)
 
 	// Get the number of days in this month
-	daysInMonth := time.Date(year, time.Month(month+1), 0, 0, 0, 0, 0, time.UTC).Day()
+	//daysInMonth := time.Date(year, time.Month(month+1), 0, 0, 0, 0, 0, time.UTC).Day()
 
 	// Process each day separately
-	for day := 1; day <= daysInMonth; day++ {
-		// Calculate start and end of day
-		startDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-		endDate := startDate.Add(24 * time.Hour)
+	//for day := 1; day <= daysInMonth; day++ {
+	// Calculate start and end of day
+	//startDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	//endDate := startDate.Add(24 * time.Hour)
 
-		// Insert ordered data for this dayshanpsti
-		insertQuery := fmt.Sprintf(`insert into "%s" 
+	// Insert ordered data for this dayshanpsti
+	insertQuery := fmt.Sprintf(`insert into "%s" 
 			select * from "%s" 
 			where tp_partition = %s
 			  and tp_index = %s
 			  and year(tp_timestamp) = %s
 			  and month(tp_timestamp) = %s
-			  and tp_timestamp >= %s
-			  and tp_timestamp < %s
 			order by tp_timestamp`,
-			partitionKey.tpTable, partitionKey.tpTable,
-			EscapeLiteral(partitionKey.tpPartition),
-			EscapeLiteral(partitionKey.tpIndex),
-			EscapeLiteral(partitionKey.year),
-			EscapeLiteral(partitionKey.month),
-			EscapeLiteral(startDate.Format("2006-01-02 15:04:05")),
-			EscapeLiteral(endDate.Format("2006-01-02 15:04:05")))
+		partitionKey.tpTable, partitionKey.tpTable,
+		EscapeLiteral(partitionKey.tpPartition),
+		EscapeLiteral(partitionKey.tpIndex),
+		EscapeLiteral(partitionKey.year),
+		EscapeLiteral(partitionKey.month))
 
-		slog.Debug("compacting and ordering partition entries", "month", month, "day", day)
-		if _, err := tx.ExecContext(ctx, insertQuery); err != nil {
-			return fmt.Errorf("failed to insert ordered data for day %d: %w", day, err)
-		}
-		slog.Debug("finished compacting and ordering partition entries", "month", month, "day", day)
+	//slog.Debug("compacting and ordering partition entries", "month", month, "day", day)
+	if _, err := tx.ExecContext(ctx, insertQuery); err != nil {
+		return fmt.Errorf("failed to insert ordered data for day")
 	}
+	//slog.Debug("finished compacting and ordering partition entries", "month", month, "day", day)
+	//}
+
+	//for day := 1; day <= daysInMonth; day++ {
+	//	// Calculate start and end of day
+	//	startDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	//	endDate := startDate.Add(24 * time.Hour)
+	//
+	//	// Insert ordered data for this dayshanpsti
+	//	insertQuery := fmt.Sprintf(`insert into "%s"
+	//		select * from "%s"
+	//		where tp_partition = %s
+	//		  and tp_index = %s
+	//		  and year(tp_timestamp) = %s
+	//		  and month(tp_timestamp) = %s
+	//		  and tp_timestamp >= %s
+	//		  and tp_timestamp < %s
+	//		order by tp_timestamp`,
+	//		partitionKey.tpTable, partitionKey.tpTable,
+	//		EscapeLiteral(partitionKey.tpPartition),
+	//		EscapeLiteral(partitionKey.tpIndex),
+	//		EscapeLiteral(partitionKey.year),
+	//		EscapeLiteral(partitionKey.month),
+	//		EscapeLiteral(startDate.Format("2006-01-02 15:04:05")),
+	//		EscapeLiteral(endDate.Format("2006-01-02 15:04:05")))
+	//
+	//	slog.Debug("compacting and ordering partition entries", "month", month, "day", day)
+	//	if _, err := tx.ExecContext(ctx, insertQuery); err != nil {
+	//		return fmt.Errorf("failed to insert ordered data for day %d: %w", day, err)
+	//	}
+	//	slog.Debug("finished compacting and ordering partition entries", "month", month, "day", day)
+	//}
 
 	return nil
 }
@@ -236,32 +286,57 @@ func EscapeLiteral(literal string) string {
 	return `'` + escaped + `'`
 }
 
-// deletePreveSnapshotsForPartitionKey deletes all entries for a specific partition key
-// that have snapshot IDs less than or equal to the given snapshot ID
-func deletePreveSnapshotsForPartitionKey(ctx context.Context, tx *sql.Tx, partitionKey partitionKey, oldMaxSnapshotId int64) error {
-	deleteQuery := fmt.Sprintf(`delete from "%s" 
-	where tp_partition = %s
-	  and tp_index = %s
-	  and year(tp_timestamp) = %s
-	  and month(tp_timestamp) = %s
-	  and snapshot_id <= %d`,
-		partitionKey.tpTable,
-		EscapeLiteral(partitionKey.tpPartition),
-		EscapeLiteral(partitionKey.tpIndex),
-		EscapeLiteral(partitionKey.year),
-		EscapeLiteral(partitionKey.month),
-		oldMaxSnapshotId)
+// expirePrevSnapshotsForPartitionKey expires all snapshots for a specific partition key
+// that have snapshot IDs less than the given snapshot ID using DuckDB's built-in
+// ducklake_expire_snapshots function.
+//
+// The function reads the snapshot time for the given snapshot ID and expires all
+// snapshots older than that time + 1 second. This ensures we only expire snapshots
+// that are definitely older than the current compaction snapshot.
+//
+// Note: We format the timestamp without timezone information because
+// ducklake_expire_snapshots has a bug where it cannot parse timezone-aware
+// timestamp strings (e.g., '+01' suffix) when using the older_than parameter.
+func expirePrevSnapshotsForPartitionKey(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey, oldMaxSnapshotId int64) error {
+	// Read the snapshot time for the given snapshot ID
+	var snapshotTimeStr string
+	snapshotQuery := `SELECT snapshot_time FROM __ducklake_metadata_tailpipe_ducklake.ducklake_snapshot WHERE snapshot_id = ?`
+	if err := tx.QueryRowContext(ctx, snapshotQuery, oldMaxSnapshotId).Scan(&snapshotTimeStr); err != nil {
+		return fmt.Errorf("failed to read snapshot time for ID %d: %w", oldMaxSnapshotId, err)
+	}
 
-	slog.Debug("deleting previous snapshots for partition",
+	// Parse the snapshot time and add 1 second for the expire threshold
+	// The snapshot_time is stored as VARCHAR with timezone info like "2025-08-25 15:03:29.662+01"
+	// We need to parse it and add 1 second, then format without timezone
+	snapshotTime, err := time.Parse("2006-01-02 15:04:05.999-07", snapshotTimeStr)
+	if err != nil {
+		// Try alternative format without milliseconds
+		snapshotTime, err = time.Parse("2006-01-02 15:04:05-07", snapshotTimeStr)
+		if err != nil {
+			return fmt.Errorf("failed to parse snapshot time '%s': %w", snapshotTimeStr, err)
+		}
+	}
+
+	// Add 1 second to ensure we expire the snapshot associated with oldMaxSnapshotId
+	expireTime := snapshotTime.Add(1 * time.Second).Format("2006-01-02 15:04:05")
+
+	// Use ducklake_expire_snapshots to expire all snapshots older than the calculated time
+	// This is more efficient and handles metadata cleanup properly
+	expireQuery := fmt.Sprintf(`CALL ducklake_expire_snapshots('%s', dry_run => false, older_than => '%s')`,
+		constants.DuckLakeCatalog, expireTime)
+
+	slog.Debug("expiring previous snapshots for partition using ducklake_expire_snapshots",
 		"tp_table", partitionKey.tpTable,
 		"tp_partition", partitionKey.tpPartition,
 		"tp_index", partitionKey.tpIndex,
 		"year", partitionKey.year,
 		"month", partitionKey.month,
-		"delete_before_snapshot_id", oldMaxSnapshotId)
+		"snapshot_id", oldMaxSnapshotId,
+		"snapshot_time", snapshotTimeStr,
+		"expire_before_time", expireTime)
 
-	if _, err := tx.ExecContext(ctx, deleteQuery); err != nil {
-		return fmt.Errorf("failed to delete previous snapshots for partition: %w", err)
+	if _, err := tx.ExecContext(ctx, expireQuery); err != nil {
+		return fmt.Errorf("failed to expire previous snapshots for partition: %w", err)
 	}
 
 	return nil
