@@ -21,7 +21,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/parse"
 	"github.com/turbot/tailpipe/internal/plugin"
@@ -47,7 +46,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	ew := initGlobalConfig(ctx)
 	// display any warnings
 	ew.ShowWarnings()
-	// TODO #errors sort exit code  https://github.com/turbot/tailpipe/issues/106
+	// TODO #errors sort exit code  https://github.com/turbot/tailpipe/issues/496
 	// check for error
 	error_helpers.FailOnError(ew.Error)
 
@@ -155,12 +154,6 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 		return error_helpers.NewErrorsAndWarning(err)
 	}
 
-	// ensure we have a database file for this workspace
-	err = database.EnsureDatabaseFile(ctx)
-	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
-	}
-
 	var cmd = viper.Get(pconstants.ConfigKeyActiveCommand).(*cobra.Command)
 
 	// set-up viper with defaults from the env and default workspace profile
@@ -185,27 +178,11 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// load the connection config and HCL options (passing plugin versions
 	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(pluginVersionFile)
 
-	if loadConfigErrorsAndWarnings.Error != nil {
-		return loadConfigErrorsAndWarnings
+	if loadConfigErrorsAndWarnings.Error == nil {
+		// store global config
+		config.GlobalConfig = tailpipeConfig
+
 	}
 
-	if loadConfigErrorsAndWarnings.Warnings != nil {
-		for _, warning := range loadConfigErrorsAndWarnings.Warnings {
-			error_helpers.ShowWarning(warning)
-		}
-	}
-	// store global config
-	config.GlobalConfig = tailpipeConfig
-
-	// now validate all config values have appropriate values
-	return validateConfig()
-}
-
-// now validate  config values have appropriate values
-func validateConfig() error_helpers.ErrorAndWarnings {
-	var res = error_helpers.ErrorAndWarnings{}
-
-	// TODO #config validate
-
-	return res
+	return loadConfigErrorsAndWarnings
 }

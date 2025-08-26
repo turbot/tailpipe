@@ -38,3 +38,17 @@ func WithMaxMemoryMb(maxMemoryMb int) DuckDbOpt {
 		d.maxMemoryMb = maxMemoryMb
 	}
 }
+
+// WithDuckLakeEnabled enables the DuckLake extension for DuckDB.
+func WithDuckLakeEnabled(enabled bool) DuckDbOpt {
+	return func(d *DuckDb) {
+		d.ducklakeEnabled = enabled
+	}
+}
+
+// WithMaxConnections sets the maximum number of connections for DuckDB.
+func WithMaxConnections(maxConnections int) DuckDbOpt {
+	return func(d *DuckDb) {
+		d.maxConnections = maxConnections
+	}
+}

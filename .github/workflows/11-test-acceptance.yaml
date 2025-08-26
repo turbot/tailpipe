@@ -59,6 +59,13 @@ jobs:
           go clean -testcache
           go test -timeout 30s ./... -test.v
 
+      - name: Build Custom Goreleaser Cross Image for Linux
+        run: |-
+          cd tailpipe
+          make build-goreleaser-image
+          echo "=== Verifying GCC 13 ==="
+          docker run --rm tailpipe-goreleaser-cross:gcc13 gcc-13 --version | head -1
+
       - name: Build
         run: |-
           cd tailpipe
@@ -123,7 +130,7 @@ jobs:
           name: build-artifact-linux
           path: ~/artifacts
 
-      - name: Extract Ubuntu Artifacts and Install Binary
+      - name: Extract Linux Artifacts and Install Binary
         if: ${{ matrix.platform == 'ubuntu-latest' }}
         run: |
           mkdir ~/build
@@ -181,8 +188,8 @@ jobs:
           name: build-artifact-linux
           failOnError: true
 
-      - name: Clean up Darwin Build
+      - name: Clean up Linux Build
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
-          name: build-artifact-darwin
+          name: build-artifact-linux
           failOnError: true
