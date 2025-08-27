@@ -11,18 +11,3 @@ type partitionKey struct {
 	month       string // month(tp_timestamp) from partition value
 	fileCount   int
 }
-
-// return the table, escaped for use in a SQL where clause
-func (pk partitionKey) safeTable() string {
-	return EscapeLiteral(pk.tpTable)
-}
-
-// return the partition, escaped for use in a SQL where clause
-func (pk partitionKey) safePartition() string {
-	return EscapeLiteral(pk.tpPartition)
-}
-
-// return the index, escaped for use in a SQL where clause
-func (pk partitionKey) safeIndex() string {
-	return EscapeLiteral(pk.tpIndex)
-}

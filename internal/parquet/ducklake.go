@@ -169,7 +169,7 @@ func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
 
 	// Parse the snapshot time
 	// NOTE: rather than cast as timestamp, we read as a string then remove any timezone component
-	// THis is because of the dubious behaviour of ducklake_expire_snapshots described below
+	// This is because of the dubious behaviour of ducklake_expire_snapshots described below
 	parsedTime, err := time.Parse("2006-01-02 15:04:05.999-07", latestTimestamp)
 	if err != nil {
 		if err != nil {

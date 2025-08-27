@@ -12,15 +12,15 @@ import (
 
 const (
 	// maxCompactionRowsPerChunk is the maximum number of rows to compact in a single insert operation
-	maxCompactionRowsPerChunk = 500000
+	maxCompactionRowsPerChunk = 1_000_000
 )
 
-//	we order data files as follows:
-// 	- get list of partition keys matching patterns. For each  key:
-//		- order entries <potentially split into day chunks>:
-//		- get max row id of rows with that partition key
-// 		- reinsert ordered data for partition key
-//		- dedupe: delete rows for partition key with rowid <= prev max row id
+// we order data files as follows:
+// - get list of partition keys matching patterns. For each  key:
+//   - order entries <potentially split into day chunks>:
+//   - get max row id of rows with that partition key
+//   - reinsert ordered data for partition key
+//   - dedupe: delete rows for partition key with rowid <= prev max row id
 func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
 	slog.Info("Ordering DuckLake data files, 1 day at a time")
 
@@ -97,11 +97,12 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 }
 
 //	we order data files as follows:
+//
 // - get the row count, time range and max row id for the partition key
 // - determine a time interval which will give us row counts <= maxCompactionRowsPerChunk
 // - loop over time intervals. For each interval
-// 		- reinsert ordered data for partition key
-//		- dedupe: delete rows for partition key with rowid <= prev max row id
+//   - reinsert ordered data for partition key
+//   - dedupe: delete rows for partition key with rowid <= prev max row id
 func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey) error {
 	// Get row count and time range for the partition key
 	var rowCount, maxRowId int
@@ -109,17 +110,17 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb
 
 	// Query to get row count and time range for this partition
 	countQuery := fmt.Sprintf(`select count(*), max(rowid) , min(tp_timestamp), max(tp_timestamp) from "%s" 
-		where tp_partition = %s
-		  and tp_index = %s
-		  and year(tp_timestamp) = %s
-		  and month(tp_timestamp) = %s`,
-		partitionKey.safeTable(),
-		partitionKey.safePartition(),
-		partitionKey.safeIndex(),
-		partitionKey.year,
-		partitionKey.month)
+		where tp_partition = ?
+		  and tp_index = ?
+		  and year(tp_timestamp) = ?
+		  and month(tp_timestamp) = ?`,
+		partitionKey.tpTable)
 
-	if err := tx.QueryRowContext(ctx, countQuery).Scan(&rowCount, &maxRowId, &minTimestamp, &maxTimestamp); err != nil {
+	if err := tx.QueryRowContext(ctx, countQuery,
+		partitionKey.tpPartition,
+		partitionKey.tpIndex,
+		partitionKey.year,
+		partitionKey.month).Scan(&rowCount, &maxRowId, &minTimestamp, &maxTimestamp); err != nil {
 		return fmt.Errorf("failed to get row count and time range for partition: %w", err)
 	}
 
@@ -152,28 +153,34 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb
 	slog.Debug("processing partition in chunks",
 		"total_rows", rowCount,
 		"chunks", chunks,
-		"interval_duration", intervalDuration)
+		"interval_duration", intervalDuration.String())
 
 	// Process data in time-based chunks
 	currentStart := minTimestamp
+	i := 1
 	for currentStart.Before(maxTimestamp) {
 		currentEnd := currentStart.Add(intervalDuration)
 		if currentEnd.After(maxTimestamp) {
 			currentEnd = maxTimestamp
 		}
 
-		if err := insertOrderedDataForPartition(ctx, tx, partitionKey, currentStart, currentEnd); err != nil {
+		// For the final chunk, make it inclusive to catch the last row
+		isFinalChunk := currentEnd.Equal(maxTimestamp)
+
+		if err := insertOrderedDataForPartition(ctx, tx, partitionKey, currentStart, currentEnd, isFinalChunk); err != nil {
 			return fmt.Errorf("failed to insert ordered data for time range %s to %s: %w",
 				currentStart.Format("2006-01-02 15:04:05"),
 				currentEnd.Format("2006-01-02 15:04:05"), err)
 		}
 
-		slog.Debug("processed time chunk",
-			"start", currentStart.Format("2006-01-02 15:04:05"),
-			"end", currentEnd.Format("2006-01-02 15:04:05"))
+		slog.Debug(fmt.Sprintf("processed chunk %d/%d", i, chunks))
 
+		i++
+
+		// Ensure next chunk starts exactly where this one ended to prevent gaps
 		currentStart = currentEnd
 	}
+
 	slog.Debug("completed all time chunks for partition, deleting unordered entries",
 		"tp_table", partitionKey.tpTable,
 		"tp_partition", partitionKey.tpPartition,
@@ -181,44 +188,74 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb
 		"year", partitionKey.year,
 		"month", partitionKey.month,
 		"max_rowid", maxRowId)
-	
+
 	// we have sorted  and reinserted all data for this partition key - now delete all unordered entries (i.e. where rowid <  maxRowId)
 	deleteQuery := fmt.Sprintf(`delete from "%s" 
-		where tp_partition = %s
-		  and tp_index = %s
-		  and year(tp_timestamp) = %s
-		  and month(tp_timestamp) = %s
-		  and rowid <= %d`,
-		partitionKey.safeTable(),
-		partitionKey.safePartition(),
-		partitionKey.safeIndex(),
+		where tp_partition = ?
+		  and tp_index = ?
+		  and year(tp_timestamp) = ?
+		  and month(tp_timestamp) = ?
+		  and rowid <= ?`,
+		partitionKey.tpTable)
+
+	_, err := tx.ExecContext(ctx, deleteQuery,
+		partitionKey.tpPartition,
+		partitionKey.tpIndex,
 		partitionKey.year,
 		partitionKey.month,
 		maxRowId)
-
-	_, err := tx.ExecContext(ctx, deleteQuery)
 	if err != nil {
 		return fmt.Errorf("failed to delete unordered data for partition: %w", err)
 	}
+
+	// Validate total rows processed matches original count
+	finalCountQuery := fmt.Sprintf(`select count(*) from "%s" 
+		where tp_partition = ?
+		  and tp_index = ?
+		  and year(tp_timestamp) = ?
+		  and month(tp_timestamp) = ?`,
+		partitionKey.tpTable)
+
+	var finalRowCount int
+	if err := tx.QueryRowContext(ctx, finalCountQuery,
+		partitionKey.tpPartition,
+		partitionKey.tpIndex,
+		partitionKey.year,
+		partitionKey.month).Scan(&finalRowCount); err != nil {
+		return fmt.Errorf("failed to get final row count: %w", err)
+	}
+
+	if finalRowCount != rowCount {
+		return fmt.Errorf("total row count mismatch: expected %d, got %d", rowCount, finalRowCount)
+	}
+
 	return nil
 }
 
 // insertOrderedDataForPartition inserts ordered data for a specific time range
-func insertOrderedDataForPartition(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey, startTime, endTime time.Time) error {
+func insertOrderedDataForPartition(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey, startTime, endTime time.Time, isFinalChunk bool) error {
+	// For the final chunk, use inclusive end time to catch the last row
+	timeCondition := "tp_timestamp < ?"
+	if isFinalChunk {
+		timeCondition = "tp_timestamp <= ?"
+	}
+
 	insertQuery := fmt.Sprintf(`insert into "%s" 
 		select * from "%s" 
-		where tp_partition = %s
-		  and tp_index = %s
-		  and tp_timestamp >= %s
-		  and tp_timestamp < %s
+		where tp_partition = ?
+		  and tp_index = ?
+		  and tp_timestamp >= ?
+		  and %s
 		order by tp_timestamp`,
-		partitionKey.tpTable, partitionKey.tpTable,
-		EscapeLiteral(partitionKey.tpPartition),
-		EscapeLiteral(partitionKey.tpIndex),
-		EscapeLiteral(startTime.Format("2006-01-02 15:04:05")),
-		EscapeLiteral(endTime.Format("2006-01-02 15:04:05")))
+		partitionKey.tpTable,
+		partitionKey.tpTable,
+		timeCondition)
 
-	if _, err := tx.ExecContext(ctx, insertQuery); err != nil {
+	if _, err := tx.ExecContext(ctx, insertQuery,
+		partitionKey.tpPartition,
+		partitionKey.tpIndex,
+		startTime,
+		endTime); err != nil {
 		return fmt.Errorf("failed to insert ordered data for time range: %w", err)
 	}
 

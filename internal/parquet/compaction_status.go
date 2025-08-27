@@ -69,7 +69,7 @@ func (s *CompactionStatus) VerboseString() string {
 			if len(uncompactedString) > 0 {
 				uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
 			}
-			compactedString = fmt.Sprintf("Compacted %d files into %d files in %0.2fs.%s\n", s.Source, s.Dest, s.Duration.Seconds(), uncompactedString)
+			compactedString = fmt.Sprintf("Compacted %d files into %d files in %s.%s\n", s.Source, s.Dest, s.Duration.String(), uncompactedString)
 		} else {
 			// Nothing compacted; show only uncompacted note if present
 			compactedString = uncompactedString + "\n\n"
