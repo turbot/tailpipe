@@ -37,6 +37,16 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 		return 0, nil
 	}
 
+	// first we want to identify how may rows in total we need to compact
+	rowCounts := make(map[string]*partitionKeyRows, len(partitionKeys))
+	for _, pk := range partitionKeys {
+		pkr, err := getPartitionKeyRowCount(ctx, db, pk)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get row count for partition key %v: %w", pk, err)
+		}
+		rowCounts[pk.String()] = pkr
+	}
+
 	// Process each partition
 	for _, partitionKey := range partitionKeys {
 		tx, err := db.BeginTx(ctx, nil)
@@ -356,4 +366,36 @@ func SafeIdentifier(identifier string) string {
 func EscapeLiteral(literal string) string {
 	escaped := strings.ReplaceAll(literal, `'`, `''`)
 	return `'` + escaped + `'`
+}
+
+type partitionKeyRows struct {
+	partitionKey partitionKey
+	rowCount     int
+	maxRowId     int
+	minTimestamp time.Time
+	maxTimestamp time.Time
+}
+
+// get partition key statistics: row count, max row id, min and max timestamp
+func getPartitionKeyRowCount(ctx context.Context, db *database.DuckDb, partitionKey partitionKey) (*partitionKeyRows, error) {
+	var pkr = &partitionKeyRows{}
+	pkr.partitionKey = partitionKey
+
+	// Query to get row count and time range for this partition
+	countQuery := fmt.Sprintf(`select count(*), max(rowid) , min(tp_timestamp), max(tp_timestamp) from "%s" 
+		where tp_partition = ?
+		  and tp_index = ?
+		  and year(tp_timestamp) = ?
+		  and month(tp_timestamp) = ?`,
+		partitionKey.tpTable)
+
+	if err := db.QueryRowContext(ctx, countQuery,
+		partitionKey.tpPartition,
+		partitionKey.tpIndex,
+		partitionKey.year,
+		partitionKey.month).Scan(&pkr.rowCount, &pkr.maxRowId, &pkr.minTimestamp, &pkr.maxTimestamp); err != nil {
+		return nil, fmt.Errorf("failed to get row count and time range for partition: %w", err)
+	}
+
+	return pkr, nil
 }

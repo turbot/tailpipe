@@ -1,5 +1,7 @@
 package parquet
 
+import "fmt"
+
 // partitionKey is used to uniquely identify a a combination of ducklake partition columns:
 // tp_table, tp_partition, tp_index, year(tp_timestamp), month(tp_timestamp)
 // It also stores the file count for that partition key
@@ -10,4 +12,9 @@ type partitionKey struct {
 	year        string // year(tp_timestamp) from partition value
 	month       string // month(tp_timestamp) from partition value
 	fileCount   int
+}
+
+// String returns a string representation of the partitionKey
+func (pk partitionKey) String() string {
+	return fmt.Sprintf("%s|%s|%s|%s|%s", pk.tpTable, pk.tpPartition, pk.tpIndex, pk.year, pk.month)
 }
