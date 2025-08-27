@@ -116,10 +116,6 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 // detectLocalPlugin returns true if the modTime of the `pluginBinary` is after the installation date as recorded in the installation data
 // this may happen when a plugin is installed from the registry, but is then compiled from source
 func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary string) bool {
-	// TODO this should no longer be necessary as we now have a "local" version number in the versions file? https://github.com/turbot/tailpipe/issues/507
-	if installation == nil {
-		return true
-	}
 	installDate, err := time.Parse(time.RFC3339, installation.InstallDate)
 	if err != nil {
 		log.Printf("[WARN] could not parse install date for %s: %s", installation.Name, installation.InstallDate)
