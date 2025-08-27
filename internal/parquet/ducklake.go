@@ -95,14 +95,15 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []Parti
 		return nil, err
 	}
 
-	slog.Info("Merging adjacent DuckLake parquet files")
+	slog.Info("[SKIPPING] Merging adjacent DuckLake parquet files")
+	// TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
 	// so we should now have multiple, time ordered parquet files
 	// now merge the the parquet files in the duckdb database
 	// the will minimise the parquet file count to the optimum
-	if err := mergeParquetFiles(ctx, db); err != nil {
-		slog.Error("Failed to merge DuckLake parquet files", "error", err)
-		return nil, err
-	}
+	//if err := mergeParquetFiles(ctx, db); err != nil {
+	//	slog.Error("Failed to merge DuckLake parquet files", "error", err)
+	//	return nil, err
+	//}
 
 	slog.Info("Cleaning up expired files in DuckLake")
 	// delete unused files

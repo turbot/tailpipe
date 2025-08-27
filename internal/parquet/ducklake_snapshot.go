@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -22,7 +23,7 @@ const (
 //   - reinsert ordered data for partition key
 //   - dedupe: delete rows for partition key with rowid <= prev max row id
 func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
-	slog.Info("Ordering DuckLake data files, 1 day at a time")
+	slog.Info("Ordering DuckLake data files")
 
 	// get a list of partition key combinations which match any of the patterns
 	partitionKeys, err := getPartitionKeysMatchingPattern(ctx, db, patterns)
@@ -36,22 +37,14 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 		return 0, nil
 	}
 
-	// TODO #compact benchmark and re-add trasactions
-	// Start a transaction for all partition processing
-	//tx, err := db.BeginTx(ctx, nil)
-	//if err != nil {
-	//	return 0, fmt.Errorf("failed to begin transaction: %w", err)
-	//}
-	//defer func() {
-	//	if err != nil {
-	//		if rbErr := tx.Rollback(); rbErr != nil {
-	//			slog.Error("failed to rollback transaction", "error", rbErr)
-	//		}
-	//	}
-	//}()
-
 	// Process each partition
 	for _, partitionKey := range partitionKeys {
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			// This is a system failure - stop everything
+			return 0, fmt.Errorf("failed to begin transaction for partition %v: %w", partitionKey, err)
+		}
+
 		// TODO #compact determine how fragmented this partition key is and only order if needed (unless 'force' is set?)
 		// even a single parquet file might be unordered
 		//if partitionKey.fileCount <= 1 {
@@ -69,7 +62,15 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 			"file_count", partitionKey.fileCount,
 		)
 
-		if err := compactAndOrderPartitionKeyEntries(ctx, db, partitionKey); err != nil {
+		if err := compactAndOrderPartitionKeyEntries(ctx, tx, partitionKey); err != nil {
+			slog.Error("failed to compact partition", "partition", partitionKey, "error", err)
+			tx.Rollback()
+			return 0, err
+		}
+
+		if err := tx.Commit(); err != nil {
+			slog.Error("failed to commit transaction after compaction", "partition", partitionKey, "error", err)
+			tx.Rollback()
 			return 0, err
 		}
 
@@ -103,7 +104,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 // - loop over time intervals. For each interval
 //   - reinsert ordered data for partition key
 //   - dedupe: delete rows for partition key with rowid <= prev max row id
-func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey) error {
+func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partitionKey partitionKey) error {
 	// Get row count and time range for the partition key
 	var rowCount, maxRowId int
 	var minTimestamp, maxTimestamp time.Time
@@ -233,7 +234,7 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *database.DuckDb
 }
 
 // insertOrderedDataForPartition inserts ordered data for a specific time range
-func insertOrderedDataForPartition(ctx context.Context, tx *database.DuckDb, partitionKey partitionKey, startTime, endTime time.Time, isFinalChunk bool) error {
+func insertOrderedDataForPartition(ctx context.Context, tx *sql.Tx, partitionKey partitionKey, startTime, endTime time.Time, isFinalChunk bool) error {
 	// For the final chunk, use inclusive end time to catch the last row
 	timeCondition := "tp_timestamp < ?"
 	if isFinalChunk {
