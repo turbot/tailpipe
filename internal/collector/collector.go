@@ -99,6 +99,11 @@ func (c *Collector) Close() {
 		c.parquetConvertor.Close()
 	}
 
+	// close the tea app
+	if c.app != nil {
+		c.app.Quit()
+	}
+
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
 

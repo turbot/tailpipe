@@ -69,7 +69,12 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 		}
 
 		if err != nil {
-			error_helpers.ShowError(ctx, err)
+			if errors.Is(err, context.Canceled) {
+				err = nil
+				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
 			setExitCodeForCollectError(err)
 		}
 	}()
@@ -81,11 +86,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 	}
 
 	err = doCollect(ctx, cancel, args)
-	if errors.Is(err, context.Canceled) {
-		// clear error so we don't show it with normal error reporting
-		err = nil
-		fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
-	}
+
 }
 
 func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) error {
@@ -300,6 +301,11 @@ func getPartitionMatchPatternsForSinglePartName(partitions []string, arg string)
 func setExitCodeForCollectError(err error) {
 	// if exit code already set, leave as is
 	if exitCode != 0 || err == nil {
+		return
+	}
+	// TODO Set exit code for cancellation
+	if errors.Is(err, context.Canceled) {
+		exitCode = 0
 		return
 	}
 
