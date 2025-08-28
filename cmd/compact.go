@@ -123,5 +123,5 @@ func setExitCodeForCompactError(err error) {
 	if exitCode != 0 || err == nil {
 		return
 	}
-	exitCode = 1
+	exitCode = pconstants.ExitCodeCompactFailed
 }

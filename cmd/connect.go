@@ -213,7 +213,7 @@ func setExitCodeForConnectError(err error) {
 		return
 	}
 
-	exitCode = 1
+	exitCode = pconstants.ExitCodeConnectFailed
 }
 
 // copyDBFile copies the source database file to the destination

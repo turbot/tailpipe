@@ -74,7 +74,7 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		}
 		if err != nil {
 			error_helpers.ShowError(ctx, err)
-			setExitCodeForQueryError(err)
+			exitCode = pconstants.ExitCodeInitializationFailed
 		}
 	}()
 
@@ -118,14 +118,4 @@ func openDatabaseConnection(ctx context.Context) (*database.DuckDb, error) {
 	}
 	// Open a DuckDB connection
 	return database.NewDuckDb(database.WithDbFile(dbFilePath))
-}
-
-func setExitCodeForQueryError(err error) {
-	// if exit code already set, leave as is
-	if exitCode != 0 || err == nil {
-		return
-	}
-
-	// TODO #errors - assign exit codes  https://github.com/turbot/tailpipe/issues/106
-	exitCode = 1
 }

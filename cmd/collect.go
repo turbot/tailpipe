@@ -70,7 +70,6 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				err = nil
 				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)
@@ -303,14 +302,14 @@ func setExitCodeForCollectError(err error) {
 	if exitCode != 0 || err == nil {
 		return
 	}
-	// TODO Set exit code for cancellation
+	// set exit code for cancellation
 	if errors.Is(err, context.Canceled) {
-		exitCode = 0
+		exitCode = pconstants.ExitCodeOperationCancelled
+		err = nil
 		return
 	}
 
-	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/106
-	exitCode = 1
+	exitCode = pconstants.ExitCodeCollectionFailed
 }
 
 // parse the from time
