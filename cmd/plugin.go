@@ -291,11 +291,12 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		var resolved pplugin.ResolvedPluginVersion
 		if ref.IsFromTurbotHub() {
 			rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
+			exitCode = pconstants.ExitCodePluginNotFound
 			if err != nil || rpv == nil {
 				report := &pplugin.PluginInstallReport{
 					Plugin:         pluginName,
 					Skipped:        true,
-					SkipReason:     pconstants.InstallMessagePluginNotFound,
+					SkipReason:     pconstants.InstallMessagePluginNotDistributedViaHub,
 					IsUpdateReport: false,
 				}
 				reportChannel <- report
@@ -455,6 +456,22 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 					return
 				}
 			} else {
+				// Plugin not installed locally. If it's a hub plugin, check if it exists in hub.
+				org, name, constraint := ref.GetOrgNameAndStream()
+				if ref.IsFromTurbotHub() {
+					if _, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); err != nil {
+						// Not found in hub
+						exitCode = pconstants.ExitCodePluginNotFound
+						updateResults = append(updateResults, &pplugin.PluginInstallReport{
+							Skipped:        true,
+							Plugin:         p,
+							SkipReason:     pconstants.InstallMessagePluginNotDistributedViaHub,
+							IsUpdateReport: true,
+						})
+						continue
+					}
+				}
+				// Exists on hub (or not a hub plugin) but not installed locally
 				exitCode = pconstants.ExitCodePluginNotFound
 				updateResults = append(updateResults, &pplugin.PluginInstallReport{
 					Skipped:        true,
@@ -643,6 +660,14 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	// load installation state (needed for hub existence checks)
+	state, err := installationstate.Load()
+	if err != nil {
+		error_helpers.ShowError(ctx, fmt.Errorf("could not load state"))
+		exitCode = pconstants.ExitCodePluginLoadingError
+		return
+	}
+
 	if len(args) == 0 {
 		fmt.Println() //nolint:forbidigo // ui output
 		error_helpers.ShowError(ctx, fmt.Errorf("you need to provide at least one plugin to uninstall"))
@@ -660,6 +685,16 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		if report, err := plugin.Remove(ctx, p); err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				exitCode = pconstants.ExitCodePluginNotFound
+				// check hub existence to tailor message
+				ref := pociinstaller.NewImageRef(p)
+				if ref.IsFromTurbotHub() {
+					org, name, constraint := ref.GetOrgNameAndStream()
+					if _, herr := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); herr != nil {
+						// Not on hub and not installed locally
+						error_helpers.ShowError(ctx, fmt.Errorf("Failed to uninstall '%s' not found on hub and not installed locally.", p))
+						continue
+					}
+				}
 			}
 			error_helpers.ShowErrorWithMessage(ctx, err, fmt.Sprintf("Failed to uninstall plugin '%s'", p))
 		} else {
