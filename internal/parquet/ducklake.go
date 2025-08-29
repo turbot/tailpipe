@@ -64,70 +64,6 @@ func DeletePartition(ctx context.Context, partition *config.Partition, from, to 
 	return rowCount, nil
 }
 
-func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(*CompactionStatus), patterns ...PartitionPattern) error {
-	slog.Info("Compacting DuckLake data files")
-
-	t := time.Now()
-
-	// TODO NO get files for the patternd
-	// get the starting file count
-	//startingFileCount, err := parquetFileCount(ctx, db)
-	//if err != nil {
-	//	slog.Error("Failed to get initial DuckLake parquet file count", "error", err)
-	//	return err
-	//}
-	// update status
-	//status.InitialFiles = startingFileCount
-
-	// call the update function to show initial status
-	//updateFunc(status)
-
-	//slog.Info("Starting DuckLake compaction - ordering parquet data", "source_file_count", status.InitialFiles)
-
-	status, err := orderDataFiles(ctx, db, updateFunc, patterns)
-	if err != nil {
-		slog.Error("Failed to compact DuckLake parquet files", "error", err)
-		return err
-	}
-	//status.Uncompacted = uncompacted
-
-	slog.Info("Expiring old DuckLake snapshots")
-	// now expire unused snapshots
-	if err := expirePrevSnapshots(ctx, db); err != nil {
-		slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
-		return err
-	}
-
-	slog.Info("[SKIPPING] Merging adjacent DuckLake parquet files")
-	// TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
-	// so we should now have multiple, time ordered parquet files
-	// now merge the the parquet files in the duckdb database
-	// the will minimise the parquet file count to the optimum
-	//if err := mergeParquetFiles(ctx, db); err != nil {
-	//	slog.Error("Failed to merge DuckLake parquet files", "error", err)
-	//	return nil, err
-	//}
-
-	slog.Info("Cleaning up expired files in DuckLake")
-	// delete unused files
-	if err := cleanupExpiredFiles(ctx, db); err != nil {
-		slog.Error("Failed to cleanup expired files", "error", err)
-		return err
-	}
-
-	// get the file count after merging and cleanup
-	finalFileCount, err := parquetFileCount(ctx, db)
-	if err != nil {
-		return err
-	}
-	// update status
-	status.FinalFiles = finalFileCount
-	// set the compaction time
-	status.Duration = time.Since(t)
-	slog.Info("DuckLake compaction complete", "source_file_count", status.InitialFiles, "destination_file_count", status.FinalFiles)
-	return nil
-}
-
 // DucklakeCleanup performs removes old snapshots deletes expired and unused parquet files from the DuckDB database.
 func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
 	slog.Info("Cleaning up DuckLake snapshots and expired files")
@@ -138,17 +74,6 @@ func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
 	// delete expired files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
 		return err
-	}
-	return nil
-}
-
-// mergeParquetFiles combines adjacent parquet files in the DuckDB database.
-func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
-	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
-		if ctx.Err() != nil {
-			return err
-		}
-		return fmt.Errorf("failed to merge parquet files: %w", err)
 	}
 	return nil
 }
@@ -213,21 +138,4 @@ func cleanupExpiredFiles(ctx context.Context, db *database.DuckDb) error {
 	}
 
 	return nil
-}
-
-// parquetFileCount returns the count of ALL parquet files in the ducklake_data_file table (whether active or not)
-func parquetFileCount(ctx context.Context, db *database.DuckDb) (int, error) {
-	slog.Info("Getting DuckLake parquet file count")
-	query := fmt.Sprintf(`select count (*) from %s.ducklake_data_file;`, constants.DuckLakeMetadataCatalog)
-
-	var count int
-	err := db.QueryRowContext(ctx, query).Scan(&count)
-	if err != nil {
-		if ctx.Err() != nil {
-			return 0, err
-		}
-		return 0, fmt.Errorf("failed to get parquet file count: %w", err)
-	}
-	slog.Info("DuckLake parquet file count retrieved", "count", count)
-	return count, nil
 }

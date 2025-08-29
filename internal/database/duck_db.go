@@ -26,7 +26,6 @@ type DuckDb struct {
 	tempDir         string
 	maxMemoryMb     int
 	ducklakeEnabled bool
-	maxConnections  int
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
@@ -52,6 +51,9 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 	w.DB = db
+
+	// for duckdb, limit connections to 1 - DuckDB is designed for single-connection usage
+	w.DB.SetMaxOpenConns(1)
 
 	if len(w.extensions) > 0 {
 		// install and load the JSON extension
@@ -79,10 +81,6 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 		}
 	}
 
-	if w.maxConnections > 0 {
-		slog.Info(fmt.Sprintf("Setting max open connections to %d", w.maxConnections))
-		w.DB.SetMaxOpenConns(w.maxConnections)
-	}
 	// Configure DuckDB's temp directory:
 	// - If WithTempDir option was provided, use that directory
 	// - Otherwise, use the collection temp directory (a subdirectory in the user's home directory

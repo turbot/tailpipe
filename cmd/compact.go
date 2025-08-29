@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/turbot/go-kit/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"golang.org/x/exp/maps"
 	"log/slog"
@@ -87,6 +88,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	// do the compaction
 	status, err := doCompaction(ctx, db, patterns)
 	if errors.Is(err, context.Canceled) {
+		// TODO verify
 		// clear error so we don't show it with normal error reporting
 		err = nil
 	}
@@ -123,21 +125,13 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.P
 	// define func to update the spinner suffix with the number of files compacted
 	var status = parquet.NewCompactionStatus()
 
-	updateTotals := func(counts parquet.CompactionStatus) {
-		status.Update(counts)
-		s.Suffix = fmt.Sprintf(" compacting parquet files (%0.2f%%  of %d rows)", status.InitialFiles, status.FinalFiles)
-	}
-
-	updateTotals := func(counts parquet.CompactionStatus) {
-		status.Update(counts)
-		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", status.InitialFiles, status.FinalFiles)
+	updateTotals := func(updatedStatus parquet.CompactionStatus) {
+		status = &updatedStatus
+		s.Suffix = fmt.Sprintf(" compacting parquet files (%0.1f%% of %s rows)", status.ProgressPercent, types.ToHumanisedString(status.TotalRows))
 	}
 
 	// do compaction
-	err := parquet.CompactDataFiles(ctx, db, updateTotals, patterns)
-
-	// TODO still needed?
-	s.Suffix = fmt.Sprintf(" compacted parquet files (%d files -> %d files)", status.Source, status.Dest)
+	err := parquet.CompactDataFiles(ctx, db, updateTotals, patterns...)
 
 	return status, err
 }

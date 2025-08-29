@@ -45,10 +45,3 @@ func WithDuckLakeEnabled(enabled bool) DuckDbOpt {
 		d.ducklakeEnabled = enabled
 	}
 }
-
-// WithMaxConnections sets the maximum number of connections for DuckDB.
-func WithMaxConnections(maxConnections int) DuckDbOpt {
-	return func(d *DuckDb) {
-		d.maxConnections = maxConnections
-	}
-}

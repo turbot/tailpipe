@@ -56,11 +56,6 @@ func (s *status) UpdateConversionStatus(rowsConverted, failedRows int64, errors 
 	}
 }
 
-// UpdateCompactionStatus updates the status with the values from the compaction status event
-func (s *status) UpdateCompactionStatus(rowsCompacted int64) {
-	s.compactionStatus.RowsCompacted += rowsCompacted
-}
-
 // CollectionHeader returns a string to display at the top of the collection status for app or alone for non-progress display
 func (s *status) CollectionHeader() string {
 	// wrap the source in parentheses if it exists
@@ -212,13 +207,13 @@ func (s *status) displayFilesSection() string {
 
 	var out strings.Builder
 	out.WriteString("Files:\n")
-	if s.compactionStatus.InitialFiles == 0 && s.compactionStatus.Uncompacted == 0 {
+	if s.compactionStatus.InitialFiles == 0 {
 		// no counts available, display status text
 		out.WriteString(fmt.Sprintf("  %s\n", statusText))
 	} else {
 		// display counts source => dest
-		l := int64(s.compactionStatus.InitialFiles + s.compactionStatus.Uncompacted)
-		r := int64(s.compactionStatus.FinalFiles + s.compactionStatus.Uncompacted)
+		l := int64(s.compactionStatus.InitialFiles)
+		r := int64(s.compactionStatus.FinalFiles)
 		out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
 	}
 

@@ -92,8 +92,6 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	db, err := database.NewDuckDb(
 		database.WithDuckDbExtensions(pconstants.DuckDbExtensions),
 		database.WithDuckLakeEnabled(true),
-		// TODO #DL check whether we still need to limit max connections https://github.com/turbot/tailpipe/issues/498
-		database.WithMaxConnections(1), // limit to 1 connection for the collector
 	)
 
 	if err != nil {
@@ -262,10 +260,10 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	updateAppCompactionFunc := func(rowsCompacted int64) {
+	updateAppCompactionFunc := func(status parquet.CompactionStatus) {
 		c.statusLock.Lock()
 		defer c.statusLock.Unlock()
-		c.status.UpdateCompactionStatus(rowsCompacted)
+		c.status.compactionStatus = &status
 		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)

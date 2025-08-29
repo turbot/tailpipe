@@ -3,16 +3,15 @@ package parquet
 import (
 	"fmt"
 	"github.com/turbot/pipe-fittings/v2/utils"
-	"golang.org/x/exp/maps"
 	"time"
 )
 
 type CompactionStatus struct {
-	InitialFiles  int
-	FinalFiles    int
-	RowsCompacted int64
-	TotalRows     int64
-	Progress      float64
+	InitialFiles    int
+	FinalFiles      int
+	RowsCompacted   int64
+	TotalRows       int64
+	ProgressPercent float64
 
 	MigrateSource             int               // number of source files migrated
 	MigrateDest               int               // number of destination files after migration
@@ -24,18 +23,6 @@ func NewCompactionStatus() *CompactionStatus {
 	return &CompactionStatus{
 		PartitionIndexExpressions: make(map[string]string),
 	}
-}
-
-func (s *CompactionStatus) Update(other CompactionStatus) {
-	s.InitialFiles += other.InitialFiles
-	s.FinalFiles += other.FinalFiles
-	s.MigrateSource += other.MigrateSource
-	s.MigrateDest += other.MigrateDest
-	if s.PartitionIndexExpressions == nil {
-		s.PartitionIndexExpressions = make(map[string]string)
-	}
-	s.Duration = other.Duration
-	maps.Copy(s.PartitionIndexExpressions, other.PartitionIndexExpressions)
 }
 
 func (s *CompactionStatus) VerboseString() string {
@@ -57,15 +44,20 @@ func (s *CompactionStatus) VerboseString() string {
 	}
 
 	var uncompactedString, compactedString string
-	if s.InitialFiles == 0 && s.FinalFiles == 0 {
-		compactedString = "\nNo files to compact."
-	} else {
-
-		if s.InitialFiles > 0 {
+	if s.InitialFiles == 0 && s.FinalFiles == 0 || s.RowsCompacted == 0 {
+		compactedString = "\nNo files required compaction."
+		// Did we compact any files
+		if s.InitialFiles > 0 && s.FinalFiles != s.InitialFiles {
 			if len(uncompactedString) > 0 {
 				uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
 			}
-			compactedString = fmt.Sprintf("Compacted %d files into %d files in %s.%s\n", s.InitialFiles, s.FinalFiles, s.Duration.String(), uncompactedString)
+			// if the file count is the same, we must have just ordered
+			if s.InitialFiles == s.FinalFiles {
+				compactedString = fmt.Sprintf("Ordered %d rows in %dfiles in %s.%s\n", s.TotalRows, s.InitialFiles, s.Duration.String(), uncompactedString)
+			} else {
+				compactedString = fmt.Sprintf("Compacted and ordered %d rows in %d files into %d files in %s.%s\n", s.TotalRows, s.InitialFiles, s.FinalFiles, s.Duration.String(), uncompactedString)
+			}
+
 		} else {
 			// Nothing compacted; show only uncompacted note if present
 			compactedString = uncompactedString + "\n\n"
@@ -73,14 +65,4 @@ func (s *CompactionStatus) VerboseString() string {
 	}
 
 	return migratedString + compactedString
-}
-
-func (s *CompactionStatus) BriefString() string {
-	if s.InitialFiles == 0 {
-		return ""
-	}
-
-	uncompactedString := ""
-
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", s.InitialFiles, s.FinalFiles, uncompactedString)
 }
