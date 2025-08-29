@@ -43,24 +43,15 @@ func (s *CompactionStatus) VerboseString() string {
 		migratedString += ".\n"
 	}
 
-	var uncompactedString, compactedString string
-	if s.InitialFiles == 0 && s.FinalFiles == 0 || s.RowsCompacted == 0 {
+	var compactedString string
+	if s.RowsCompacted == 0 {
 		compactedString = "\nNo files required compaction."
-		// Did we compact any files
-		if s.InitialFiles > 0 && s.FinalFiles != s.InitialFiles {
-			if len(uncompactedString) > 0 {
-				uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
-			}
-			// if the file count is the same, we must have just ordered
-			if s.InitialFiles == s.FinalFiles {
-				compactedString = fmt.Sprintf("Ordered %d rows in %dfiles in %s.%s\n", s.TotalRows, s.InitialFiles, s.Duration.String(), uncompactedString)
-			} else {
-				compactedString = fmt.Sprintf("Compacted and ordered %d rows in %d files into %d files in %s.%s\n", s.TotalRows, s.InitialFiles, s.FinalFiles, s.Duration.String(), uncompactedString)
-			}
-
+	} else {
+		// if the file count is the same, we must have just ordered
+		if s.InitialFiles == s.FinalFiles {
+			compactedString = fmt.Sprintf("Ordered %d rows in %dfiles in %s.\n", s.TotalRows, s.InitialFiles, s.Duration.String())
 		} else {
-			// Nothing compacted; show only uncompacted note if present
-			compactedString = uncompactedString + "\n\n"
+			compactedString = fmt.Sprintf("Compacted and ordered %d rows in %d files into %d files in %s.\n", s.TotalRows, s.InitialFiles, s.FinalFiles, s.Duration.String())
 		}
 	}
 
