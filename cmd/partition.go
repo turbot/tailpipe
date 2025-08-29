@@ -112,7 +112,7 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 // Show Partition
 func partitionShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   "show",
+		Use:   "show <partition-name>",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionShowCmd,
 		Short: "Show details for a specific partition",
@@ -168,7 +168,7 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 
 func partitionDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete ",
+		Use:   "delete <partition-name>",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionDeleteCmd,
 		Short: "Delete a partition for the specified period",
