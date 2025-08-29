@@ -2,6 +2,7 @@ package parquet
 
 import (
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"time"
 )
@@ -49,11 +50,47 @@ func (s *CompactionStatus) VerboseString() string {
 	} else {
 		// if the file count is the same, we must have just ordered
 		if s.InitialFiles == s.FinalFiles {
-			compactedString = fmt.Sprintf("Ordered %d rows in %dfiles in %s.\n", s.TotalRows, s.InitialFiles, s.Duration.String())
+			compactedString = fmt.Sprintf("Ordered %s rows in %s files (%s).\n", s.TotalRowsString(), s.InitialFilesString(), s.DurationString())
 		} else {
-			compactedString = fmt.Sprintf("Compacted and ordered %d rows in %d files into %d files in %s.\n", s.TotalRows, s.InitialFiles, s.FinalFiles, s.Duration.String())
+			compactedString = fmt.Sprintf("Compacted and ordered %s rows in %s files into %s files in (%s).\n", s.TotalRowsString(), s.InitialFilesString(), s.FinalFilesString(), s.DurationString())
 		}
 	}
 
 	return migratedString + compactedString
+}
+
+func (s *CompactionStatus) String() string {
+	var migratedString string
+	var compactedString string
+	if s.RowsCompacted == 0 {
+		compactedString = "No files required compaction."
+	} else {
+		// if the file count is the same, we must have just ordered
+		if s.InitialFiles == s.FinalFiles {
+			compactedString = fmt.Sprintf("Ordered %s rows in %s files in %s.\n", s.TotalRowsString(), s.InitialFilesString(), s.Duration.String())
+		} else {
+			compactedString = fmt.Sprintf("Compacted and ordered %s rows in %s files into %s files in %s.\n", s.TotalRowsString(), s.InitialFilesString(), s.FinalFilesString(), s.Duration.String())
+		}
+	}
+
+	return migratedString + compactedString
+}
+
+func (s *CompactionStatus) TotalRowsString() any {
+	return humanize.Comma(s.TotalRows)
+}
+func (s *CompactionStatus) InitialFilesString() any {
+	return humanize.Comma(int64(s.InitialFiles))
+}
+func (s *CompactionStatus) FinalFilesString() any {
+	return humanize.Comma(int64(s.FinalFiles))
+}
+func (s *CompactionStatus) DurationString() string {
+	return utils.HumanizeDuration(s.Duration)
+}
+func (s *CompactionStatus) RowsCompactedString() any {
+	return humanize.Comma(s.RowsCompacted)
+}
+func (s *CompactionStatus) ProgressPercentString() string {
+	return fmt.Sprintf("%.1f%%", s.ProgressPercent)
 }

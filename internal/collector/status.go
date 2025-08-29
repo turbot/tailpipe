@@ -211,10 +211,7 @@ func (s *status) displayFilesSection() string {
 		// no counts available, display status text
 		out.WriteString(fmt.Sprintf("  %s\n", statusText))
 	} else {
-		// display counts source => dest
-		l := int64(s.compactionStatus.InitialFiles)
-		r := int64(s.compactionStatus.FinalFiles)
-		out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
+		out.WriteString(fmt.Sprintf("  %s\n", s.compactionStatus.String()))
 	}
 
 	out.WriteString("\n")

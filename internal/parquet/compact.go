@@ -110,13 +110,26 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 
 	// Process each partition
 	for _, pk := range partitionKeys {
+		// TODO #compact determine how fragmented this partition key is and only order if needed (unless 'force' is set?)
+		metrics, err := pk.getDisorderMetrics(ctx, db)
+		if err != nil {
+			slog.Error("failed to get disorder metrics", "partition", pk, "error", err)
+			return nil, err
+		}
+		slog.Info("Partition disorder metrics",
+			"tp_table", pk.tpTable,
+			"tp_partition", pk.tpPartition,
+			"tp_index", pk.tpIndex,
+			"year", pk.year,
+			"month", pk.month,
+			"average file count", metrics.fileCount,
+			"average rows group count", metrics.rowGroupCount)
+
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			// This is a system failure - stop everything
 			return nil, fmt.Errorf("failed to begin transaction for partition %v: %w", pk, err)
 		}
-
-		// TODO #compact determine how fragmented this partition key is and only order if needed (unless 'force' is set?)
 
 		//if not_fragmented
 		//	continue

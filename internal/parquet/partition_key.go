@@ -3,10 +3,11 @@ package parquet
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/pipe-fittings/v2/constants"
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/turbot/pipe-fittings/v2/constants"
 
 	"github.com/turbot/tailpipe/internal/database"
 )
@@ -176,4 +177,35 @@ func newPartitionKeyStats(ctx context.Context, db *database.DuckDb, p *partition
 	}
 
 	return stats, nil
+}
+
+// disorderMetrics represents the fragmentation level of data for a partition key
+type disorderMetrics struct {
+	fileCount     int // number of files for this partition key
+	rowGroupCount int // estimated number of row groups
+}
+
+// getDisorderMetrics calculates the disorder level of data for a partition key
+func (p *partitionKey) getDisorderMetrics(ctx context.Context, db *database.DuckDb) (*disorderMetrics, error) {
+	// Simple query to count distinct files for this partition key
+	query := fmt.Sprintf(`select count(distinct filename) as file_count
+		from "%s" 
+		where tp_partition = ?
+		  and tp_index = ?
+		  and year(tp_timestamp) = ?
+		  and month(tp_timestamp) = ?`, p.tpTable)
+
+	var fileCount int
+	err := db.QueryRowContext(ctx, query, p.tpPartition, p.tpIndex, p.year, p.month).Scan(&fileCount)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count files: %w", err)
+	}
+
+	// Simple estimate: assume 2 row groups per file
+	rowGroupCount := fileCount * 2
+
+	return &disorderMetrics{
+		fileCount:     fileCount,
+		rowGroupCount: rowGroupCount,
+	}, nil
 }
