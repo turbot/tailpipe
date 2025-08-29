@@ -8,9 +8,11 @@ import (
 )
 
 type CompactionStatus struct {
-	Source      int
-	Dest        int
-	Uncompacted int
+	InitialFiles  int
+	FinalFiles    int
+	RowsCompacted int64
+	TotalRows     int64
+	Progress      float64
 
 	MigrateSource             int               // number of source files migrated
 	MigrateDest               int               // number of destination files after migration
@@ -22,13 +24,11 @@ func NewCompactionStatus() *CompactionStatus {
 	return &CompactionStatus{
 		PartitionIndexExpressions: make(map[string]string),
 	}
-
 }
 
 func (s *CompactionStatus) Update(other CompactionStatus) {
-	s.Source += other.Source
-	s.Dest += other.Dest
-	s.Uncompacted += other.Uncompacted
+	s.InitialFiles += other.InitialFiles
+	s.FinalFiles += other.FinalFiles
 	s.MigrateSource += other.MigrateSource
 	s.MigrateDest += other.MigrateDest
 	if s.PartitionIndexExpressions == nil {
@@ -57,19 +57,15 @@ func (s *CompactionStatus) VerboseString() string {
 	}
 
 	var uncompactedString, compactedString string
-	if s.Source == 0 && s.Dest == 0 && s.Uncompacted == 0 {
+	if s.InitialFiles == 0 && s.FinalFiles == 0 {
 		compactedString = "\nNo files to compact."
 	} else {
 
-		if s.Uncompacted > 0 {
-			uncompactedString = fmt.Sprintf("%d files did not need compaction.", s.Uncompacted)
-		}
-
-		if s.Source > 0 {
+		if s.InitialFiles > 0 {
 			if len(uncompactedString) > 0 {
 				uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
 			}
-			compactedString = fmt.Sprintf("Compacted %d files into %d files in %s.%s\n", s.Source, s.Dest, s.Duration.String(), uncompactedString)
+			compactedString = fmt.Sprintf("Compacted %d files into %d files in %s.%s\n", s.InitialFiles, s.FinalFiles, s.Duration.String(), uncompactedString)
 		} else {
 			// Nothing compacted; show only uncompacted note if present
 			compactedString = uncompactedString + "\n\n"
@@ -80,14 +76,11 @@ func (s *CompactionStatus) VerboseString() string {
 }
 
 func (s *CompactionStatus) BriefString() string {
-	if s.Source == 0 {
+	if s.InitialFiles == 0 {
 		return ""
 	}
 
 	uncompactedString := ""
-	if s.Uncompacted > 0 {
-		uncompactedString = fmt.Sprintf(" (%d files did not need compaction.)", s.Uncompacted)
-	}
 
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", s.Source, s.Dest, uncompactedString)
+	return fmt.Sprintf("Compacted %d files into %d files.%s\n", s.InitialFiles, s.FinalFiles, uncompactedString)
 }

@@ -63,7 +63,7 @@ package parse
 //							Alias:    "custom",
 //							Plugin:   "/plugins/turbot/custom@latest",
 //						},
-//						Source: config.Source{
+//						InitialFiles: config.InitialFiles{
 //							Type: "file_system",
 //							Config: &config.HclBytes{
 //								Hcl: []byte("extensions = [\".csv\"]\npaths = [\"/Users/kai/tailpipe_data/logs\"]"),
@@ -109,15 +109,15 @@ package parse
 //						Columns: []config.ColumnSchema{
 //							{
 //								Name:   "tp_timestamp",
-//								Source: utils.ToPointer("time_local"),
+//								InitialFiles: utils.ToPointer("time_local"),
 //							},
 //							{
 //								Name:   "tp_index",
-//								Source: utils.ToPointer("account_id"),
+//								InitialFiles: utils.ToPointer("account_id"),
 //							},
 //							{
 //								Name:   "org_id",
-//								Source: utils.ToPointer("org"),
+//								InitialFiles: utils.ToPointer("org"),
 //							},
 //							{
 //								Name: "user_id",

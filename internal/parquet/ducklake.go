@@ -64,35 +64,38 @@ func DeletePartition(ctx context.Context, partition *config.Partition, from, to 
 	return rowCount, nil
 }
 
-func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (*CompactionStatus, error) {
+func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(*CompactionStatus), patterns ...PartitionPattern) error {
 	slog.Info("Compacting DuckLake data files")
 
-	var status = NewCompactionStatus()
 	t := time.Now()
 
+	// TODO NO get files for the patternd
 	// get the starting file count
-	startingFileCount, err := parquetFileCount(ctx, db)
-	if err != nil {
-		slog.Error("Failed to get initial DuckLake parquet file count", "error", err)
-		return nil, err
-	}
+	//startingFileCount, err := parquetFileCount(ctx, db)
+	//if err != nil {
+	//	slog.Error("Failed to get initial DuckLake parquet file count", "error", err)
+	//	return err
+	//}
 	// update status
-	status.Source = startingFileCount
+	//status.InitialFiles = startingFileCount
 
-	slog.Info("Starting DuckLake compaction - ordering parquet data", "source_file_count", status.Source)
+	// call the update function to show initial status
+	//updateFunc(status)
 
-	uncompacted, err := orderDataFiles(ctx, db, patterns)
+	//slog.Info("Starting DuckLake compaction - ordering parquet data", "source_file_count", status.InitialFiles)
+
+	status, err := orderDataFiles(ctx, db, updateFunc, patterns)
 	if err != nil {
 		slog.Error("Failed to compact DuckLake parquet files", "error", err)
-		return nil, err
+		return err
 	}
-	status.Uncompacted = uncompacted
+	//status.Uncompacted = uncompacted
 
 	slog.Info("Expiring old DuckLake snapshots")
 	// now expire unused snapshots
 	if err := expirePrevSnapshots(ctx, db); err != nil {
 		slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
-		return nil, err
+		return err
 	}
 
 	slog.Info("[SKIPPING] Merging adjacent DuckLake parquet files")
@@ -109,20 +112,20 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, patterns []Parti
 	// delete unused files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
 		slog.Error("Failed to cleanup expired files", "error", err)
-		return nil, err
+		return err
 	}
 
 	// get the file count after merging and cleanup
 	finalFileCount, err := parquetFileCount(ctx, db)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	// update status
-	status.Dest = finalFileCount
+	status.FinalFiles = finalFileCount
 	// set the compaction time
 	status.Duration = time.Since(t)
-	slog.Info("DuckLake compaction complete", "source_file_count", status.Source, "destination_file_count", status.Dest)
-	return status, nil
+	slog.Info("DuckLake compaction complete", "source_file_count", status.InitialFiles, "destination_file_count", status.FinalFiles)
+	return nil
 }
 
 // DucklakeCleanup performs removes old snapshots deletes expired and unused parquet files from the DuckDB database.

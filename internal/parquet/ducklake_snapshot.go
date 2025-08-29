@@ -22,44 +22,46 @@ const (
 //   - get max row id of rows with that partition key
 //   - reinsert ordered data for partition key
 //   - dedupe: delete rows for partition key with rowid <= prev max row id
-func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) (int, error) {
+func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(*CompactionStatus), patterns []PartitionPattern) (*CompactionStatus, error) {
 	slog.Info("Ordering DuckLake data files")
+
+	status := NewCompactionStatus()
 
 	// get a list of partition key combinations which match any of the patterns
 	partitionKeys, err := getPartitionKeysMatchingPattern(ctx, db, patterns)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
+		return nil, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
 	}
 
-	var uncompacted = 0
 	if len(partitionKeys) == 0 {
 		slog.Info("No matching partitions found for compaction")
-		return 0, nil
+		return nil, nil
+	}
+	// get total file count for status - iterating over partition keys
+	for _, pk := range partitionKeys {
+		status.InitialFiles += pk.fileCount
 	}
 
-	// first we want to identify how may rows in total we need to compact
-	rowCounts := make(map[string]*partitionKeyRows, len(partitionKeys))
-	for _, pk := range partitionKeys {
+	// first we want to identify how may files and rows in total we need to compact
+	rowCounts := make([]*partitionKeyRows, len(partitionKeys))
+	for i, pk := range partitionKeys {
 		pkr, err := getPartitionKeyRowCount(ctx, db, pk)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get row count for partition key %v: %w", pk, err)
+			return nil, fmt.Errorf("failed to get row count for partition key %v: %w", pk, err)
 		}
-		rowCounts[pk.String()] = pkr
+		rowCounts[i] = pkr
 	}
 
 	// Process each partition
-	for _, partitionKey := range partitionKeys {
+	for i, partitionKey := range partitionKeys {
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			// This is a system failure - stop everything
-			return 0, fmt.Errorf("failed to begin transaction for partition %v: %w", partitionKey, err)
+			return nil, fmt.Errorf("failed to begin transaction for partition %v: %w", partitionKey, err)
 		}
 
 		// TODO #compact determine how fragmented this partition key is and only order if needed (unless 'force' is set?)
-		// even a single parquet file might be unordered
-		//if partitionKey.fileCount <= 1 {
-		//	//
-		//	uncompacted += partitionKey.fileCount
+		//if not_fragmented
 		//	continue
 		//}
 
@@ -72,16 +74,18 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 			"file_count", partitionKey.fileCount,
 		)
 
-		if err := compactAndOrderPartitionKeyEntries(ctx, tx, partitionKey); err != nil {
+		partitionRows := rowCounts[i]
+
+		if err := compactAndOrderPartitionKeyEntries(ctx, tx, partitionKey, partitionRows); err != nil {
 			slog.Error("failed to compact partition", "partition", partitionKey, "error", err)
 			tx.Rollback()
-			return 0, err
+			return nil, err
 		}
 
 		if err := tx.Commit(); err != nil {
 			slog.Error("failed to commit transaction after compaction", "partition", partitionKey, "error", err)
 			tx.Rollback()
-			return 0, err
+			return nil, err
 		}
 
 		slog.Info("Compacted and ordered all partition entries",
@@ -93,18 +97,10 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 			"input_files", partitionKey.fileCount,
 		)
 
-		// TODO #compact think about file count totals
-		//uncompacted += partitionKey.fileCount - 1
 	}
 
-	// TODO #compact benchmark and re-add trasactions
-	//// Commit the transaction
-	//if err = tx.Commit(); err != nil {
-	//	return 0, fmt.Errorf("failed to commit transaction: %w", err)
-	//}
-
 	slog.Info("Finished ordering DuckLake data file")
-	return uncompacted, nil
+	return status, nil
 }
 
 //	we order data files as follows:
@@ -114,26 +110,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, patterns []Partiti
 // - loop over time intervals. For each interval
 //   - reinsert ordered data for partition key
 //   - dedupe: delete rows for partition key with rowid <= prev max row id
-func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partitionKey partitionKey) error {
-	// Get row count and time range for the partition key
-	var rowCount, maxRowId int
-	var minTimestamp, maxTimestamp time.Time
-
-	// Query to get row count and time range for this partition
-	countQuery := fmt.Sprintf(`select count(*), max(rowid) , min(tp_timestamp), max(tp_timestamp) from "%s" 
-		where tp_partition = ?
-		  and tp_index = ?
-		  and year(tp_timestamp) = ?
-		  and month(tp_timestamp) = ?`,
-		partitionKey.tpTable)
-
-	if err := tx.QueryRowContext(ctx, countQuery,
-		partitionKey.tpPartition,
-		partitionKey.tpIndex,
-		partitionKey.year,
-		partitionKey.month).Scan(&rowCount, &maxRowId, &minTimestamp, &maxTimestamp); err != nil {
-		return fmt.Errorf("failed to get row count and time range for partition: %w", err)
-	}
+func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partitionKey partitionKey, pr *partitionKeyRows) error {
 
 	slog.Debug("partition statistics",
 		"tp_table", partitionKey.tpTable,
@@ -141,18 +118,21 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partiti
 		"tp_index", partitionKey.tpIndex,
 		"year", partitionKey.year,
 		"month", partitionKey.month,
-		"row_count", rowCount,
-		"min_timestamp", minTimestamp,
-		"max_timestamp", maxTimestamp)
+		"row_count", pr.rowCount,
+		"file_count", pr.fileCount,
+		"max_rowid", pr.maxRowId,
+		"min_timestamp", pr.minTimestamp,
+		"max_timestamp", pr.maxTimestamp,
+	)
 
-	intervalDuration := maxTimestamp.Sub(minTimestamp)
+	intervalDuration := pr.maxTimestamp.Sub(pr.minTimestamp)
 	chunks := 1
 
 	// If row count is greater than maxCompactionRowsPerChunk, calculate appropriate chunk interval
-	if rowCount > maxCompactionRowsPerChunk {
+	if pr.rowCount > maxCompactionRowsPerChunk {
 		// Calculate time interval to get approximately maxCompactionRowsPerChunk rows per chunk
 		// Use hour-based intervals for more granular control
-		chunks = (rowCount + maxCompactionRowsPerChunk - 1) / maxCompactionRowsPerChunk // Ceiling division
+		chunks = (pr.rowCount + maxCompactionRowsPerChunk - 1) / maxCompactionRowsPerChunk // Ceiling division
 		intervalDuration = intervalDuration / time.Duration(chunks)
 
 		// Ensure minimum interval is at least 1 hour
@@ -162,23 +142,23 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partiti
 	}
 
 	slog.Debug("processing partition in chunks",
-		"total_rows", rowCount,
+		"total_rows", pr.rowCount,
 		"chunks", chunks,
 		"interval_duration", intervalDuration.String())
 
 	// Process data in time-based chunks
-	currentStart := minTimestamp
+	currentStart := pr.minTimestamp
 	i := 1
-	for currentStart.Before(maxTimestamp) {
+	for currentStart.Before(pr.maxTimestamp) {
 		currentEnd := currentStart.Add(intervalDuration)
-		if currentEnd.After(maxTimestamp) {
-			currentEnd = maxTimestamp
+		if currentEnd.After(pr.maxTimestamp) {
+			currentEnd = pr.maxTimestamp
 		}
 
 		// For the final chunk, make it inclusive to catch the last row
-		isFinalChunk := currentEnd.Equal(maxTimestamp)
+		isFinalChunk := currentEnd.Equal(pr.maxTimestamp)
 
-		if err := insertOrderedDataForPartition(ctx, tx, partitionKey, currentStart, currentEnd, isFinalChunk); err != nil {
+		if rowsInserted, err := insertOrderedDataForPartitionTimeRange(ctx, tx, partitionKey, currentStart, currentEnd, isFinalChunk); err != nil {
 			return fmt.Errorf("failed to insert ordered data for time range %s to %s: %w",
 				currentStart.Format("2006-01-02 15:04:05"),
 				currentEnd.Format("2006-01-02 15:04:05"), err)
@@ -198,7 +178,7 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partiti
 		"tp_index", partitionKey.tpIndex,
 		"year", partitionKey.year,
 		"month", partitionKey.month,
-		"max_rowid", maxRowId)
+		"max_rowid", pr.maxRowId)
 
 	// we have sorted  and reinserted all data for this partition key - now delete all unordered entries (i.e. where rowid <  maxRowId)
 	deleteQuery := fmt.Sprintf(`delete from "%s" 
@@ -214,7 +194,7 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partiti
 		partitionKey.tpIndex,
 		partitionKey.year,
 		partitionKey.month,
-		maxRowId)
+		pr.maxRowId)
 	if err != nil {
 		return fmt.Errorf("failed to delete unordered data for partition: %w", err)
 	}
@@ -236,15 +216,15 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, partiti
 		return fmt.Errorf("failed to get final row count: %w", err)
 	}
 
-	if finalRowCount != rowCount {
-		return fmt.Errorf("total row count mismatch: expected %d, got %d", rowCount, finalRowCount)
+	if finalRowCount != pr.rowCount {
+		return fmt.Errorf("total row count mismatch: expected %d, got %d", pr.rowCount, finalRowCount)
 	}
 
 	return nil
 }
 
-// insertOrderedDataForPartition inserts ordered data for a specific time range
-func insertOrderedDataForPartition(ctx context.Context, tx *sql.Tx, partitionKey partitionKey, startTime, endTime time.Time, isFinalChunk bool) error {
+// insertOrderedDataForPartitionTimeRange inserts ordered data for a specific time range
+func insertOrderedDataForPartitionTimeRange(ctx context.Context, tx *sql.Tx, partitionKey partitionKey, startTime, endTime time.Time, isFinalChunk bool) (int64, error) {
 	// For the final chunk, use inclusive end time to catch the last row
 	timeCondition := "tp_timestamp < ?"
 	if isFinalChunk {
@@ -262,80 +242,19 @@ func insertOrderedDataForPartition(ctx context.Context, tx *sql.Tx, partitionKey
 		partitionKey.tpTable,
 		timeCondition)
 
-	if _, err := tx.ExecContext(ctx, insertQuery,
+	result, err := tx.ExecContext(ctx, insertQuery,
 		partitionKey.tpPartition,
 		partitionKey.tpIndex,
 		startTime,
-		endTime); err != nil {
-		return fmt.Errorf("failed to insert ordered data for time range: %w", err)
-	}
-
-	return nil
-}
-
-// query the ducklake_data_file table to get all partition keys combinations which satisfy the provided patterns,
-// along with the file count for each partition key combination
-func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) ([]partitionKey, error) {
-	// This query joins the DuckLake metadata tables to get partition key combinations:
-	// - ducklake_data_file: contains file metadata and links to tables
-	// - ducklake_file_partition_value: contains partition values for each file
-	// - ducklake_table: contains table names
-	//
-	// The partition key structure is:
-	// - fpv1 (index 0): tp_partition (e.g., "2024-07")
-	// - fpv2 (index 1): tp_index (e.g., "index1")
-	// - fpv3 (index 2): year(tp_timestamp) (e.g., "2024")
-	// - fpv4 (index 3): month(tp_timestamp) (e.g., "7")
-	//
-	// We group by these partition keys and count files per combination,
-	// filtering for active files (end_snapshot is null)
-	// NOTE: Assumes partitions are defined in order: tp_partition (0), tp_index (1), year(tp_timestamp) (2), month(tp_timestamp) (3)
-	query := `select 
-  t.table_name as tp_table,
-  fpv1.partition_value as tp_partition,
-  fpv2.partition_value as tp_index,
-  fpv3.partition_value as year,
-  fpv4.partition_value as month,
-  count(*) as file_count
-from __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df
-join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv1
-  on df.data_file_id = fpv1.data_file_id and fpv1.partition_key_index = 0
-join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv2
-  on df.data_file_id = fpv2.data_file_id and fpv2.partition_key_index = 1
-join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv3
-  on df.data_file_id = fpv3.data_file_id and fpv3.partition_key_index = 2
-join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv4
-  on df.data_file_id = fpv4.data_file_id and fpv4.partition_key_index = 3
-join __ducklake_metadata_tailpipe_ducklake.ducklake_table t
-  on df.table_id = t.table_id
-where df.end_snapshot is null
-group by 
-  t.table_name,
-  fpv1.partition_value,
-  fpv2.partition_value,
-  fpv3.partition_value,
-  fpv4.partition_value
-order by file_count desc;`
-
-	rows, err := db.QueryContext(ctx, query)
+		endTime)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get partition keys requiring compaction: %w", err)
+		return 0, fmt.Errorf("failed to insert ordered data for time range: %w", err)
 	}
-	defer rows.Close()
-
-	var partitionKeys []partitionKey
-	for rows.Next() {
-		var partitionKey partitionKey
-		if err := rows.Scan(&partitionKey.tpTable, &partitionKey.tpPartition, &partitionKey.tpIndex, &partitionKey.year, &partitionKey.month, &partitionKey.fileCount); err != nil {
-			return nil, fmt.Errorf("failed to scan partition key row: %w", err)
-		}
-		// check whether this partition key matches any of the provided patterns
-		if PartitionMatchesPatterns(partitionKey.tpTable, partitionKey.tpPartition, patterns) {
-			partitionKeys = append(partitionKeys, partitionKey)
-		}
+	rowsInserted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected count: %w", err)
 	}
-
-	return partitionKeys, nil
+	return rowsInserted, nil
 }
 
 // SafeIdentifier ensures that SQL identifiers (like table or column names)
@@ -366,36 +285,4 @@ func SafeIdentifier(identifier string) string {
 func EscapeLiteral(literal string) string {
 	escaped := strings.ReplaceAll(literal, `'`, `''`)
 	return `'` + escaped + `'`
-}
-
-type partitionKeyRows struct {
-	partitionKey partitionKey
-	rowCount     int
-	maxRowId     int
-	minTimestamp time.Time
-	maxTimestamp time.Time
-}
-
-// get partition key statistics: row count, max row id, min and max timestamp
-func getPartitionKeyRowCount(ctx context.Context, db *database.DuckDb, partitionKey partitionKey) (*partitionKeyRows, error) {
-	var pkr = &partitionKeyRows{}
-	pkr.partitionKey = partitionKey
-
-	// Query to get row count and time range for this partition
-	countQuery := fmt.Sprintf(`select count(*), max(rowid) , min(tp_timestamp), max(tp_timestamp) from "%s" 
-		where tp_partition = ?
-		  and tp_index = ?
-		  and year(tp_timestamp) = ?
-		  and month(tp_timestamp) = ?`,
-		partitionKey.tpTable)
-
-	if err := db.QueryRowContext(ctx, countQuery,
-		partitionKey.tpPartition,
-		partitionKey.tpIndex,
-		partitionKey.year,
-		partitionKey.month).Scan(&pkr.rowCount, &pkr.maxRowId, &pkr.minTimestamp, &pkr.maxTimestamp); err != nil {
-		return nil, fmt.Errorf("failed to get row count and time range for partition: %w", err)
-	}
-
-	return pkr, nil
 }

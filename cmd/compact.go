@@ -120,10 +120,23 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.P
 	s.Start()
 	defer s.Stop()
 	s.Suffix = " compacting parquet files"
+	// define func to update the spinner suffix with the number of files compacted
+	var status = parquet.NewCompactionStatus()
+
+	updateTotals := func(counts parquet.CompactionStatus) {
+		status.Update(counts)
+		s.Suffix = fmt.Sprintf(" compacting parquet files (%0.2f%%  of %d rows)", status.InitialFiles, status.FinalFiles)
+	}
+
+	updateTotals := func(counts parquet.CompactionStatus) {
+		status.Update(counts)
+		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", status.InitialFiles, status.FinalFiles)
+	}
 
 	// do compaction
-	status, err := parquet.CompactDataFiles(ctx, db, patterns)
+	err := parquet.CompactDataFiles(ctx, db, updateTotals, patterns)
 
+	// TODO still needed?
 	s.Suffix = fmt.Sprintf(" compacted parquet files (%d files -> %d files)", status.Source, status.Dest)
 
 	return status, err

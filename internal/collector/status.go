@@ -57,17 +57,8 @@ func (s *status) UpdateConversionStatus(rowsConverted, failedRows int64, errors 
 }
 
 // UpdateCompactionStatus updates the status with the values from the compaction status event
-func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStatus) {
-	if compactionStatus == nil {
-		return
-	}
-
-	if s.compactionStatus == nil {
-		s.compactionStatus = compactionStatus
-		return
-	}
-
-	s.compactionStatus.Update(*compactionStatus)
+func (s *status) UpdateCompactionStatus(rowsCompacted int64) {
+	s.compactionStatus.RowsCompacted += rowsCompacted
 }
 
 // CollectionHeader returns a string to display at the top of the collection status for app or alone for non-progress display
@@ -85,7 +76,7 @@ func (s *status) CollectionHeader() string {
 func (s *status) String() string {
 	var out strings.Builder
 
-	// determine if we should show an Artifacts or Source section (source currently only shown if we have errors)
+	// determine if we should show an Artifacts or InitialFiles section (source currently only shown if we have errors)
 	switch {
 	case s.ArtifactsDiscovered > 0 || s.LatestArtifactLocation != "":
 		out.WriteString(s.displayArtifactSection())
@@ -161,7 +152,7 @@ func (s *status) displaySourceSection() string {
 
 	// build source section
 	var out strings.Builder
-	out.WriteString("Source:\n")
+	out.WriteString("InitialFiles:\n")
 	out.WriteString(writeCountLine("Errors:", sourceMaxKeyLen, sourceErrorCount, len(humanize.Comma(sourceErrorCount)), nil))
 	out.WriteString("\n")
 
@@ -221,13 +212,13 @@ func (s *status) displayFilesSection() string {
 
 	var out strings.Builder
 	out.WriteString("Files:\n")
-	if s.compactionStatus.Source == 0 && s.compactionStatus.Uncompacted == 0 {
+	if s.compactionStatus.InitialFiles == 0 && s.compactionStatus.Uncompacted == 0 {
 		// no counts available, display status text
 		out.WriteString(fmt.Sprintf("  %s\n", statusText))
 	} else {
 		// display counts source => dest
-		l := int64(s.compactionStatus.Source + s.compactionStatus.Uncompacted)
-		r := int64(s.compactionStatus.Dest + s.compactionStatus.Uncompacted)
+		l := int64(s.compactionStatus.InitialFiles + s.compactionStatus.Uncompacted)
+		r := int64(s.compactionStatus.FinalFiles + s.compactionStatus.Uncompacted)
 		out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
 	}
 

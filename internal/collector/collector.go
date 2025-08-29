@@ -262,12 +262,15 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	compactionStatus, err := parquet.CompactDataFiles(ctx, c.db, nil)
+	updateAppCompactionFunc := func(rowsCompacted int64) {
+		c.statusLock.Lock()
+		defer c.statusLock.Unlock()
+		c.status.UpdateCompactionStatus(rowsCompacted)
+		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
+	}
+	partitionPattern := parquet.NewPartitionPattern(c.partition)
 
-	c.statusLock.Lock()
-	defer c.statusLock.Unlock()
-	c.status.UpdateCompactionStatus(compactionStatus)
-	c.updateApp(CollectionStatusUpdateMsg{status: c.status})
+	err := parquet.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, partitionPattern)
 
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)
