@@ -29,12 +29,17 @@ func (r *PluginListDetails) GetListData() *printers.RowData {
 
 func (r *PluginListDetails) setPartitions() {
 	for _, partition := range config.GlobalConfig.Partitions {
-		if partition.Plugin.Plugin == r.Name {
+		if partition.Plugin.Plugin == r.Name || (r.Version == "local" && lastSegment(r.Name) == partition.Plugin.Alias) {
 			r.Partitions = append(r.Partitions, strings.TrimPrefix(partition.FullName, "partition."))
 		}
 	}
 
 	slices.Sort(r.Partitions)
+}
+
+func lastSegment(s string) string {
+	p := strings.Split(strings.Trim(s, "/"), "/")
+	return p[len(p)-1]
 }
 
 func ListPlugins(ctx context.Context) ([]*PluginListDetails, error) {
