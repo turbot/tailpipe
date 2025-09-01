@@ -123,10 +123,10 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			"year", pk.year,
 			"month", pk.month,
 			"total files", metrics.totalFiles,
-			"overlapping files", metrics.overlappingFiles,
+			"overlapping sets", len(metrics.unorderedRanges),
 		)
 		// if no files out of order, nothing to do
-		if len(metrics.overlappingFiles) == 0 {
+		if len(metrics.unorderedRanges) == 0 {
 			slog.Info("Partition key is not fragmented - skipping compaction",
 				"tp_table", pk.tpTable,
 				"tp_partition", pk.tpPartition,
@@ -143,10 +143,6 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			// This is a system failure - stop everything
 			return nil, fmt.Errorf("failed to begin transaction for partition %v: %w", pk, err)
 		}
-
-		//if not_fragmented
-		//	continue
-		//}
 
 		slog.Info("Compacting partition entries",
 			"tp_table", pk.tpTable,
@@ -167,7 +163,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			updateFunc(*status)
 		}
 
-		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, metrics.overlappingFiles, updateRowsFunc); err != nil {
+		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, metrics.unorderedRanges, updateRowsFunc); err != nil {
 			slog.Error("failed to compact partition", "partition", pk, "error", err)
 			tx.Rollback()
 			return nil, err
@@ -199,7 +195,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 // - iterate over overlapping file sets
 // - for each set, reorder only those files
 // - delete original unordered entries for those files
-func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, overlappingFileSets []overlappingFileSet, updateRowsCompactedFunc func(int64)) error {
+func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, unorderedRangesets []unorderedDataTimeRange, updateRowsCompactedFunc func(int64)) error {
 
 	slog.Debug("partition statistics",
 		"tp_table", pk.tpTable,
@@ -212,16 +208,14 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 		"max_rowid", pk.stats.maxRowId,
 		"min_timestamp", pk.stats.minTimestamp,
 		"max_timestamp", pk.stats.maxTimestamp,
-		"overlapping_sets", len(overlappingFileSets),
+		"overlapping_sets", len(unorderedRangesets),
 	)
 
 	// Process each overlapping file set
-	for i, fileSet := range overlappingFileSets {
+	for i, fileSet := range unorderedRangesets {
 		slog.Debug("processing overlapping file set",
 			"set_index", i+1,
-			"total_sets", len(overlappingFileSets),
-			"files_in_set", len(fileSet.Files),
-			"files", fileSet.Files,
+			"total_sets", len(unorderedRangesets),
 			"start_time", fileSet.StartTime,
 			"end_time", fileSet.EndTime,
 			"row_count", fileSet.RowCount)
@@ -263,7 +257,7 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 			// For the final chunk, make it inclusive to catch the last row
 			isFinalChunk := currentEnd.Equal(maxTime)
 
-			rowsInserted, err := insertOrderedDataForFileSetTimeRange(ctx, tx, pk, fileSet.Files, currentStart, currentEnd, isFinalChunk)
+			rowsInserted, err := insertOrderedDataForTimeRange(ctx, tx, pk, currentStart, currentEnd, isFinalChunk)
 			if err != nil {
 				return fmt.Errorf("failed to insert ordered data for file set time range %s to %s: %w",
 					currentStart.Format("2006-01-02 15:04:05"),
@@ -276,111 +270,44 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 			currentStart = currentEnd
 		}
 
-		// Delete original unordered entries for this file set
-		err := deleteUnorderedEntriesForFileSet(ctx, tx, pk, fileSet.Files, minTime, maxTime)
+		// Delete original unordered entries for this time range
+		err := deleteUnorderedEntriesForTimeRange(ctx, tx, pk, minTime, maxTime)
 		if err != nil {
-			return fmt.Errorf("failed to delete unordered entries for file set: %w", err)
+			return fmt.Errorf("failed to delete unordered entries for time range: %w", err)
 		}
 
 		slog.Debug("completed file set",
-			"set_index", i+1,
-			"files_processed", len(fileSet.Files))
+			"set_index", i+1)
 	}
 
 	return nil
 }
 
-// insertOrderedDataForFileSetTimeRange inserts ordered data for a specific file set and time range
-func insertOrderedDataForFileSetTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, fileSet []string, startTime, endTime time.Time, isFinalChunk bool) (int64, error) {
+// insertOrderedDataForTimeRange inserts ordered data for a specific time range within a partition key
+func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time, isFinalChunk bool) (int64, error) {
 	// For the final chunk, use inclusive end time to catch the last row
-	timeCondition := "tp_timestamp < ?"
+	timeEndOperator := "<"
 	if isFinalChunk {
-		timeCondition = "tp_timestamp <= ?"
+		timeEndOperator = "<="
 	}
 
 	// For overlapping files, we need to reorder ALL rows in the overlapping time range
 	// Since files overlap, we can't distinguish which specific rows came from which files
 	// So we reorder all rows in the time range for this partition
-	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex, pk.year, pk.month}
+	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex}
 
 	insertQuery := fmt.Sprintf(`insert into "%s" 
 		select * from "%s" 
 		where tp_timestamp >= ?
-		  and tp_timestamp %s
+		  and tp_timestamp %s ?
 		  and tp_partition = ?
 		  and tp_index = ?
-		  and year(tp_timestamp) = ?
-		  and month(tp_timestamp) = ?
 		order by tp_timestamp`,
 		pk.tpTable,
 		pk.tpTable,
-		timeCondition)
+		timeEndOperator)
 
 	result, err := tx.ExecContext(ctx, insertQuery, args...)
-	if err != nil {
-		return 0, fmt.Errorf("failed to insert ordered data for file set time range: %w", err)
-	}
-	rowsInserted, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get rows affected count: %w", err)
-	}
-	return rowsInserted, nil
-}
-
-// deleteUnorderedEntriesForFileSet deletes the original unordered entries for a specific file set
-func deleteUnorderedEntriesForFileSet(ctx context.Context, tx *sql.Tx, pk *partitionKey, fileSet []string, startTime, endTime time.Time) error {
-	// Build file path filter using IN clause
-	filePlaceholders := make([]string, len(fileSet))
-	args := make([]interface{}, len(fileSet))
-
-	for i, filePath := range fileSet {
-		filePlaceholders[i] = "?"
-		args[i] = filePath
-	}
-
-	deleteQuery := fmt.Sprintf(`delete from "%s" 
-		where rowid in (
-		    select t.rowid from "%s" t
-		    join __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df on t.rowid >= df.row_id_start and t.rowid < df.row_id_end
-		    where df.end_snapshot is null
-		      and df.path in (%s)
-		  )`,
-		pk.tpTable,
-		pk.tpTable,
-		strings.Join(filePlaceholders, ","))
-
-	_, err := tx.ExecContext(ctx, deleteQuery, args...)
-	if err != nil {
-		return fmt.Errorf("failed to delete unordered entries for file set: %w", err)
-	}
-
-	return nil
-}
-
-// insertOrderedDataForPartitionTimeRange inserts ordered data for a specific time range
-func insertOrderedDataForPartitionTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time, isFinalChunk bool) (int64, error) {
-	// For the final chunk, use inclusive end time to catch the last row
-	timeCondition := "tp_timestamp < ?"
-	if isFinalChunk {
-		timeCondition = "tp_timestamp <= ?"
-	}
-
-	insertQuery := fmt.Sprintf(`insert into "%s" 
-		select * from "%s" 
-		where tp_partition = ?
-		  and tp_index = ?
-		  and tp_timestamp >= ?
-		  and %s
-		order by tp_timestamp`,
-		pk.tpTable,
-		pk.tpTable,
-		timeCondition)
-
-	result, err := tx.ExecContext(ctx, insertQuery,
-		pk.tpPartition,
-		pk.tpIndex,
-		startTime,
-		endTime)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert ordered data for time range: %w", err)
 	}
@@ -389,6 +316,26 @@ func insertOrderedDataForPartitionTimeRange(ctx context.Context, tx *sql.Tx, pk 
 		return 0, fmt.Errorf("failed to get rows affected count: %w", err)
 	}
 	return rowsInserted, nil
+}
+
+// deleteUnorderedEntriesForTimeRange deletes the original unordered entries for a specific time range within a partition key
+func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time) error {
+	// Delete all rows in the time range for this partition key (we're re-inserting them in order)
+	deleteQuery := fmt.Sprintf(`delete from "%s" 
+		where tp_partition = ?
+		  and tp_index = ?
+		  and tp_timestamp >= ?
+		  and tp_timestamp <= ?`,
+		pk.tpTable)
+
+	args := []interface{}{pk.tpPartition, pk.tpIndex, startTime, endTime}
+
+	_, err := tx.ExecContext(ctx, deleteQuery, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete unordered entries for file set: %w", err)
+	}
+
+	return nil
 }
 
 // SafeIdentifier ensures that SQL identifiers (like table or column names)

@@ -10,8 +10,8 @@ import (
 
 // disorderMetrics represents the fragmentation level of data for a partition key
 type disorderMetrics struct {
-	totalFiles       int                  // total number of files for this partition key
-	overlappingFiles []overlappingFileSet // overlapping file sets with their time ranges and row counts
+	totalFiles      int                      // total number of files for this partition key
+	unorderedRanges []unorderedDataTimeRange // time ranges with overlapping data that need reordering
 }
 
 // newDisorderMetrics analyzes file fragmentation and creates disorder metrics for a partition key.
@@ -69,18 +69,18 @@ func newDisorderMetrics(ctx context.Context, db *database.DuckDb, pk *partitionK
 
 	totalFiles := len(fileRanges)
 	if totalFiles <= 1 {
-		return &disorderMetrics{totalFiles: totalFiles, overlappingFiles: []overlappingFileSet{}}, nil
+		return &disorderMetrics{totalFiles: totalFiles, unorderedRanges: []unorderedDataTimeRange{}}, nil
 	}
 
 	// Build overlapping file sets
-	overlappingSets, err := pk.buildOverlappingFileSets(fileRanges)
+	overlappingSets, err := pk.buildUnorderedTimeRanges(fileRanges)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build overlapping file sets: %w", err)
 	}
 
 	return &disorderMetrics{
-		totalFiles:       totalFiles,
-		overlappingFiles: overlappingSets,
+		totalFiles:      totalFiles,
+		unorderedRanges: overlappingSets,
 	}, nil
 }
 
@@ -91,24 +91,20 @@ type fileTimeRange struct {
 	rowCount int64
 }
 
-// overlappingFileSet represents a set of overlapping files with their time range and row count
-type overlappingFileSet struct {
-	Files     []string  // the overlapping file paths
-	StartTime time.Time // earliest start time across all files in the set
-	EndTime   time.Time // latest end time across all files in the set
-	RowCount  int64     // total row count for this file set
+// unorderedDataTimeRange represents a time range containing unordered data that needs reordering
+type unorderedDataTimeRange struct {
+	StartTime time.Time // start of the time range containing unordered data
+	EndTime   time.Time // end of the time range containing unordered data
+	RowCount  int64     // total row count in this time range
 }
 
-// newOverlappingFileSet creates a single overlappingFileSet from overlapping files
-func newOverlappingFileSet(overlappingFiles []fileTimeRange) (overlappingFileSet, error) {
-	// Calculate time range, extract file paths, and sum row counts in a single loop
-	filePaths := make([]string, len(overlappingFiles))
+// newUnorderedDataTimeRange creates a single unorderedDataTimeRange from overlapping files
+func newUnorderedDataTimeRange(unorderedRanges []fileTimeRange) (unorderedDataTimeRange, error) {
 	var rowCount int64
 	var startTime, endTime time.Time
 
-	// Single loop to extract file paths, sum row counts, and calculate time range
-	for i, file := range overlappingFiles {
-		filePaths[i] = file.path
+	// Single loop to sum row counts and calculate time range
+	for i, file := range unorderedRanges {
 		rowCount += file.rowCount
 
 		// Calculate time range
@@ -125,8 +121,7 @@ func newOverlappingFileSet(overlappingFiles []fileTimeRange) (overlappingFileSet
 		}
 	}
 
-	return overlappingFileSet{
-		Files:     filePaths,
+	return unorderedDataTimeRange{
 		StartTime: startTime,
 		EndTime:   endTime,
 		RowCount:  rowCount,

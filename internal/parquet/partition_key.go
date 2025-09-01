@@ -180,25 +180,25 @@ func newPartitionKeyStats(ctx context.Context, db *database.DuckDb, p *partition
 	return stats, nil
 }
 
-// buildOverlappingFileSets finds groups of files with overlapping timestamp ranges
-func (p *partitionKey) buildOverlappingFileSets(fileRanges []fileTimeRange) ([]overlappingFileSet, error) {
+// buildUnorderedTimeRanges finds groups of files with overlapping timestamp ranges
+func (p *partitionKey) buildUnorderedTimeRanges(fileRanges []fileTimeRange) ([]unorderedDataTimeRange, error) {
 	if len(fileRanges) <= 1 {
-		return []overlappingFileSet{}, nil
+		return []unorderedDataTimeRange{}, nil
 	}
 
 	// Find sets of overlapping files
 	overlappingFileGroups := p.findOverlappingFileGroups(fileRanges)
 
-	// Convert to overlappingFileSet structs with metadata (rowcount, start/end time for file set)
-	var overlappingSets []overlappingFileSet
+	// Convert to unorderedDataTimeRange structs with metadata (rowcount, start/end time for time range)
+	var unorderedRanges []unorderedDataTimeRange
 	for _, fileGroup := range overlappingFileGroups {
-		fileSet, err := newOverlappingFileSet(fileGroup)
+		timeRanges, err := newUnorderedDataTimeRange(fileGroup)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create overlapping file set: %w", err)
 		}
-		overlappingSets = append(overlappingSets, fileSet)
+		unorderedRanges = append(unorderedRanges, timeRanges)
 	}
-	return overlappingSets, nil
+	return unorderedRanges, nil
 }
 
 // findOverlappingFileGroups finds sets of files that have overlapping time ranges
@@ -208,7 +208,7 @@ func (p *partitionKey) findOverlappingFileGroups(fileRanges []fileTimeRange) [][
 		return fileRanges[i].min.Before(fileRanges[j].min)
 	})
 
-	var overlappingSets [][]fileTimeRange
+	var unorderedRanges [][]fileTimeRange
 	processedFiles := make(map[string]struct{})
 
 	for i, currentFile := range fileRanges {
@@ -221,16 +221,16 @@ func (p *partitionKey) findOverlappingFileGroups(fileRanges []fileTimeRange) [][
 
 		// Only keep sets with multiple files (single files don't need compaction)
 		if len(overlappingFiles) > 1 {
-			overlappingSets = append(overlappingSets, overlappingFiles)
+			unorderedRanges = append(unorderedRanges, overlappingFiles)
 		}
 	}
 
-	return overlappingSets
+	return unorderedRanges
 }
 
 // findFilesOverlappingWith finds all files that overlap with the given file
 func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remainingFiles []fileTimeRange, processedFiles map[string]struct{}) []fileTimeRange {
-	overlappingFiles := []fileTimeRange{startFile}
+	unorderedRanges := []fileTimeRange{startFile}
 	processedFiles[startFile.path] = struct{}{}
 	setMaxEnd := startFile.max
 
@@ -245,8 +245,8 @@ func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remaini
 		}
 
 		// Check if this file overlaps with any file in our set
-		if p.fileOverlapsWithSet(candidateFile, overlappingFiles) {
-			overlappingFiles = append(overlappingFiles, candidateFile)
+		if p.fileOverlapsWithSet(candidateFile, unorderedRanges) {
+			unorderedRanges = append(unorderedRanges, candidateFile)
 			processedFiles[candidateFile.path] = struct{}{}
 
 			// Update set's max end time
@@ -256,7 +256,7 @@ func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remaini
 		}
 	}
 
-	return overlappingFiles
+	return unorderedRanges
 }
 
 // fileOverlapsWithSet checks if a file overlaps with any file in the set
