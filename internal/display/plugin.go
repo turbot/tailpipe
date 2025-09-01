@@ -29,12 +29,19 @@ func (r *PluginListDetails) GetListData() *printers.RowData {
 
 func (r *PluginListDetails) setPartitions() {
 	for _, partition := range config.GlobalConfig.Partitions {
-		if partition.Plugin.Plugin == r.Name || (r.Version == "local" && lastSegment(r.Name) == partition.Plugin.Alias) {
+		if partition.Plugin.Plugin == r.Name || isLocalPluginPartition(r, partition.Plugin.Alias) {
 			r.Partitions = append(r.Partitions, strings.TrimPrefix(partition.FullName, "partition."))
 		}
 	}
 
 	slices.Sort(r.Partitions)
+}
+
+// handle local plugins: r.Name (from filesystem) can be like "local/plugin-name"
+// while partition.Plugin.Plugin is a full image ref like
+// "hub.tailpipe.io/plugins/plugin-name/test@latest"; compare alias to last path segment
+func isLocalPluginPartition(r *PluginListDetails, partitionAlias string) bool {
+	return r.Version == "local" && lastSegment(r.Name) == partitionAlias
 }
 
 func lastSegment(s string) string {
