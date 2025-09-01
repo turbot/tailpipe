@@ -13,7 +13,7 @@ import (
 
 const (
 	// maxCompactionRowsPerChunk is the maximum number of rows to compact in a single insert operation
-	maxCompactionRowsPerChunk = 1_000_000
+	maxCompactionRowsPerChunk = 5_000_000
 )
 
 func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), patterns ...PartitionPattern) error {
@@ -110,8 +110,8 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 
 	// Process each partition
 	for _, pk := range partitionKeys {
-		// TODO #compact determine how fragmented this partition key is and only order if needed (unless 'force' is set?)
-		metrics, err := pk.getDisorderMetrics(ctx, db)
+		// determine which files are not time ordered
+		metrics, err := newDisorderMetrics(ctx, db, pk)
 		if err != nil {
 			slog.Error("failed to get disorder metrics", "partition", pk, "error", err)
 			return nil, err
@@ -125,6 +125,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			"total files", metrics.totalFiles,
 			"overlapping files", metrics.overlappingFiles,
 		)
+		// if no files out of order, nothing to do
 		if len(metrics.overlappingFiles) == 0 {
 			slog.Info("Partition key is not fragmented - skipping compaction",
 				"tp_table", pk.tpTable,
@@ -166,7 +167,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			updateFunc(*status)
 		}
 
-		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, updateRowsFunc); err != nil {
+		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, metrics.overlappingFiles, updateRowsFunc); err != nil {
 			slog.Error("failed to compact partition", "partition", pk, "error", err)
 			tx.Rollback()
 			return nil, err
@@ -195,12 +196,10 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 
 //	we order data files as follows:
 //
-// - get the row count, time range and max row id for the partition key
-// - determine a time interval which will give us row counts <= maxCompactionRowsPerChunk
-// - loop over time intervals. For each interval
-//   - reinsert ordered data for partition key
-//   - dedupe: delete rows for partition key with rowid <= prev max row id
-func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, updateRowsCompactedFunc func(int64)) error {
+// - iterate over overlapping file sets
+// - for each set, reorder only those files
+// - delete original unordered entries for those files
+func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, overlappingFileSets []overlappingFileSet, updateRowsCompactedFunc func(int64)) error {
 
 	slog.Debug("partition statistics",
 		"tp_table", pk.tpTable,
@@ -213,102 +212,146 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 		"max_rowid", pk.stats.maxRowId,
 		"min_timestamp", pk.stats.minTimestamp,
 		"max_timestamp", pk.stats.maxTimestamp,
+		"overlapping_sets", len(overlappingFileSets),
 	)
 
-	intervalDuration := pk.stats.maxTimestamp.Sub(pk.stats.minTimestamp)
-	chunks := 1
+	// Process each overlapping file set
+	for i, fileSet := range overlappingFileSets {
+		slog.Debug("processing overlapping file set",
+			"set_index", i+1,
+			"total_sets", len(overlappingFileSets),
+			"files_in_set", len(fileSet.Files),
+			"files", fileSet.Files,
+			"start_time", fileSet.StartTime,
+			"end_time", fileSet.EndTime,
+			"row_count", fileSet.RowCount)
 
-	// If row count is greater than maxCompactionRowsPerChunk, calculate appropriate chunk interval
-	if pk.stats.rowCount > maxCompactionRowsPerChunk {
-		// Calculate time interval to get approximately maxCompactionRowsPerChunk rows per chunk
-		// Use hour-based intervals for more granular control
-		chunks = int((pk.stats.rowCount + maxCompactionRowsPerChunk - 1) / maxCompactionRowsPerChunk) // Ceiling division
-		intervalDuration = intervalDuration / time.Duration(chunks)
+		// Use the pre-calculated time range and row count from the struct
+		minTime := fileSet.StartTime
+		maxTime := fileSet.EndTime
+		rowCount := fileSet.RowCount
 
-		// Ensure minimum interval is at least 1 hour
-		if intervalDuration < time.Hour {
-			intervalDuration = time.Hour
+		// Calculate chunks for this file set
+		intervalDuration := maxTime.Sub(minTime)
+		chunks := 1
+
+		// If row count is greater than maxCompactionRowsPerChunk, calculate appropriate chunk interval
+		if rowCount > maxCompactionRowsPerChunk {
+			chunks = int((rowCount + maxCompactionRowsPerChunk - 1) / maxCompactionRowsPerChunk)
+			intervalDuration = intervalDuration / time.Duration(chunks)
+
+			// Ensure minimum interval is at least 1 hour
+			if intervalDuration < time.Hour {
+				intervalDuration = time.Hour
+			}
 		}
-	}
 
-	slog.Debug("processing partition in chunks",
-		"total_rows", pk.stats.rowCount,
-		"chunks", chunks,
-		"interval_duration", intervalDuration.String())
+		slog.Debug("processing file set in chunks",
+			"set_index", i+1,
+			"row_count", rowCount,
+			"chunks", chunks,
+			"interval_duration", intervalDuration.String())
 
-	// Process data in time-based chunks
-	currentStart := pk.stats.minTimestamp
-	i := 1
-	for currentStart.Before(pk.stats.maxTimestamp) {
-		currentEnd := currentStart.Add(intervalDuration)
-		if currentEnd.After(pk.stats.maxTimestamp) {
-			currentEnd = pk.stats.maxTimestamp
+		// Process this file set in time-based chunks
+		currentStart := minTime
+		for i := 1; currentStart.Before(maxTime); i++ {
+			currentEnd := currentStart.Add(intervalDuration)
+			if currentEnd.After(maxTime) {
+				currentEnd = maxTime
+			}
+
+			// For the final chunk, make it inclusive to catch the last row
+			isFinalChunk := currentEnd.Equal(maxTime)
+
+			rowsInserted, err := insertOrderedDataForFileSetTimeRange(ctx, tx, pk, fileSet.Files, currentStart, currentEnd, isFinalChunk)
+			if err != nil {
+				return fmt.Errorf("failed to insert ordered data for file set time range %s to %s: %w",
+					currentStart.Format("2006-01-02 15:04:05"),
+					currentEnd.Format("2006-01-02 15:04:05"), err)
+			}
+			updateRowsCompactedFunc(rowsInserted)
+			slog.Debug(fmt.Sprintf("processed chunk %d/%d for set %d", i, chunks, i+1))
+
+			// Ensure next chunk starts exactly where this one ended to prevent gaps
+			currentStart = currentEnd
 		}
 
-		// For the final chunk, make it inclusive to catch the last row
-		isFinalChunk := currentEnd.Equal(pk.stats.maxTimestamp)
-
-		rowsInserted, err := insertOrderedDataForPartitionTimeRange(ctx, tx, pk, currentStart, currentEnd, isFinalChunk)
+		// Delete original unordered entries for this file set
+		err := deleteUnorderedEntriesForFileSet(ctx, tx, pk, fileSet.Files, minTime, maxTime)
 		if err != nil {
-			return fmt.Errorf("failed to insert ordered data for time range %s to %s: %w",
-				currentStart.Format("2006-01-02 15:04:05"),
-				currentEnd.Format("2006-01-02 15:04:05"), err)
+			return fmt.Errorf("failed to delete unordered entries for file set: %w", err)
 		}
-		updateRowsCompactedFunc(rowsInserted)
-		slog.Debug(fmt.Sprintf("processed chunk %d/%d", i, chunks))
 
-		i++
-
-		// Ensure next chunk starts exactly where this one ended to prevent gaps
-		currentStart = currentEnd
+		slog.Debug("completed file set",
+			"set_index", i+1,
+			"files_processed", len(fileSet.Files))
 	}
 
-	slog.Debug("completed all time chunks for partition, deleting unordered entries",
-		"tp_table", pk.tpTable,
-		"tp_partition", pk.tpPartition,
-		"tp_index", pk.tpIndex,
-		"year", pk.year,
-		"month", pk.month,
-		"max_rowid", pk.stats.maxRowId)
+	return nil
+}
 
-	// we have sorted  and reinserted all data for this partition key - now delete all unordered entries (i.e. where rowid <  maxRowId)
-	deleteQuery := fmt.Sprintf(`delete from "%s" 
-		where tp_partition = ?
+// insertOrderedDataForFileSetTimeRange inserts ordered data for a specific file set and time range
+func insertOrderedDataForFileSetTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, fileSet []string, startTime, endTime time.Time, isFinalChunk bool) (int64, error) {
+	// For the final chunk, use inclusive end time to catch the last row
+	timeCondition := "tp_timestamp < ?"
+	if isFinalChunk {
+		timeCondition = "tp_timestamp <= ?"
+	}
+
+	// For overlapping files, we need to reorder ALL rows in the overlapping time range
+	// Since files overlap, we can't distinguish which specific rows came from which files
+	// So we reorder all rows in the time range for this partition
+	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex, pk.year, pk.month}
+
+	insertQuery := fmt.Sprintf(`insert into "%s" 
+		select * from "%s" 
+		where tp_timestamp >= ?
+		  and tp_timestamp %s
+		  and tp_partition = ?
 		  and tp_index = ?
 		  and year(tp_timestamp) = ?
 		  and month(tp_timestamp) = ?
-		  and rowid <= ?`,
-		pk.tpTable)
+		order by tp_timestamp`,
+		pk.tpTable,
+		pk.tpTable,
+		timeCondition)
 
-	_, err := tx.ExecContext(ctx, deleteQuery,
-		pk.tpPartition,
-		pk.tpIndex,
-		pk.year,
-		pk.month,
-		pk.stats.maxRowId)
+	result, err := tx.ExecContext(ctx, insertQuery, args...)
 	if err != nil {
-		return fmt.Errorf("failed to delete unordered data for partition: %w", err)
+		return 0, fmt.Errorf("failed to insert ordered data for file set time range: %w", err)
+	}
+	rowsInserted, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected count: %w", err)
+	}
+	return rowsInserted, nil
+}
+
+// deleteUnorderedEntriesForFileSet deletes the original unordered entries for a specific file set
+func deleteUnorderedEntriesForFileSet(ctx context.Context, tx *sql.Tx, pk *partitionKey, fileSet []string, startTime, endTime time.Time) error {
+	// Build file path filter using IN clause
+	filePlaceholders := make([]string, len(fileSet))
+	args := make([]interface{}, len(fileSet))
+
+	for i, filePath := range fileSet {
+		filePlaceholders[i] = "?"
+		args[i] = filePath
 	}
 
-	// Validate total rows processed matches original count
-	finalCountQuery := fmt.Sprintf(`select count(*) from "%s" 
-		where tp_partition = ?
-		  and tp_index = ?
-		  and year(tp_timestamp) = ?
-		  and month(tp_timestamp) = ?`,
-		pk.tpTable)
+	deleteQuery := fmt.Sprintf(`delete from "%s" 
+		where rowid in (
+		    select t.rowid from "%s" t
+		    join __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df on t.rowid >= df.row_id_start and t.rowid < df.row_id_end
+		    where df.end_snapshot is null
+		      and df.path in (%s)
+		  )`,
+		pk.tpTable,
+		pk.tpTable,
+		strings.Join(filePlaceholders, ","))
 
-	var finalRowCount int64
-	if err := tx.QueryRowContext(ctx, finalCountQuery,
-		pk.tpPartition,
-		pk.tpIndex,
-		pk.year,
-		pk.month).Scan(&finalRowCount); err != nil {
-		return fmt.Errorf("failed to get final row count: %w", err)
-	}
-
-	if finalRowCount != pk.stats.rowCount {
-		return fmt.Errorf("total row count mismatch: expected %d, got %d", pk.stats.rowCount, finalRowCount)
+	_, err := tx.ExecContext(ctx, deleteQuery, args...)
+	if err != nil {
+		return fmt.Errorf("failed to delete unordered entries for file set: %w", err)
 	}
 
 	return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -179,142 +180,91 @@ func newPartitionKeyStats(ctx context.Context, db *database.DuckDb, p *partition
 	return stats, nil
 }
 
-// disorderMetrics represents the fragmentation level of data for a partition key
-type disorderMetrics struct {
-	totalFiles       int // total number of files for this partition key
-	overlappingFiles [][]string
-}
-
-type fileRange struct {
-	path string
-	min  time.Time
-	max  time.Time
-}
-
-// getDisorderMetrics calculates the disorder level of data for a partition key
-func (p *partitionKey) getDisorderMetrics(ctx context.Context, db *database.DuckDb) (*disorderMetrics, error) {
-	// Single query to get files and their timestamp ranges for this partition key
-	query := `select 
-		df.path,
-		cast(fcs.min_value as timestamp) as min_timestamp,
-		cast(fcs.max_value as timestamp) as max_timestamp
-	from __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv1
-	  on df.data_file_id = fpv1.data_file_id and fpv1.partition_key_index = 0
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv2
-	  on df.data_file_id = fpv2.data_file_id and fpv2.partition_key_index = 1
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv3
-	  on df.data_file_id = fpv3.data_file_id and fpv3.partition_key_index = 2
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv4
-	  on df.data_file_id = fpv4.data_file_id and fpv4.partition_key_index = 3
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_table t
-	  on df.table_id = t.table_id
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_column_statistics fcs
-	  on df.data_file_id = fcs.data_file_id
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_column c
-	  on fcs.column_id = c.column_id
-	where t.table_name = ?
-	  and fpv1.partition_value = ?
-	  and fpv2.partition_value = ?
-	  and fpv3.partition_value = ?
-	  and fpv4.partition_value = ?
-	  and c.column_name = 'tp_timestamp'
-	  and df.end_snapshot is null
-	  and c.end_snapshot is null
-	order by df.data_file_id`
-
-	rows, err := db.QueryContext(ctx, query, p.tpTable, p.tpPartition, p.tpIndex, p.year, p.month)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get file timestamp ranges: %w", err)
-	}
-	defer rows.Close()
-
-	var fileRanges []fileRange
-	for rows.Next() {
-		var path string
-		var minTime, maxTime time.Time
-		if err := rows.Scan(&path, &minTime, &maxTime); err != nil {
-			return nil, fmt.Errorf("failed to scan file range: %w", err)
-		}
-		fileRanges = append(fileRanges, fileRange{path: path, min: minTime, max: maxTime})
-	}
-
-	totalFiles := len(fileRanges)
-	if totalFiles <= 1 {
-		return &disorderMetrics{totalFiles: totalFiles, overlappingFiles: [][]string{}}, nil
-	}
-
-	// Build overlapping file sets
-	overlappingSets := p.buildOverlappingFileSets(fileRanges)
-
-	return &disorderMetrics{
-		totalFiles:       totalFiles,
-		overlappingFiles: overlappingSets,
-	}, nil
-}
-
 // buildOverlappingFileSets finds groups of files with overlapping timestamp ranges
-func (p *partitionKey) buildOverlappingFileSets(fileRanges []fileRange) [][]string {
-	var groups [][]string
-	assignedToGroup := make(map[string]bool)
+func (p *partitionKey) buildOverlappingFileSets(fileRanges []fileTimeRange) ([]overlappingFileSet, error) {
+	if len(fileRanges) <= 1 {
+		return []overlappingFileSet{}, nil
+	}
 
-	for _, file1 := range fileRanges {
-		if assignedToGroup[file1.path] {
+	// Find sets of overlapping files
+	overlappingFileGroups := p.findOverlappingFileGroups(fileRanges)
+
+	// Convert to overlappingFileSet structs with metadata (rowcount, start/end time for file set)
+	var overlappingSets []overlappingFileSet
+	for _, fileGroup := range overlappingFileGroups {
+		fileSet, err := newOverlappingFileSet(fileGroup)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create overlapping file set: %w", err)
+		}
+		overlappingSets = append(overlappingSets, fileSet)
+	}
+	return overlappingSets, nil
+}
+
+// findOverlappingFileGroups finds sets of files that have overlapping time ranges
+func (p *partitionKey) findOverlappingFileGroups(fileRanges []fileTimeRange) [][]fileTimeRange {
+	// Sort by start time - O(n log n)
+	sort.Slice(fileRanges, func(i, j int) bool {
+		return fileRanges[i].min.Before(fileRanges[j].min)
+	})
+
+	var overlappingSets [][]fileTimeRange
+	processedFiles := make(map[string]struct{})
+
+	for i, currentFile := range fileRanges {
+		if _, processed := processedFiles[currentFile.path]; processed {
 			continue
 		}
 
-		// Start a new group and find all connected files
-		group := p.findConnectedFiles(file1, fileRanges, assignedToGroup)
-		if len(group) > 1 {
-			groups = append(groups, group)
+		// Find all files that overlap with this one
+		overlappingFiles := p.findFilesOverlappingWith(currentFile, fileRanges[i+1:], processedFiles)
+
+		// Only keep sets with multiple files (single files don't need compaction)
+		if len(overlappingFiles) > 1 {
+			overlappingSets = append(overlappingSets, overlappingFiles)
 		}
 	}
 
-	return groups
+	return overlappingSets
 }
 
-// findConnectedFiles finds all files connected to the given file through overlaps
-func (p *partitionKey) findConnectedFiles(start fileRange, allFiles []fileRange, assignedToGroup map[string]bool) []string {
-	group := []string{start.path}
-	assignedToGroup[start.path] = true
+// findFilesOverlappingWith finds all files that overlap with the given file
+func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remainingFiles []fileTimeRange, processedFiles map[string]struct{}) []fileTimeRange {
+	overlappingFiles := []fileTimeRange{startFile}
+	processedFiles[startFile.path] = struct{}{}
+	setMaxEnd := startFile.max
 
-	for {
-		added := false
-		for _, file := range allFiles {
-			if assignedToGroup[file.path] {
-				continue
-			}
-
-			// Check if this file overlaps with any file in the group
-			for _, groupFile := range group {
-				groupFileRange := p.findFileRange(groupFile, allFiles)
-				if rangesOverlap(groupFileRange, file) {
-					group = append(group, file.path)
-					assignedToGroup[file.path] = true
-					added = true
-					break
-				}
-			}
+	for _, candidateFile := range remainingFiles {
+		if _, processed := processedFiles[candidateFile.path]; processed {
+			continue
 		}
-		if !added {
+
+		// Early termination: if candidate starts after set ends, no more overlaps
+		if candidateFile.min.After(setMaxEnd) {
 			break
 		}
-	}
 
-	return group
-}
+		// Check if this file overlaps with any file in our set
+		if p.fileOverlapsWithSet(candidateFile, overlappingFiles) {
+			overlappingFiles = append(overlappingFiles, candidateFile)
+			processedFiles[candidateFile.path] = struct{}{}
 
-// findFileRange finds the fileRange for a given path
-func (p *partitionKey) findFileRange(path string, fileRanges []fileRange) fileRange {
-	for _, fr := range fileRanges {
-		if fr.path == path {
-			return fr
+			// Update set's max end time
+			if candidateFile.max.After(setMaxEnd) {
+				setMaxEnd = candidateFile.max
+			}
 		}
 	}
-	return fileRange{path: path} // fallback
+
+	return overlappingFiles
 }
 
-// rangesOverlap checks if two timestamp ranges overlap
-func rangesOverlap(r1, r2 fileRange) bool {
-	return !(r1.max.Before(r2.min) || r2.max.Before(r1.min))
+// fileOverlapsWithSet checks if a file overlaps with any file in the set
+func (p *partitionKey) fileOverlapsWithSet(candidateFile fileTimeRange, fileSet []fileTimeRange) bool {
+	for _, setFile := range fileSet {
+		if rangesOverlap(setFile, candidateFile) {
+			return true
+		}
+	}
+	return false
 }
