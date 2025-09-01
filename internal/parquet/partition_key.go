@@ -182,14 +182,20 @@ func newPartitionKeyStats(ctx context.Context, db *database.DuckDb, p *partition
 // disorderMetrics represents the fragmentation level of data for a partition key
 type disorderMetrics struct {
 	totalFiles       int // total number of files for this partition key
-	overlappingFiles int // number of files with overlapping timestamp ranges
+	overlappingFiles [][]string
+}
+
+type fileRange struct {
+	path string
+	min  time.Time
+	max  time.Time
 }
 
 // getDisorderMetrics calculates the disorder level of data for a partition key
 func (p *partitionKey) getDisorderMetrics(ctx context.Context, db *database.DuckDb) (*disorderMetrics, error) {
 	// Single query to get files and their timestamp ranges for this partition key
 	query := `select 
-		df.data_file_id,
+		df.path,
 		cast(fcs.min_value as timestamp) as min_timestamp,
 		cast(fcs.max_value as timestamp) as max_timestamp
 	from __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df
@@ -223,37 +229,92 @@ func (p *partitionKey) getDisorderMetrics(ctx context.Context, db *database.Duck
 	}
 	defer rows.Close()
 
-	var fileRanges []struct{ min, max time.Time }
+	var fileRanges []fileRange
 	for rows.Next() {
-		var fileID int64
+		var path string
 		var minTime, maxTime time.Time
-		if err := rows.Scan(&fileID, &minTime, &maxTime); err != nil {
+		if err := rows.Scan(&path, &minTime, &maxTime); err != nil {
 			return nil, fmt.Errorf("failed to scan file range: %w", err)
 		}
-		fileRanges = append(fileRanges, struct{ min, max time.Time }{minTime, maxTime})
+		fileRanges = append(fileRanges, fileRange{path: path, min: minTime, max: maxTime})
 	}
 
 	totalFiles := len(fileRanges)
 	if totalFiles <= 1 {
-		return &disorderMetrics{totalFiles: totalFiles, overlappingFiles: 0}, nil
+		return &disorderMetrics{totalFiles: totalFiles, overlappingFiles: [][]string{}}, nil
 	}
 
-	// Count overlapping pairs
-	overlappingCount := 0
-	for i := 0; i < len(fileRanges); i++ {
-		for j := i + 1; j < len(fileRanges); j++ {
-			file1 := fileRanges[i]
-			file2 := fileRanges[j]
-
-			// Check if ranges overlap
-			if !(file1.max.Before(file2.min) || file2.max.Before(file1.min)) {
-				overlappingCount++
-			}
-		}
-	}
+	// Build overlapping file sets
+	overlappingSets := p.buildOverlappingFileSets(fileRanges)
 
 	return &disorderMetrics{
 		totalFiles:       totalFiles,
-		overlappingFiles: overlappingCount,
+		overlappingFiles: overlappingSets,
 	}, nil
+}
+
+// buildOverlappingFileSets finds groups of files with overlapping timestamp ranges
+func (p *partitionKey) buildOverlappingFileSets(fileRanges []fileRange) [][]string {
+	var groups [][]string
+	assignedToGroup := make(map[string]bool)
+
+	for _, file1 := range fileRanges {
+		if assignedToGroup[file1.path] {
+			continue
+		}
+
+		// Start a new group and find all connected files
+		group := p.findConnectedFiles(file1, fileRanges, assignedToGroup)
+		if len(group) > 1 {
+			groups = append(groups, group)
+		}
+	}
+
+	return groups
+}
+
+// findConnectedFiles finds all files connected to the given file through overlaps
+func (p *partitionKey) findConnectedFiles(start fileRange, allFiles []fileRange, assignedToGroup map[string]bool) []string {
+	group := []string{start.path}
+	assignedToGroup[start.path] = true
+
+	for {
+		added := false
+		for _, file := range allFiles {
+			if assignedToGroup[file.path] {
+				continue
+			}
+
+			// Check if this file overlaps with any file in the group
+			for _, groupFile := range group {
+				groupFileRange := p.findFileRange(groupFile, allFiles)
+				if rangesOverlap(groupFileRange, file) {
+					group = append(group, file.path)
+					assignedToGroup[file.path] = true
+					added = true
+					break
+				}
+			}
+		}
+		if !added {
+			break
+		}
+	}
+
+	return group
+}
+
+// findFileRange finds the fileRange for a given path
+func (p *partitionKey) findFileRange(path string, fileRanges []fileRange) fileRange {
+	for _, fr := range fileRanges {
+		if fr.path == path {
+			return fr
+		}
+	}
+	return fileRange{path: path} // fallback
+}
+
+// rangesOverlap checks if two timestamp ranges overlap
+func rangesOverlap(r1, r2 fileRange) bool {
+	return !(r1.max.Before(r2.min) || r2.max.Before(r1.min))
 }

@@ -125,7 +125,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			"total files", metrics.totalFiles,
 			"overlapping files", metrics.overlappingFiles,
 		)
-		if metrics.overlappingFiles == 0 {
+		if len(metrics.overlappingFiles) == 0 {
 			slog.Info("Partition key is not fragmented - skipping compaction",
 				"tp_table", pk.tpTable,
 				"tp_partition", pk.tpPartition,
