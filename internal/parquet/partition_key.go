@@ -26,7 +26,8 @@ type partitionKey struct {
 	stats       partitionKeyStats
 }
 
-// get partition key statistics: row count, file count  max row id, min and max timestamp
+// getStats retrieves and populates partition key statistics including row count, max row id, and timestamp range.
+// It queries the database to get comprehensive statistics for this partition key and stores them in the partitionKey struct.
 func (p *partitionKey) getStats(ctx context.Context, db *database.DuckDb) error {
 	stats, err := newPartitionKeyStats(ctx, db, p)
 	if err != nil {
@@ -180,35 +181,18 @@ func newPartitionKeyStats(ctx context.Context, db *database.DuckDb, p *partition
 	return stats, nil
 }
 
-// buildUnorderedTimeRanges finds groups of files with overlapping timestamp ranges
-func (p *partitionKey) buildUnorderedTimeRanges(fileRanges []fileTimeRange) ([]unorderedDataTimeRange, error) {
+// findOverlappingFileRanges finds sets of files that have overlapping time ranges and converts them to unorderedDataTimeRange
+func (p *partitionKey) findOverlappingFileRanges(fileRanges []fileTimeRange) ([]unorderedDataTimeRange, error) {
 	if len(fileRanges) <= 1 {
 		return []unorderedDataTimeRange{}, nil
 	}
 
-	// Find sets of overlapping files
-	overlappingFileGroups := p.findOverlappingFileGroups(fileRanges)
-
-	// Convert to unorderedDataTimeRange structs with metadata (rowcount, start/end time for time range)
-	var unorderedRanges []unorderedDataTimeRange
-	for _, fileGroup := range overlappingFileGroups {
-		timeRanges, err := newUnorderedDataTimeRange(fileGroup)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create overlapping file set: %w", err)
-		}
-		unorderedRanges = append(unorderedRanges, timeRanges)
-	}
-	return unorderedRanges, nil
-}
-
-// findOverlappingFileGroups finds sets of files that have overlapping time ranges
-func (p *partitionKey) findOverlappingFileGroups(fileRanges []fileTimeRange) [][]fileTimeRange {
 	// Sort by start time - O(n log n)
 	sort.Slice(fileRanges, func(i, j int) bool {
 		return fileRanges[i].min.Before(fileRanges[j].min)
 	})
 
-	var unorderedRanges [][]fileTimeRange
+	var unorderedRanges []unorderedDataTimeRange
 	processedFiles := make(map[string]struct{})
 
 	for i, currentFile := range fileRanges {
@@ -221,16 +205,21 @@ func (p *partitionKey) findOverlappingFileGroups(fileRanges []fileTimeRange) [][
 
 		// Only keep sets with multiple files (single files don't need compaction)
 		if len(overlappingFiles) > 1 {
-			unorderedRanges = append(unorderedRanges, overlappingFiles)
+			// Convert overlapping files to unorderedDataTimeRange
+			timeRange, err := newUnorderedDataTimeRange(overlappingFiles)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create unordered time range: %w", err)
+			}
+			unorderedRanges = append(unorderedRanges, timeRange)
 		}
 	}
 
-	return unorderedRanges
+	return unorderedRanges, nil
 }
 
 // findFilesOverlappingWith finds all files that overlap with the given file
 func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remainingFiles []fileTimeRange, processedFiles map[string]struct{}) []fileTimeRange {
-	unorderedRanges := []fileTimeRange{startFile}
+	overlappingFileRanges := []fileTimeRange{startFile}
 	processedFiles[startFile.path] = struct{}{}
 	setMaxEnd := startFile.max
 
@@ -245,8 +234,8 @@ func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remaini
 		}
 
 		// Check if this file overlaps with any file in our set
-		if p.fileOverlapsWithSet(candidateFile, unorderedRanges) {
-			unorderedRanges = append(unorderedRanges, candidateFile)
+		if p.fileOverlapsWithSet(candidateFile, overlappingFileRanges) {
+			overlappingFileRanges = append(overlappingFileRanges, candidateFile)
 			processedFiles[candidateFile.path] = struct{}{}
 
 			// Update set's max end time
@@ -256,7 +245,7 @@ func (p *partitionKey) findFilesOverlappingWith(startFile fileTimeRange, remaini
 		}
 	}
 
-	return unorderedRanges
+	return overlappingFileRanges
 }
 
 // fileOverlapsWithSet checks if a file overlaps with any file in the set

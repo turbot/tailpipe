@@ -93,11 +93,10 @@ func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 }
 
 // we order data files as follows:
-// - get list of partition keys matching patterns. For each  key:
-//   - order entries <potentially split into day chunks>:
-//   - get max row id of rows with that partition key
-//   - reinsert ordered data for partition key
-//   - dedupe: delete rows for partition key with rowid <= prev max row id
+// - get list of partition keys matching patterns. For each key:
+//   - analyze file fragmentation to identify overlapping time ranges
+//   - for each overlapping time range, reorder all data in that range
+//   - delete original unordered entries for that time range
 func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), partitionKeys []*partitionKey) (*CompactionStatus, error) {
 	slog.Info("Ordering DuckLake data files")
 
@@ -111,22 +110,22 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 	// Process each partition
 	for _, pk := range partitionKeys {
 		// determine which files are not time ordered
-		metrics, err := newDisorderMetrics(ctx, db, pk)
+		unorderedRanges, err := getUnorderedRangesForPartitionKey(ctx, db, pk)
 		if err != nil {
-			slog.Error("failed to get disorder metrics", "partition", pk, "error", err)
+			slog.Error("failed to get unorderedRanges", "partition", pk, "error", err)
 			return nil, err
 		}
-		slog.Debug("Partition key disorder metrics",
+		slog.Debug("Partition key unorderedRanges",
 			"tp_table", pk.tpTable,
 			"tp_partition", pk.tpPartition,
 			"tp_index", pk.tpIndex,
 			"year", pk.year,
 			"month", pk.month,
-			"total files", metrics.totalFiles,
-			"overlapping sets", len(metrics.unorderedRanges),
+
+			"overlapping sets", len(unorderedRanges),
 		)
 		// if no files out of order, nothing to do
-		if len(metrics.unorderedRanges) == 0 {
+		if len(unorderedRanges) == 0 {
 			slog.Info("Partition key is not fragmented - skipping compaction",
 				"tp_table", pk.tpTable,
 				"tp_partition", pk.tpPartition,
@@ -163,7 +162,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			updateFunc(*status)
 		}
 
-		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, metrics.unorderedRanges, updateRowsFunc); err != nil {
+		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, unorderedRanges, updateRowsFunc); err != nil {
 			slog.Error("failed to compact partition", "partition", pk, "error", err)
 			tx.Rollback()
 			return nil, err
@@ -190,12 +189,11 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 	return status, nil
 }
 
-//	we order data files as follows:
-//
-// - iterate over overlapping file sets
-// - for each set, reorder only those files
-// - delete original unordered entries for those files
-func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, unorderedRangesets []unorderedDataTimeRange, updateRowsCompactedFunc func(int64)) error {
+// compactAndOrderPartitionKeyEntries processes overlapping time ranges for a partition key:
+// - iterates over each unordered time range
+// - reorders all data within each time range (potentially in chunks for large ranges)
+// - deletes original unordered entries for that time range
+func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, unorderedRanges []unorderedDataTimeRange, updateRowsCompactedFunc func(int64)) error {
 
 	slog.Debug("partition statistics",
 		"tp_table", pk.tpTable,
@@ -204,49 +202,35 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 		"year", pk.year,
 		"month", pk.month,
 		"row_count", pk.stats.rowCount,
-		"file_count", pk.fileCount,
-		"max_rowid", pk.stats.maxRowId,
+		"total file_count", pk.fileCount,
 		"min_timestamp", pk.stats.minTimestamp,
 		"max_timestamp", pk.stats.maxTimestamp,
-		"overlapping_sets", len(unorderedRangesets),
+		"total_ranges", len(unorderedRanges),
 	)
 
-	// Process each overlapping file set
-	for i, fileSet := range unorderedRangesets {
-		slog.Debug("processing overlapping file set",
-			"set_index", i+1,
-			"total_sets", len(unorderedRangesets),
-			"start_time", fileSet.StartTime,
-			"end_time", fileSet.EndTime,
-			"row_count", fileSet.RowCount)
+	// Process each overlapping time range
+	for i, timeRange := range unorderedRanges {
+		slog.Debug("processing overlapping time range",
+			"range_index", i+1,
+			"start_time", timeRange.StartTime,
+			"end_time", timeRange.EndTime,
+			"row_count", timeRange.RowCount)
 
 		// Use the pre-calculated time range and row count from the struct
-		minTime := fileSet.StartTime
-		maxTime := fileSet.EndTime
-		rowCount := fileSet.RowCount
+		minTime := timeRange.StartTime
+		maxTime := timeRange.EndTime
+		rowCount := timeRange.RowCount
 
-		// Calculate chunks for this file set
-		intervalDuration := maxTime.Sub(minTime)
-		chunks := 1
+		// Determine chunking strategy for this time range
+		chunks, intervalDuration := determineChunkingInterval(minTime, maxTime, rowCount)
 
-		// If row count is greater than maxCompactionRowsPerChunk, calculate appropriate chunk interval
-		if rowCount > maxCompactionRowsPerChunk {
-			chunks = int((rowCount + maxCompactionRowsPerChunk - 1) / maxCompactionRowsPerChunk)
-			intervalDuration = intervalDuration / time.Duration(chunks)
-
-			// Ensure minimum interval is at least 1 hour
-			if intervalDuration < time.Hour {
-				intervalDuration = time.Hour
-			}
-		}
-
-		slog.Debug("processing file set in chunks",
-			"set_index", i+1,
+		slog.Debug("processing time range in chunks",
+			"range_index", i+1,
 			"row_count", rowCount,
 			"chunks", chunks,
 			"interval_duration", intervalDuration.String())
 
-		// Process this file set in time-based chunks
+		// Process this time range in chunks
 		currentStart := minTime
 		for i := 1; currentStart.Before(maxTime); i++ {
 			currentEnd := currentStart.Add(intervalDuration)
@@ -259,12 +243,12 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 
 			rowsInserted, err := insertOrderedDataForTimeRange(ctx, tx, pk, currentStart, currentEnd, isFinalChunk)
 			if err != nil {
-				return fmt.Errorf("failed to insert ordered data for file set time range %s to %s: %w",
+				return fmt.Errorf("failed to insert ordered data for time range %s to %s: %w",
 					currentStart.Format("2006-01-02 15:04:05"),
 					currentEnd.Format("2006-01-02 15:04:05"), err)
 			}
 			updateRowsCompactedFunc(rowsInserted)
-			slog.Debug(fmt.Sprintf("processed chunk %d/%d for set %d", i, chunks, i+1))
+			slog.Debug(fmt.Sprintf("processed chunk %d/%d for range %d", i, chunks, i+1))
 
 			// Ensure next chunk starts exactly where this one ended to prevent gaps
 			currentStart = currentEnd
@@ -276,8 +260,8 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 			return fmt.Errorf("failed to delete unordered entries for time range: %w", err)
 		}
 
-		slog.Debug("completed file set",
-			"set_index", i+1)
+		slog.Debug("completed time range",
+			"range_index", i+1)
 	}
 
 	return nil
@@ -332,10 +316,32 @@ func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *par
 
 	_, err := tx.ExecContext(ctx, deleteQuery, args...)
 	if err != nil {
-		return fmt.Errorf("failed to delete unordered entries for file set: %w", err)
+		return fmt.Errorf("failed to delete unordered entries for time range: %w", err)
 	}
 
 	return nil
+}
+
+// determineChunkingInterval calculates the optimal chunking strategy for a time range based on row count.
+// It returns the number of chunks and the duration of each chunk interval.
+// For large datasets, it splits the time range into multiple chunks to stay within maxCompactionRowsPerChunk.
+// Ensures minimum chunk interval is at least 1 hour to avoid excessive fragmentation.
+func determineChunkingInterval(startTime, endTime time.Time, rowCount int64) (chunks int, intervalDuration time.Duration) {
+	intervalDuration = endTime.Sub(startTime)
+	chunks = 1
+
+	// If row count is greater than maxCompactionRowsPerChunk, calculate appropriate chunk interval
+	if rowCount > maxCompactionRowsPerChunk {
+		chunks = int((rowCount + maxCompactionRowsPerChunk - 1) / maxCompactionRowsPerChunk)
+		intervalDuration = intervalDuration / time.Duration(chunks)
+
+		// Ensure minimum interval is at least 1 hour
+		if intervalDuration < time.Hour {
+			intervalDuration = time.Hour
+		}
+	}
+
+	return chunks, intervalDuration
 }
 
 // SafeIdentifier ensures that SQL identifiers (like table or column names)

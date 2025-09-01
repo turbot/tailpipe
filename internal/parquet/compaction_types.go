@@ -3,22 +3,18 @@ package parquet
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-// disorderMetrics represents the fragmentation level of data for a partition key
-type disorderMetrics struct {
-	totalFiles      int                      // total number of files for this partition key
-	unorderedRanges []unorderedDataTimeRange // time ranges with overlapping data that need reordering
-}
-
-// newDisorderMetrics analyzes file fragmentation and creates disorder metrics for a partition key.
+// getUnorderedRangesForPartitionKey analyzes file fragmentation and creates disorder metrics for a partition key.
 // It queries DuckLake metadata to get all files for the partition, their timestamp ranges, and row counts.
 // Then it identifies groups of files with overlapping time ranges that need compaction.
 // Returns metrics including total file count and overlapping file sets with their metadata.
-func newDisorderMetrics(ctx context.Context, db *database.DuckDb, pk *partitionKey) (*disorderMetrics, error) {
+func getUnorderedRangesForPartitionKey(ctx context.Context, db *database.DuckDb, pk *partitionKey) ([]unorderedDataTimeRange, error) {
 	// Single query to get files and their timestamp ranges and row counts for this partition key
 	query := `select 
 		df.path,
@@ -69,19 +65,26 @@ func newDisorderMetrics(ctx context.Context, db *database.DuckDb, pk *partitionK
 
 	totalFiles := len(fileRanges)
 	if totalFiles <= 1 {
-		return &disorderMetrics{totalFiles: totalFiles, unorderedRanges: []unorderedDataTimeRange{}}, nil
+		return nil, nil
 	}
 
-	// Build overlapping file sets
-	overlappingSets, err := pk.buildUnorderedTimeRanges(fileRanges)
+	// build string for the ranges
+	var rangesStr strings.Builder
+	for i, file := range fileRanges {
+		rangesStr.WriteString(fmt.Sprintf("start: %s, end: %s", file.min.String(), file.max.String()))
+		if i < len(fileRanges)-1 {
+			rangesStr.WriteString(", ")
+		}
+	}
+	slog.Info("File ranges for partition key", "partition_key", pk, "ranges", rangesStr.String())
+
+	// Build unordered time ranges
+	unorderedRanges, err := pk.findOverlappingFileRanges(fileRanges)
 	if err != nil {
-		return nil, fmt.Errorf("failed to build overlapping file sets: %w", err)
+		return nil, fmt.Errorf("failed to build unordered time ranges: %w", err)
 	}
 
-	return &disorderMetrics{
-		totalFiles:      totalFiles,
-		unorderedRanges: overlappingSets,
-	}, nil
+	return unorderedRanges, nil
 }
 
 type fileTimeRange struct {
@@ -99,12 +102,12 @@ type unorderedDataTimeRange struct {
 }
 
 // newUnorderedDataTimeRange creates a single unorderedDataTimeRange from overlapping files
-func newUnorderedDataTimeRange(unorderedRanges []fileTimeRange) (unorderedDataTimeRange, error) {
+func newUnorderedDataTimeRange(overlappingFiles []fileTimeRange) (unorderedDataTimeRange, error) {
 	var rowCount int64
 	var startTime, endTime time.Time
 
 	// Single loop to sum row counts and calculate time range
-	for i, file := range unorderedRanges {
+	for i, file := range overlappingFiles {
 		rowCount += file.rowCount
 
 		// Calculate time range
