@@ -116,14 +116,26 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			slog.Error("failed to get disorder metrics", "partition", pk, "error", err)
 			return nil, err
 		}
-		slog.Info("Partition disorder metrics",
+		slog.Debug("Partition key disorder metrics",
 			"tp_table", pk.tpTable,
 			"tp_partition", pk.tpPartition,
 			"tp_index", pk.tpIndex,
 			"year", pk.year,
 			"month", pk.month,
-			"average file count", metrics.fileCount,
-			"average rows group count", metrics.rowGroupCount)
+			"total files", metrics.totalFiles,
+			"overlapping files", metrics.overlappingFiles,
+		)
+		if metrics.overlappingFiles == 0 {
+			slog.Info("Partition key is not fragmented - skipping compaction",
+				"tp_table", pk.tpTable,
+				"tp_partition", pk.tpPartition,
+				"tp_index", pk.tpIndex,
+				"year", pk.year,
+				"month", pk.month,
+				"file_count", pk.fileCount,
+			)
+			continue
+		}
 
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {

@@ -181,31 +181,79 @@ func newPartitionKeyStats(ctx context.Context, db *database.DuckDb, p *partition
 
 // disorderMetrics represents the fragmentation level of data for a partition key
 type disorderMetrics struct {
-	fileCount     int // number of files for this partition key
-	rowGroupCount int // estimated number of row groups
+	totalFiles       int // total number of files for this partition key
+	overlappingFiles int // number of files with overlapping timestamp ranges
 }
 
 // getDisorderMetrics calculates the disorder level of data for a partition key
 func (p *partitionKey) getDisorderMetrics(ctx context.Context, db *database.DuckDb) (*disorderMetrics, error) {
-	// Simple query to count distinct files for this partition key
-	query := fmt.Sprintf(`select count(distinct filename) as file_count
-		from "%s" 
-		where tp_partition = ?
-		  and tp_index = ?
-		  and year(tp_timestamp) = ?
-		  and month(tp_timestamp) = ?`, p.tpTable)
+	// Single query to get files and their timestamp ranges for this partition key
+	query := `select 
+		df.data_file_id,
+		cast(fcs.min_value as timestamp) as min_timestamp,
+		cast(fcs.max_value as timestamp) as max_timestamp
+	from __ducklake_metadata_tailpipe_ducklake.ducklake_data_file df
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv1
+	  on df.data_file_id = fpv1.data_file_id and fpv1.partition_key_index = 0
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv2
+	  on df.data_file_id = fpv2.data_file_id and fpv2.partition_key_index = 1
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv3
+	  on df.data_file_id = fpv3.data_file_id and fpv3.partition_key_index = 2
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_partition_value fpv4
+	  on df.data_file_id = fpv4.data_file_id and fpv4.partition_key_index = 3
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_table t
+	  on df.table_id = t.table_id
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_column_statistics fcs
+	  on df.data_file_id = fcs.data_file_id
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_column c
+	  on fcs.column_id = c.column_id
+	where t.table_name = ?
+	  and fpv1.partition_value = ?
+	  and fpv2.partition_value = ?
+	  and fpv3.partition_value = ?
+	  and fpv4.partition_value = ?
+	  and c.column_name = 'tp_timestamp'
+	  and df.end_snapshot is null
+	  and c.end_snapshot is null
+	order by df.data_file_id`
 
-	var fileCount int
-	err := db.QueryRowContext(ctx, query, p.tpPartition, p.tpIndex, p.year, p.month).Scan(&fileCount)
+	rows, err := db.QueryContext(ctx, query, p.tpTable, p.tpPartition, p.tpIndex, p.year, p.month)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count files: %w", err)
+		return nil, fmt.Errorf("failed to get file timestamp ranges: %w", err)
+	}
+	defer rows.Close()
+
+	var fileRanges []struct{ min, max time.Time }
+	for rows.Next() {
+		var fileID int64
+		var minTime, maxTime time.Time
+		if err := rows.Scan(&fileID, &minTime, &maxTime); err != nil {
+			return nil, fmt.Errorf("failed to scan file range: %w", err)
+		}
+		fileRanges = append(fileRanges, struct{ min, max time.Time }{minTime, maxTime})
 	}
 
-	// Simple estimate: assume 2 row groups per file
-	rowGroupCount := fileCount * 2
+	totalFiles := len(fileRanges)
+	if totalFiles <= 1 {
+		return &disorderMetrics{totalFiles: totalFiles, overlappingFiles: 0}, nil
+	}
+
+	// Count overlapping pairs
+	overlappingCount := 0
+	for i := 0; i < len(fileRanges); i++ {
+		for j := i + 1; j < len(fileRanges); j++ {
+			file1 := fileRanges[i]
+			file2 := fileRanges[j]
+
+			// Check if ranges overlap
+			if !(file1.max.Before(file2.min) || file2.max.Before(file1.min)) {
+				overlappingCount++
+			}
+		}
+	}
 
 	return &disorderMetrics{
-		fileCount:     fileCount,
-		rowGroupCount: rowGroupCount,
+		totalFiles:       totalFiles,
+		overlappingFiles: overlappingCount,
 	}, nil
 }
