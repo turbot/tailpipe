@@ -23,7 +23,6 @@ require (
 	github.com/turbot/tailpipe-plugin-sdk v0.9.2
 	github.com/zclconf/go-cty v1.14.4
 	golang.org/x/exp v0.0.0-20250128182459-e0ece0dbea4c
-
 )
 
 require (
@@ -205,7 +204,7 @@ require (
 	github.com/tkrajina/go-reflector v0.5.8 // indirect
 	github.com/turbot/pipes-sdk-go v0.12.0 // indirect
 	github.com/turbot/terraform-components v0.0.0-20231213122222-1f3526cab7a7 // indirect
-	github.com/ulikunitz/xz v0.5.10 // indirect
+	github.com/ulikunitz/xz v0.5.14 // indirect
 	github.com/xlab/treeprint v1.2.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	github.com/zclconf/go-cty-yaml v1.0.3 // indirect
