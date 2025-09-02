@@ -43,7 +43,6 @@ jobs:
         with:
           repository: turbot/tailpipe-plugin-core
           path: tailpipe-plugin-core
-          token: ${{ secrets.GH_ACCESS_TOKEN }}
           ref: main
 
         # this is required, check golangci-lint-action docs
