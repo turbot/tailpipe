@@ -38,8 +38,6 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 		return err
 	}
 
-	// status.Uncompacted = uncompacted
-
 	slog.Info("Expiring old DuckLake snapshots")
 	// now expire unused snapshots
 	if err := expirePrevSnapshots(ctx, db); err != nil {
