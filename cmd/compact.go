@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
-	"golang.org/x/exp/maps"
-
 	"github.com/briandowns/spinner"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
+	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
@@ -20,9 +20,14 @@ import (
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/parquet"
+	"golang.org/x/exp/maps"
 )
 
+// TODO #DL update docs - no longer support compacting single partition
+//
+//	https://github.com/turbot/tailpipe/issues/474
 func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compact [table|table.partition] [flags]",
@@ -60,6 +65,17 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 
 	slog.Info("Compacting parquet files")
 
+	// if the flag was provided, migrate the tp_index files
+	if viper.GetBool(pconstants.ArgReindex) {
+		// TODO #DL update tpIndex migration for ducklake
+		//  https://github.com/turbot/tailpipe/issues/475
+		panic("Reindexing is not yet implemented for ducklake")
+	}
+
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// verify that the provided args resolve to at least one partition
 	if _, err := getPartitions(args); err != nil {
 		error_helpers.FailOnError(err)
@@ -69,8 +85,10 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	patterns, err := getPartitionPatterns(args, maps.Keys(config.GlobalConfig.Partitions))
 	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
-	status, err := doCompaction(ctx, patterns...)
+	// do the compaction
+	status, err := doCompaction(ctx, db, patterns)
 	if errors.Is(err, context.Canceled) {
+		// TODO verify
 		// clear error so we don't show it with normal error reporting
 		err = nil
 	}
@@ -92,7 +110,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
+func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -104,18 +122,33 @@ func doCompaction(ctx context.Context, patterns ...parquet.PartitionPattern) (*p
 	s.Start()
 	defer s.Stop()
 	s.Suffix = " compacting parquet files"
-
 	// define func to update the spinner suffix with the number of files compacted
 	var status = parquet.NewCompactionStatus()
-	updateTotals := func(counts parquet.CompactionStatus) {
-		status.Update(counts)
-		s.Suffix = fmt.Sprintf(" compacting parquet files (%d files -> %d files)", status.Source, status.Dest)
+
+	updateTotals := func(updatedStatus parquet.CompactionStatus) {
+		status = &updatedStatus
+		s.Suffix = fmt.Sprintf(" compacting parquet files (%0.1f%% of %s rows)", status.ProgressPercent, types.ToHumanisedString(status.TotalRows))
 	}
 
 	// do compaction
-	err := parquet.CompactDataFiles(ctx, updateTotals, patterns...)
+	err := parquet.CompactDataFiles(ctx, db, updateTotals, patterns...)
 
 	return status, err
+}
+
+// getPartitionPatterns returns the table and partition patterns for the given partition args
+func getPartitionPatterns(partitionArgs []string, partitions []string) ([]parquet.PartitionPattern, error) {
+	var res []parquet.PartitionPattern
+	for _, arg := range partitionArgs {
+		tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
+		if err != nil {
+			return nil, fmt.Errorf("error processing partition arg '%s': %w", arg, err)
+		}
+
+		res = append(res, parquet.PartitionPattern{Table: tablePattern, Partition: partitionPattern})
+	}
+
+	return res, nil
 }
 
 func setExitCodeForCompactError(err error) {

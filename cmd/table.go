@@ -17,6 +17,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
 )
 
@@ -85,8 +86,12 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resources, err := display.ListTableResources(ctx)
+	resources, err := display.ListTableResources(ctx, db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
@@ -141,8 +146,12 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
+	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resource, err := display.GetTableResource(ctx, args[0])
+	resource, err := display.GetTableResource(ctx, args[0], db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 

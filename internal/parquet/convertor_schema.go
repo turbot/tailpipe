@@ -1,182 +1,171 @@
 package parquet
 
 import (
+	"encoding/json"
 	"fmt"
-	"log/slog"
-	"strings"
+	"path/filepath"
 
-	"github.com/turbot/go-kit/helpers"
-	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe-plugin-sdk/table"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
-// buildViewQuery builds a format string used to construct the conversion query which reads from the source ndjson file
-/*
-select
-	<source column> as <output column>
-	...
-from
-	read_ndjson(
-		'%s',
-		columns = {
-			<source column>: '<column type>',
-	}
-	)
-where (tp_timestamp is null or tp_timestamp >= <from time>)
-*/
-func (w *Converter) buildReadJsonQueryFormat() string {
-	var tpTimestampMapped bool
-
-	// first build the select clauses - use the table def columns
-	var selectClauses []string
-	for _, column := range w.conversionSchema.Columns {
-
-		var selectClause string
-		switch column.ColumnName {
-		case constants.TpDate:
-			// skip this column - it is derived from tp_timestamp
-			continue
-		case constants.TpIndex:
-			// NOTE: we ignore tp_index in the source data and ONLY add it based ont he default or configured value
-			slog.Warn("tp_index is a reserved column name and should not be used in the source data. It will be added automatically based on the configured value.")
-			// set flag to indicate that the plugin populated the tp_index
-			// - the CLI may show a warning as plugins no longer need to do that
-			w.pluginPopulatesTpIndex = true
-			// skip this column - it will be populated manually using the partition config
-			continue
-		case constants.TpTimestamp:
-			tpTimestampMapped = true
-			// fallthrough to populate the select clasue as normal
-			fallthrough
-		default:
-			selectClause = getSelectSqlForField(column)
-		}
-
-		selectClauses = append(selectClauses, selectClause)
+// populate the ConversionSchema
+// determine if we have a full schema yet and if not infer from the chunk
+func (w *Converter) buildConversionSchema(executionID string, chunk int32) error {
+	// if table schema is already complete, we can skip the inference and just populate the conversionSchema
+	// complete means that we have types for all columns in the table schema, and we are not mapping any source columns
+	if w.tableSchema.Complete() {
+		w.conversionSchema = schema.NewConversionSchema(w.tableSchema)
+		return nil
 	}
 
-	// add the tp_index - this is determined by the partition - it defaults to "default" but may be overridden in the partition config
-	// NOTE: we DO NOT wrap the tp_index expression in quotes - that will have already been done as part of partition config validation
-	selectClauses = append(selectClauses, fmt.Sprintf("\t%s as \"tp_index\"", w.Partition.TpIndexColumn))
-
-	// if we have a mapping for tp_timestamp, add tp_date as well
-	if tpTimestampMapped {
-		// Add tp_date after tp_timestamp is defined
-		selectClauses = append(selectClauses, `	case
-		when tp_timestamp is not null then date_trunc('day', tp_timestamp::timestamp)
-	end as tp_date`)
+	// do the inference
+	conversionSchema, err := w.inferConversionSchema(executionID, chunk)
+	if err != nil {
+		return fmt.Errorf("failed to infer conversionSchema from first JSON file: %w", err)
 	}
 
-	// build column definitions - these will be passed to the read_json function
-	columnDefinitions := getReadJSONColumnDefinitions(w.conversionSchema.SourceColumns)
+	w.conversionSchema = conversionSchema
 
-	var whereClause string
-	if w.Partition.Filter != "" {
-		// we need to escape the % in the filter, as it is passed to the fmt.Sprintf function
-		filter := strings.ReplaceAll(w.Partition.Filter, "%", "%%")
-		whereClause = fmt.Sprintf("\nwhere %s", filter)
-	}
-
-	res := fmt.Sprintf(`select
-%s
-from
-	read_ndjson(
-		'%%s',
-	%s
-	)%s`, strings.Join(selectClauses, ",\n"), helpers.Tabify(columnDefinitions, "\t"), whereClause)
-
-	return res
+	// now validate the conversionSchema is complete - we should have types for all columns
+	// (if we do not that indicates a custom table definition was used which does not specify types for all optional fields -
+	// this should have caused a config validation error earlier on
+	return w.conversionSchema.EnsureComplete()
 }
 
-// return the column definitions for the row conversionSchema, in the format required for the duck db read_json_auto function
-func getReadJSONColumnDefinitions(sourceColumns []schema.SourceColumnDef) string {
-	var str strings.Builder
-	str.WriteString("columns = {")
-	for i, column := range sourceColumns {
-		if i > 0 {
-			str.WriteString(", ")
-		}
-		str.WriteString(fmt.Sprintf(`
-		"%s": '%s'`, column.Name, column.Type))
+func (w *Converter) inferConversionSchema(executionId string, chunkNumber int32) (*schema.ConversionSchema, error) {
+	jsonFileName := table.ExecutionIdToJsonlFileName(executionId, chunkNumber)
+	filePath := filepath.Join(w.sourceDir, jsonFileName)
+
+	inferredSchema, err := w.InferSchemaForJSONLFile(filePath)
+	if err != nil {
+		return nil, err
 	}
-	str.WriteString("\n}")
-	return str.String()
+	return schema.NewConversionSchemaWithInferredSchema(w.tableSchema, inferredSchema), nil
 }
 
-// Return the SQL line to select the given field
-func getSelectSqlForField(column *schema.ColumnSchema) string {
+func (w *Converter) InferSchemaForJSONLFile(filePath string) (*schema.TableSchema, error) {
+	// depending on the data we have observed that one of the two queries will work
+	inferredSchema, err := w.inferSchemaForJSONLFileWithDescribe(w.db, filePath)
+	if err != nil {
+		inferredSchema, err = w.inferSchemaForJSONLFileWithJSONStructure(filePath)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to infer conversionSchema from JSON file: %w", err)
+	}
+	inferredSchema.NormaliseColumnTypes()
+	return inferredSchema, nil
+}
 
-	// If the column has a transform, use it
-	if column.Transform != "" {
-		// as this is going into a string format, we need to escape %
-		escapedTransform := strings.ReplaceAll(column.Transform, "%", "%%")
-		return fmt.Sprintf("\t%s as \"%s\"", escapedTransform, column.ColumnName)
+// inferSchemaForJSONLFileWithJSONStructure infers the schema of a JSONL file using DuckDB
+// it uses 2 different queries as depending on the data, one or the other has been observed to work
+// (needs investigation)
+func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(filePath string) (*schema.TableSchema, error) {
+	// Query to infer schema using json_structure
+	query := `
+		select json_structure(json)::varchar as schema
+		from read_json_auto(?)
+		limit 1;
+	`
+
+	var schemaStr string
+	err := w.db.QueryRow(query, filePath).Scan(&schemaStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	// NOTE: we will have normalised column types to lower case
-	switch column.Type {
-	case "struct":
-		var str strings.Builder
+	// Parse the schema JSON
+	var fields map[string]string
+	if err := json.Unmarshal([]byte(schemaStr), &fields); err != nil {
+		return nil, fmt.Errorf("failed to parse schema JSON: %w", err)
+	}
 
-		// Start case logic to handle null values for the struct
+	// Convert to TableSchema
+	res := &schema.TableSchema{
+		Columns: make([]*schema.ColumnSchema, 0, len(fields)),
+	}
 
-		str.WriteString(fmt.Sprintf("\tcase\n\t\twhen \"%s\" is null then null\n", column.SourceName))
-		str.WriteString("\t\telse struct_pack(\n")
+	// Convert each field to a column schema
+	for name, typ := range fields {
+		res.Columns = append(res.Columns, &schema.ColumnSchema{
+			SourceName: name,
+			ColumnName: name,
+			Type:       typ,
+		})
+	}
 
-		// Add nested fields to the struct_pack
-		for j, nestedColumn := range column.StructFields {
-			if j > 0 {
-				str.WriteString(",\n")
+	return res, nil
+}
+
+func (w *Converter) inferSchemaForJSONLFileWithDescribe(db *database.DuckDb, filePath string) (*schema.TableSchema, error) {
+	// Use DuckDB to describe the schema of the JSONL file
+	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
+
+	rows, err := db.Query(query, filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query JSON schema: %w", err)
+	}
+	defer rows.Close()
+
+	var res = &schema.TableSchema{}
+
+	// Read the results
+	for rows.Next() {
+		var name, dataType string
+		err := rows.Scan(&name, &dataType)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan row: %w", err)
+		}
+		// Append inferred columns to the schema
+		res.Columns = append(res.Columns, &schema.ColumnSchema{
+			SourceName: name,
+			ColumnName: name,
+			Type:       dataType,
+		})
+	}
+
+	// Check for any errors from iterating over rows
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed during rows iteration: %w", err)
+	}
+
+	return res, nil
+}
+
+func (w *Converter) detectSchemaChange(filePath string) error {
+	inferredChunksSchema, err := w.InferSchemaForJSONLFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to infer schema from JSON file: %w", err)
+	}
+	// the conversion schema is the full schema for the table that we have alreadf inferred
+	conversionSchemaMap := w.conversionSchema.AsMap()
+	// the table schema is the (possibly partial) schema which was defined in config - we use this to exclude columns
+	// which have a type specified
+	tableSchemaMap := w.tableSchema.AsMap()
+	// Compare the inferred schema with the existing conversionSchema
+	var changedColumns []ColumnSchemaChange
+	for _, col := range inferredChunksSchema.Columns {
+		// if the table schema definition specifies a type for this column, ignore the columns (as we will use the defined type)
+		// we are only interested in a type change if the column is not defined in the table schema
+		if columnDef, ok := tableSchemaMap[col.ColumnName]; ok {
+			if columnDef.Type != "" {
+				// if the column is defined in the table schema, ignore it
+				continue
 			}
-			parentName := fmt.Sprintf("\"%s\"", column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, parentName, 3))
 		}
 
-		// Close struct_pack and case
-		str.WriteString("\n\t\t)\n")
-		str.WriteString(fmt.Sprintf("\tend as \"%s\"", column.ColumnName))
-		return str.String()
-
-	case "json":
-		// Convert the value using json()
-		return fmt.Sprintf("\tjson(\"%s\") as \"%s\"", column.SourceName, column.ColumnName)
-
-	default:
-		// Scalar fields
-		return fmt.Sprintf("\t\"%s\" as \"%s\"", column.SourceName, column.ColumnName)
-	}
-}
-
-// Return the SQL line to pack the given field as a struct
-func getTypeSqlForStructField(column *schema.ColumnSchema, parentName string, tabs int) string {
-	tab := strings.Repeat("\t", tabs)
-
-	switch column.Type {
-	case "struct":
-		var str strings.Builder
-
-		// Add case logic to handle null values for the struct
-		str.WriteString(fmt.Sprintf("%s\"%s\" := case\n", tab, column.ColumnName))
-		str.WriteString(fmt.Sprintf("%s\twhen %s.\"%s\" is null then null\n", tab, parentName, column.SourceName))
-		str.WriteString(fmt.Sprintf("%s\telse struct_pack(\n", tab))
-
-		// Loop through nested fields and add them to the struct_pack
-		for j, nestedColumn := range column.StructFields {
-			if j > 0 {
-				str.WriteString(",\n")
-			}
-			// Use the current field as the new parent for recursion
-			newParent := fmt.Sprintf("%s.\"%s\"", parentName, column.SourceName)
-			str.WriteString(getTypeSqlForStructField(nestedColumn, newParent, tabs+2))
+		existingCol, exists := conversionSchemaMap[col.SourceName]
+		if exists && col.Type != existingCol.Type {
+			changedColumns = append(changedColumns, ColumnSchemaChange{
+				Name:    col.SourceName,
+				OldType: existingCol.Type,
+				NewType: col.Type,
+			})
 		}
-
-		// Close struct_pack and case
-		str.WriteString(fmt.Sprintf("\n%s\t)\n", tab))
-		str.WriteString(fmt.Sprintf("%send", tab))
-		return str.String()
-
-	default:
-		// Scalar fields
-		return fmt.Sprintf("%s\"%s\" := %s.\"%s\"::%s", tab, column.ColumnName, parentName, column.SourceName, column.Type)
 	}
+	if len(changedColumns) > 0 {
+		return &SchemaChangeError{ChangedColumns: changedColumns}
+	}
+	return nil
 }

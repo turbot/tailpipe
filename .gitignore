@@ -4,7 +4,8 @@
 *.dll
 *.so
 *.dylib
-
+/test_apps/
+/memtest
 # Editor cache and lock files
 *.swp
 *.swo
@@ -29,3 +30,6 @@ go.work
 
 # Dist directory is created by goreleaser
 /dist
+
+# Sysroot directory is created by make build-sysroot
+/sysroot

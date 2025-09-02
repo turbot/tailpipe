@@ -1,0 +1,5 @@
+partition aws_cloudtrail_log cloudtrail_logs {
+  source file_system {
+    paths = ["/tmp"]
+  }
+  # missing closing brace here intentionally

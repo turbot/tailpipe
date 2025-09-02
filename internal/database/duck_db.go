@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"os"
 
+	"github.com/turbot/pipe-fittings/v2/backend"
+	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
-	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
@@ -18,17 +21,30 @@ import (
 type DuckDb struct {
 	// duckDb connection
 	*sql.DB
-	extensions     []string
-	dataSourceName string
-	tempDir        string
-	maxMemoryMb    int
+	extensions      []string
+	dataSourceName  string
+	tempDir         string
+	maxMemoryMb     int
+	ducklakeEnabled bool
 }
 
-func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
+func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
+	slog.Info("Initializing DuckDB connection")
+
 	w := &DuckDb{}
 	for _, opt := range opts {
 		opt(w)
 	}
+	defer func() {
+		if err != nil {
+			// If an error occurs during initialization, close the DB connection if it was opened
+			if w.DB != nil {
+				_ = w.DB.Close()
+			}
+			w.DB = nil // ensure DB is nil to avoid further operations on a closed connection
+		}
+	}()
+
 	// Connect to DuckDB
 	db, err := sql.Open("duckdb", w.dataSourceName)
 	if err != nil {
@@ -36,10 +52,32 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 	}
 	w.DB = db
 
+	// for duckdb, limit connections to 1 - DuckDB is designed for single-connection usage
+	w.DB.SetMaxOpenConns(1)
+
 	if len(w.extensions) > 0 {
 		// install and load the JSON extension
 		if err := w.installAndLoadExtensions(); err != nil {
 			return nil, fmt.Errorf(": %w", err)
+		}
+	}
+	if w.ducklakeEnabled {
+		dataDir := config.GlobalWorkspaceProfile.GetDataDir()
+		// TODO #DL tactical - for now check env for data dir override
+		// remove this for prod release https://github.com/turbot/tailpipe/issues/520
+		if envDir := os.Getenv("TAILPIPE_DATA_DIR"); envDir != "" {
+			dataDir = envDir
+		}
+
+		ducklakeDb := config.GlobalWorkspaceProfile.GetDucklakeDbPath()
+
+		if err := backend.ConnectDucklake(context.Background(), db, ducklakeDb, dataDir); err != nil {
+			return nil, fmt.Errorf("failed to connect to DuckLake: %w", err)
+		}
+
+		// Set the default catalog to tailpipe_ducklake to avoid catalog context issues
+		if _, err := db.Exec(`use "tailpipe_ducklake"`); err != nil {
+			return nil, fmt.Errorf("failed to set default catalog: %w", err)
 		}
 	}
 
@@ -70,6 +108,7 @@ func NewDuckDb(opts ...DuckDbOpt) (*DuckDb, error) {
 			return nil, fmt.Errorf("failed to set max_memory: %w", err)
 		}
 	}
+
 	return w, nil
 }
 
@@ -133,7 +172,7 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 
 	// install and load the extensions
-	for _, extension := range constants.DuckDbExtensions {
+	for _, extension := range pconstants.DuckDbExtensions {
 		if _, err := d.DB.Exec(fmt.Sprintf("INSTALL '%s'; LOAD '%s';", extension, extension)); err != nil {
 			return fmt.Errorf("failed to install and load extension %s: %s", extension, err.Error())
 		}

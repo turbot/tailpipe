@@ -1,67 +1,43 @@
 version: 2
 
+before:
+  hooks:
+    - go mod tidy
+
 builds:
-  - id: tailpipe-linux-arm64
-    binary: tailpipe
-    goos:
-      - linux
-    goarch:
-      - arm64
-
-    env:
-      - CC=aarch64-linux-gnu-gcc
-      - CXX=aarch64-linux-gnu-g++
-
-    # Custom ldflags.
-    #
-    # Default: '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser'
-    # Templates: allowed
-    ldflags:
-      # Go Releaser analyzes your Git repository and identifies the most recent Git tag (typically the highest version number) as the version for your release.
-      # This is how it determines the value of {{.Version}}.
-      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
-
+  # Linux AMD64 build with GCC 13+
   - id: tailpipe-linux-amd64
     binary: tailpipe
     goos:
       - linux
     goarch:
       - amd64
-
     env:
-      - CC=x86_64-linux-gnu-gcc
-      - CXX=x86_64-linux-gnu-g++
-
+      - CC=x86_64-linux-gnu-gcc-13
+      - CXX=x86_64-linux-gnu-g++-13
+      - CGO_CXXFLAGS=-std=c++17
+      - CGO_LDFLAGS=-lstdc++ -static-libstdc++
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
 
-  - id: tailpipe-darwin-arm64
+  # Linux ARM64 build with GCC 13+
+  - id: tailpipe-linux-arm64
     binary: tailpipe
     goos:
-      - darwin
+      - linux
     goarch:
       - arm64
-
     env:
-      - CC=oa64-clang
-      - CXX=oa64-clang++
-
+      - CC=aarch64-linux-gnu-gcc-13
+      - CXX=aarch64-linux-gnu-g++-13
+      - CGO_CXXFLAGS=-std=c++17
+      - CGO_LDFLAGS=-lstdc++ -static-libstdc++
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
-
-  - id: tailpipe-darwin-amd64
-    binary: tailpipe
-    goos:
-      - darwin
-    goarch:
-      - amd64
-
-    env:
-      - CC=o64-clang
-      - CXX=o64-clang++
-
-    ldflags:
-      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
 
 release:
   prerelease: auto

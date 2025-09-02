@@ -2,37 +2,28 @@ package parquet
 
 import (
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"github.com/turbot/pipe-fittings/v2/utils"
-	"golang.org/x/exp/maps"
+	"time"
 )
 
 type CompactionStatus struct {
-	Source      int
-	Dest        int
-	Uncompacted int
+	InitialFiles    int
+	FinalFiles      int
+	RowsCompacted   int64
+	TotalRows       int64
+	ProgressPercent float64
 
 	MigrateSource             int               // number of source files migrated
 	MigrateDest               int               // number of destination files after migration
 	PartitionIndexExpressions map[string]string // the index expression used for migration for each partition
+	Duration                  time.Duration     // duration of the compaction process
 }
 
 func NewCompactionStatus() *CompactionStatus {
 	return &CompactionStatus{
 		PartitionIndexExpressions: make(map[string]string),
 	}
-
-}
-
-func (s *CompactionStatus) Update(other CompactionStatus) {
-	s.Source += other.Source
-	s.Dest += other.Dest
-	s.Uncompacted += other.Uncompacted
-	s.MigrateSource += other.MigrateSource
-	s.MigrateDest += other.MigrateDest
-	if s.PartitionIndexExpressions == nil {
-		s.PartitionIndexExpressions = make(map[string]string)
-	}
-	maps.Copy(s.PartitionIndexExpressions, other.PartitionIndexExpressions)
 }
 
 func (s *CompactionStatus) VerboseString() string {
@@ -44,7 +35,6 @@ func (s *CompactionStatus) VerboseString() string {
 			utils.Pluralize("partition", len(s.PartitionIndexExpressions)),
 		)
 		if s.MigrateSource != s.MigrateDest {
-
 			migratedString += fmt.Sprintf(" (%d %s migrated to %d %s)",
 				s.MigrateSource,
 				utils.Pluralize("file", s.MigrateSource),
@@ -54,38 +44,53 @@ func (s *CompactionStatus) VerboseString() string {
 		migratedString += ".\n"
 	}
 
-	var uncompactedString, compactedString string
-	if s.Source == 0 && s.Dest == 0 && s.Uncompacted == 0 {
-		compactedString = "\nNo files to compact."
+	var compactedString string
+	if s.RowsCompacted == 0 {
+		compactedString = "\nNo files required compaction."
 	} else {
-
-		if s.Uncompacted > 0 {
-			uncompactedString = fmt.Sprintf("%d files did not need compaction.", s.Uncompacted)
-		}
-
-		if s.Source > 0 {
-			if len(uncompactedString) > 0 {
-				uncompactedString = fmt.Sprintf(" (%s)", uncompactedString)
-			}
-			compactedString = fmt.Sprintf("Compacted %d files into %d files.%s\n", s.Source, s.Dest, uncompactedString)
+		// if the file count is the same, we must have just ordered
+		if s.InitialFiles == s.FinalFiles {
+			compactedString = fmt.Sprintf("Ordered %s rows in %s files (%s).\n", s.TotalRowsString(), s.InitialFilesString(), s.DurationString())
 		} else {
-			// Nothing compacted; show only uncompacted note if present
-			compactedString = uncompactedString + "\n\n"
+			compactedString = fmt.Sprintf("Compacted and ordered %s rows in %s files into %s files in (%s).\n", s.TotalRowsString(), s.InitialFilesString(), s.FinalFilesString(), s.DurationString())
 		}
 	}
 
 	return migratedString + compactedString
 }
 
-func (s *CompactionStatus) BriefString() string {
-	if s.Source == 0 {
-		return ""
+func (s *CompactionStatus) String() string {
+	var migratedString string
+	var compactedString string
+	if s.RowsCompacted == 0 {
+		compactedString = "No files required compaction."
+	} else {
+		// if the file count is the same, we must have just ordered
+		if s.InitialFiles == s.FinalFiles {
+			compactedString = fmt.Sprintf("Ordered %s rows in %s files in %s.\n", s.TotalRowsString(), s.InitialFilesString(), s.Duration.String())
+		} else {
+			compactedString = fmt.Sprintf("Compacted and ordered %s rows in %s files into %s files in %s.\n", s.TotalRowsString(), s.InitialFilesString(), s.FinalFilesString(), s.Duration.String())
+		}
 	}
 
-	uncompactedString := ""
-	if s.Uncompacted > 0 {
-		uncompactedString = fmt.Sprintf(" (%d files did not need compaction.)", s.Uncompacted)
-	}
+	return migratedString + compactedString
+}
 
-	return fmt.Sprintf("Compacted %d files into %d files.%s\n", s.Source, s.Dest, uncompactedString)
+func (s *CompactionStatus) TotalRowsString() any {
+	return humanize.Comma(s.TotalRows)
+}
+func (s *CompactionStatus) InitialFilesString() any {
+	return humanize.Comma(int64(s.InitialFiles))
+}
+func (s *CompactionStatus) FinalFilesString() any {
+	return humanize.Comma(int64(s.FinalFiles))
+}
+func (s *CompactionStatus) DurationString() string {
+	return utils.HumanizeDuration(s.Duration)
+}
+func (s *CompactionStatus) RowsCompactedString() any {
+	return humanize.Comma(s.RowsCompacted)
+}
+func (s *CompactionStatus) ProgressPercentString() string {
+	return fmt.Sprintf("%.1f%%", s.ProgressPercent)
 }

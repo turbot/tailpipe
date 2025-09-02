@@ -4,43 +4,45 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/spf13/viper"
-	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
-const defaultParquetWorkerCount = 5
+// TODO #DL
+//  - think about max memory https://github.com/turbot/tailpipe/issues/478
+//  - validation https://github.com/turbot/tailpipe/issues/479
+
 const chunkBufferLength = 1000
 
-// the minimum memory to assign to each worker -
-const minWorkerMemoryMb = 512
-
 // Converter struct executes all the conversions for a single collection
-// it therefore has a unique execution id, and will potentially convert of multiple JSONL files
+// it therefore has a unique execution executionId, and will potentially convert of multiple JSONL files
 // each file is assumed to have the filename format <execution_id>_<chunkNumber>.jsonl
 // so when new input files are available, we simply store the chunk number
 type Converter struct {
-	// the execution id
-	id string
+	// the execution executionId
+	executionId string
 
-	// the file chunks numbers available to process
-	chunks      []int32
-	chunkLock   sync.Mutex
-	chunkSignal *sync.Cond
-	// the channel to send execution to the workers
-	jobChan chan *parquetJob
+	// the file scheduledChunks numbers available to process
+	scheduledChunks []int32
+
+	scheduleLock sync.Mutex
+	processLock  sync.Mutex
+
 	// waitGroup to track job completion
+	// this is incremented when a file is scheduled and decremented when the file is processed
 	wg sync.WaitGroup
-	// the cancel function for the context used to manage the job
-	cancel context.CancelFunc
 
-	// the number of chunks processed so far
-	completionCount int32
+	// the number of jsonl files processed so far
+	//fileCount int32
+
+	// the number of conversions executed
+	//conversionCount int32
+
 	// the number of rows written
 	rowCount int64
 	// the number of rows which were NOT converted due to conversion errors encountered
@@ -50,24 +52,23 @@ type Converter struct {
 	sourceDir string
 	// the dest file location
 	destDir string
-	// helper to provide unique file roots
-	fileRootProvider *FileRootProvider
 
-	// the format string for the query to read the JSON chunks - thids is reused for all chunks,
+	// the format string for the query to read the JSON scheduledChunks - this is reused for all scheduledChunks,
 	// with just the filename being added when the query is executed
 	readJsonQueryFormat string
 
 	// the table conversionSchema - populated when the first chunk arrives if the conversionSchema is not already complete
 	conversionSchema *schema.ConversionSchema
-	// the source schema - used to build the conversionSchema
+	// the source schema - which may be partial - used to build the full conversionSchema
+	// we store separately for the purpose of change detection
 	tableSchema *schema.TableSchema
 
 	// viewQueryOnce ensures the schema inference only happens once for the first chunk,
-	// even if multiple chunks arrive concurrently. Combined with schemaWg, this ensures
-	// all subsequent chunks wait for the initial schema inference to complete before proceeding.
+	// even if multiple scheduledChunks arrive concurrently. Combined with schemaWg, this ensures
+	// all subsequent scheduledChunks wait for the initial schema inference to complete before proceeding.
 	viewQueryOnce sync.Once
-	// schemaWg is used to block processing of subsequent chunks until the initial
-	// schema inference is complete. This ensures all chunks wait for the schema
+	// schemaWg is used to block processing of subsequent scheduledChunks until the initial
+	// schema inference is complete. This ensures all scheduledChunks wait for the schema
 	// to be fully initialized before proceeding with their processing.
 	schemaWg sync.WaitGroup
 
@@ -75,12 +76,12 @@ type Converter struct {
 	Partition *config.Partition
 	// func which we call with updated row count
 	statusFunc func(int64, int64, ...error)
-	// pluginPopulatesTpIndex indicates if the plugin populates the tp_index column (which is no longer required
-	// - tp_index values set by the plugin will be ignored)
-	pluginPopulatesTpIndex bool
+
+	// the DuckDB database connection - this must have a ducklake attachment
+	db *database.DuckDb
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error)) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *database.DuckDb) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 
@@ -88,73 +89,109 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 	tableSchema.NormaliseColumnTypes()
 
 	w := &Converter{
-		id:               executionId,
-		chunks:           make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
-		Partition:        partition,
-		cancel:           cancel,
-		sourceDir:        sourceDir,
-		destDir:          destDir,
-		tableSchema:      tableSchema,
-		statusFunc:       statusFunc,
-		fileRootProvider: &FileRootProvider{},
+		executionId:     executionId,
+		scheduledChunks: make([]int32, 0, chunkBufferLength), // Pre-allocate reasonable capacity
+		Partition:       partition,
+		sourceDir:       sourceDir,
+		destDir:         destDir,
+		tableSchema:     tableSchema,
+		statusFunc:      statusFunc,
+		db:              db,
 	}
-	// create the condition variable using the same lock
-	w.chunkSignal = sync.NewCond(&w.chunkLock)
-
-	// initialise the workers
-	if err := w.createWorkers(ctx); err != nil {
-		return nil, fmt.Errorf("failed to create workers: %w", err)
-	}
-	// start the goroutine to schedule the jobs
-	go w.scheduler(ctx)
 
 	// done
 	return w, nil
 }
 
-func (w *Converter) Close() {
-	slog.Info("closing Converter")
-	// close the close channel to signal to the job schedulers to exit
-	w.cancel()
-}
-
-// AddChunk adds a new chunk to the list of chunks to be processed
+// AddChunk adds a new chunk to the list of scheduledChunks to be processed
 // if this is the first chunk, determine if we have a full conversionSchema yet and if not infer from the chunk
-// signal the scheduler that `chunks are available
+// signal the scheduler that `scheduledChunks are available
 func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	var err error
+
+	// wait on the schemaWg to ensure that schema inference is complete before processing the chunk
 	w.schemaWg.Wait()
 
 	// Execute schema inference exactly once for the first chunk.
-	// The WaitGroup ensures all subsequent chunks wait for this to complete.
+	// The WaitGroup ensures all subsequent scheduledChunks wait for this to complete.
 	// If schema inference fails, the error is captured and returned to the caller.
 	w.viewQueryOnce.Do(func() {
-		w.schemaWg.Add(1)
-		defer w.schemaWg.Done()
-		if err = w.buildConversionSchema(executionId, chunk); err != nil {
-			// err will be returned by the parent function
-			return
-		}
-		w.readJsonQueryFormat = w.buildReadJsonQueryFormat()
+		err = w.onFirstChunk(executionId, chunk)
 	})
 	if err != nil {
 		return fmt.Errorf("failed to infer schema: %w", err)
 	}
-	w.chunkLock.Lock()
-	w.chunks = append(w.chunks, chunk)
-	w.chunkLock.Unlock()
 
+	// lock the schedule lock to ensure that we can safely add to the scheduled scheduledChunks
+	w.scheduleLock.Lock()
+	defer w.scheduleLock.Unlock()
+
+	// add to scheduled scheduledChunks
+	w.scheduledChunks = append(w.scheduledChunks, chunk)
+	// increment the wait group to track the scheduled chunk
 	w.wg.Add(1)
 
-	// Signal that new chunk is available
-	// Using Signal instead of Broadcast as only one worker needs to wake up
-	w.chunkSignal.Signal()
+	// ok try to lock the process lock - that will fail if another process is running
+	if w.processLock.TryLock() {
+		// so we have the process lock AND the schedule lock
+		// store the chunk to process
+
+		// move the scheduled chunks to the chunks to process
+		// (scheduledChunks may be empty, in which case we will break out of the loop)
+		chunksToProcess := w.getChunksToProcess()
+
+		// and process = we now have the process lock
+		// NOTE: process chunks will keep processing as long as there are scheduledChunks to process, including
+		// scheduledChunks that were scheduled while we were processing
+		go w.processChunks(chunksToProcess)
+	}
+
+	return nil
+}
+
+// getChunksToProcess returns the chunks to process, up to a maximum of maxChunksToProcess
+// it also trims the scheduledChunks to remove the processed chunks
+func (w *Converter) getChunksToProcess() []int32 {
+	// TODO #DL do we even need this https://github.com/turbot/tailpipe/issues/523
+	const maxChunksToProcess = 2000
+	var chunksToProcess []int32
+	if len(w.scheduledChunks) > maxChunksToProcess {
+		slog.Debug("Converter.AddChunk limiting chunks to process to max", "scheduledChunks", len(w.scheduledChunks), "maxChunksToProcess", maxChunksToProcess)
+		chunksToProcess = w.scheduledChunks[:maxChunksToProcess]
+		// trim the scheduled chunks to remove the processed chunks
+		w.scheduledChunks = w.scheduledChunks[maxChunksToProcess:]
+	} else {
+		slog.Debug("Converter.AddChunk processing all scheduled chunks", "scheduledChunks", len(w.scheduledChunks))
+		chunksToProcess = w.scheduledChunks
+		// clear the scheduled chunks
+		w.scheduledChunks = nil
+	}
+	return chunksToProcess
+}
+
+// onFirstChunk is called when the first chunk is added to the converter
+// it is responsible for building the conversion schema if it does not already exist
+// (we must wait for the first chunk as we may need to infer the schema from the chunk data)
+// once the conversion schema is built, we can create the DuckDB table for this partition and build the
+// read query format string that we will use to read the JSON data from the file
+func (w *Converter) onFirstChunk(executionId string, chunk int32) error {
+	w.schemaWg.Add(1)
+	defer w.schemaWg.Done()
+	if err := w.buildConversionSchema(executionId, chunk); err != nil {
+		// err will be returned by the parent function
+		return err
+	}
+	// create the DuckDB table fpr this partition if it does not already exist
+	if err := w.ensureDuckLakeTable(w.Partition.TableName); err != nil {
+		return fmt.Errorf("failed to create DuckDB table: %w", err)
+	}
+	w.readJsonQueryFormat = buildReadJsonQueryFormat(w.conversionSchema, w.Partition)
 
 	return nil
 }
 
 // WaitForConversions waits for all jobs to be processed or for the context to be cancelled
-func (w *Converter) WaitForConversions(ctx context.Context) {
+func (w *Converter) WaitForConversions(ctx context.Context) error {
 	slog.Info("Converter.WaitForConversions - waiting for all jobs to be processed or context to be cancelled.")
 	// wait for the wait group within a goroutine so we can also check the context
 	done := make(chan struct{})
@@ -166,67 +203,14 @@ func (w *Converter) WaitForConversions(ctx context.Context) {
 	select {
 	case <-ctx.Done():
 		slog.Info("WaitForConversions - context cancelled.")
+		return ctx.Err()
 	case <-done:
 		slog.Info("WaitForConversions - all jobs processed.")
+		return nil
 	}
 }
 
-// waitForSignal waits for the condition signal or context cancellation
-// returns true if context was cancelled
-func (w *Converter) waitForSignal(ctx context.Context) bool {
-	w.chunkLock.Lock()
-	defer w.chunkLock.Unlock()
-
-	select {
-	case <-ctx.Done():
-		return true
-	default:
-		w.chunkSignal.Wait()
-		return false
-	}
-}
-
-// the scheduler is responsible for sending jobs to the workere
-// it listens for signals on the chunkWrittenSignal channel and enqueues jobs when they arrive
-func (w *Converter) scheduler(ctx context.Context) {
-	defer close(w.jobChan)
-
-	for {
-		chunk, ok := w.getNextChunk()
-		if !ok {
-			if w.waitForSignal(ctx) {
-				slog.Debug("scheduler shutting down due to context cancellation")
-				return
-			}
-			continue
-		}
-
-		select {
-		case <-ctx.Done():
-			return
-		case w.jobChan <- &parquetJob{chunkNumber: chunk}:
-			slog.Debug("scheduler - sent job to worker", "chunk", chunk)
-		}
-	}
-}
-
-// TODO currently this _does not_ process the chunks in order as this is more efficient from a buffer handling perspective
-// however we may decide we wish to process chunks in order in the interest of restartability/tracking progress
-func (w *Converter) getNextChunk() (int32, bool) {
-	w.chunkLock.Lock()
-	defer w.chunkLock.Unlock()
-
-	if len(w.chunks) == 0 {
-		return 0, false
-	}
-
-	// Take from end - more efficient as it avoids shifting elements
-	lastIdx := len(w.chunks) - 1
-	chunk := w.chunks[lastIdx]
-	w.chunks = w.chunks[:lastIdx]
-	return chunk, true
-}
-
+//nolint:unused // we will use this once we re-add conversion error handling
 func (w *Converter) addJobErrors(errorList ...error) {
 	var failedRowCount int64
 
@@ -250,56 +234,32 @@ func (w *Converter) updateRowCount(count int64) {
 }
 
 // updateCompletionCount atomically increments the completion count
-func (w *Converter) updateCompletionCount(count int32) {
-	atomic.AddInt32(&w.completionCount, count)
-}
+//func (w *Converter) updateCompletionCount(fileCount, conversionCount int32) {
+//	atomic.AddInt32(&w.fileCount, fileCount)
+//	atomic.AddInt32(&w.conversionCount, conversionCount)
+//}
+//
+//func (w *Converter) GetCompletionCount() int32 {
+//	return atomic.LoadInt32(&w.fileCount)
+//}
 
-// createWorkers initializes and starts parquet conversion workers based on configured memory limits
-// It calculates the optimal number of workers and memory allocation per worker using the following logic:
-// - If no memory limit is set, uses defaultParquetWorkerCount workers with defaultWorkerMemoryMb per worker
-// - If memory limit is set, ensures each worker gets at least minWorkerMemoryMb, reducing worker count if needed
-// - Reserves memory for the main process by dividing total memory by (workerCount + 1)
-// - Creates and starts the calculated number of workers, each with their allocated memory
-// Returns error if worker creation fails
-func (w *Converter) createWorkers(ctx context.Context) error {
-	// determine the number of workers to start
-	// see if there was a memory limit
-	maxMemoryMb := viper.GetInt(pconstants.ArgMemoryMaxMb)
-	memoryPerWorkerMb := maxMemoryMb / defaultParquetWorkerCount
+// TODO #DL think about memory
+//  https://github.com/turbot/tailpipe/issues/478
 
-	workerCount := defaultParquetWorkerCount
-	if maxMemoryMb > 0 {
-		// calculate memory per worker and adjust worker count if needed
-		// - reserve memory for main process by dividing maxMemory by (workerCount + 1)
-		// - if calculated memory per worker is less than minimum required:
-		//   - reduce worker count to ensure each worker has minimum required memory
-		//   - ensure at least 1 worker remains
-
-		if memoryPerWorkerMb < minWorkerMemoryMb {
-			// reduce worker count to ensure minimum memory per worker
-			workerCount = maxMemoryMb / minWorkerMemoryMb
-			if workerCount < 1 {
-				workerCount = 1
-			}
-			memoryPerWorkerMb = maxMemoryMb / workerCount
-			if memoryPerWorkerMb < minWorkerMemoryMb {
-				return fmt.Errorf("not enough memory available for workers - require at least %d for a single worker", minWorkerMemoryMb)
-			}
-		}
-		slog.Info("Worker memory allocation", "workerCount", workerCount, "memoryPerWorkerMb", memoryPerWorkerMb, "maxMemoryMb", maxMemoryMb, "minWorkerMemoryMb", minWorkerMemoryMb)
-	}
-
-	// create the job channel
-	w.jobChan = make(chan *parquetJob, workerCount*2)
-
-	// start the workers
-	for i := 0; i < workerCount; i++ {
-		wk, err := newConversionWorker(w, memoryPerWorkerMb, i)
-		if err != nil {
-			return fmt.Errorf("failed to create worker: %w", err)
-		}
-		// start the worker
-		go wk.start(ctx)
-	}
-	return nil
-}
+//func (w *conversionWorker) forceMemoryRelease() error {
+//	// we need to flush the memory to release it - do this by setting a low memory limit then the full one
+//	// NOTE: do not set the memory to zero as we have temp table data
+//	const minMemoryMb = 64
+//
+//	// Set to minimum memory - note the use of ? parameter
+//	if _, err := w.db.Exec("set max_memory = ? || 'MB';", minMemoryMb); err != nil {
+//		return fmt.Errorf("memory flush failed: %w", err)
+//	}
+//
+//	// Reset to configured memory limit
+//	if _, err := w.db.Exec("set max_memory = ? || 'MB';", w.maxMemoryMb); err != nil {
+//		return fmt.Errorf("memory reset failed: %w", err)
+//	}
+//	return nil
+//
+//}

@@ -12,16 +12,17 @@ import (
 
 // handleConversionError attempts to handle conversion errors by counting the number of lines in the file.
 // if we fail, just return the raw error.
-func handleConversionError(err error, path string) error {
+// TODO we need to pass an error prefix into here so we know the context https://github.com/turbot/tailpipe/issues/477
+func handleConversionError(err error, paths ...string) error {
 	logArgs := []any{
 		"error",
 		err,
 		"path",
-		path,
+		paths,
 	}
 
 	// try to count the number of rows in the file
-	rows, countErr := countLines(path)
+	rows, countErr := countLinesForFiles(paths...)
 	if countErr == nil {
 		logArgs = append(logArgs, "rows_affected", rows)
 	}
@@ -33,9 +34,19 @@ func handleConversionError(err error, path string) error {
 	}
 
 	// return wrapped error
-	return NewConversionError(err, rows, path)
+	return NewConversionError(err, rows, paths...)
 }
-
+func countLinesForFiles(filenames ...string) (int64, error) {
+	total := 0
+	for _, filename := range filenames {
+		count, err := countLines(filename)
+		if err != nil {
+			return 0, fmt.Errorf("failed to count lines in %s: %w", filename, err)
+		}
+		total += int(count)
+	}
+	return int64(total), nil
+}
 func countLines(filename string) (int64, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -61,15 +72,19 @@ func countLines(filename string) (int64, error) {
 }
 
 type ConversionError struct {
-	SourceFile   string
+	SourceFiles  []string
 	BaseError    error
 	RowsAffected int64
 	displayError string
 }
 
-func NewConversionError(err error, rowsAffected int64, path string) *ConversionError {
+func NewConversionError(err error, rowsAffected int64, paths ...string) *ConversionError {
+	sourceFiles := make([]string, len(paths))
+	for i, path := range paths {
+		sourceFiles[i] = filepath.Base(path)
+	}
 	return &ConversionError{
-		SourceFile:   filepath.Base(path),
+		SourceFiles:  sourceFiles,
 		BaseError:    err,
 		RowsAffected: rowsAffected,
 		displayError: strings.Split(err.Error(), "\n")[0],
@@ -77,7 +92,7 @@ func NewConversionError(err error, rowsAffected int64, path string) *ConversionE
 }
 
 func (c *ConversionError) Error() string {
-	return fmt.Sprintf("%s: %s", c.SourceFile, c.displayError)
+	return fmt.Sprintf("%s: %s", strings.Join(c.SourceFiles, ", "), c.displayError)
 }
 
 // Merge adds a second error to the conversion error message.

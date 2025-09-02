@@ -5,14 +5,14 @@ partition "my_csv_log" "test"{
         extensions = [".csv"]
 
         # format MUST be set for a custom table
-        format = format.csv_logs
+        format = format.delimited.csv_logs
     }
 }
 
 
 # define a custom table 'my_log'
 table  "my_csv_log" {
-    format = format.csv_default_logs
+    format = format.delimited.csv_default_logs
     # the partition to use
     column "tp_timestamp" {
         source =  "time_local"
