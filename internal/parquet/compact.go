@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	"github.com/turbot/tailpipe/internal/database"
@@ -38,7 +37,7 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 		return err
 	}
 
-	//status.Uncompacted = uncompacted
+	// status.Uncompacted = uncompacted
 
 	slog.Info("Expiring old DuckLake snapshots")
 	// now expire unused snapshots
@@ -52,10 +51,10 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 	// so we should now have multiple, time ordered parquet files
 	// now merge the the parquet files in the duckdb database
 	// the will minimise the parquet file count to the optimum
-	//if err := mergeParquetFiles(ctx, db); err != nil {
+	// if err := mergeParquetFiles(ctx, db); err != nil {
 	//	slog.Error("Failed to merge DuckLake parquet files", "error", err)
 	//	return nil, err
-	//}
+	// }
 
 	slog.Info("Cleaning up expired files in DuckLake")
 	// delete unused files
@@ -81,6 +80,7 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 	return nil
 }
 
+//nolint: unused // TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
 // mergeParquetFiles combines adjacent parquet files in the DuckDB database.
 func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
@@ -164,13 +164,19 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 
 		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, unorderedRanges, updateRowsFunc); err != nil {
 			slog.Error("failed to compact partition", "partition", pk, "error", err)
-			tx.Rollback()
+			txErr := tx.Rollback()
+			if txErr != nil {
+				slog.Error("failed to rollback transaction after compaction", "partition", pk, "error", txErr)
+			}
 			return nil, err
 		}
 
 		if err := tx.Commit(); err != nil {
 			slog.Error("failed to commit transaction after compaction", "partition", pk, "error", err)
-			tx.Rollback()
+			txErr := tx.Rollback()
+			if txErr != nil {
+				slog.Error("failed to rollback transaction after compaction", "partition", pk, "error", txErr)
+			}
 			return nil, err
 		}
 
@@ -280,15 +286,20 @@ func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitio
 	// So we reorder all rows in the time range for this partition
 	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex}
 
-	insertQuery := fmt.Sprintf(`insert into "%s" 
-		select * from "%s" 
+	tableName, err := database.SanitizeDuckDBIdentifier(pk.tpTable)
+	if err != nil {
+		return 0, err
+	}
+	//nolint: gosec // sanitized
+	insertQuery := fmt.Sprintf(`insert into %s 
+		select * from %s 
 		where tp_timestamp >= ?
 		  and tp_timestamp %s ?
 		  and tp_partition = ?
 		  and tp_index = ?
 		order by tp_timestamp`,
-		pk.tpTable,
-		pk.tpTable,
+		tableName,
+		tableName,
 		timeEndOperator)
 
 	result, err := tx.ExecContext(ctx, insertQuery, args...)
@@ -305,16 +316,21 @@ func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitio
 // deleteUnorderedEntriesForTimeRange deletes the original unordered entries for a specific time range within a partition key
 func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time) error {
 	// Delete all rows in the time range for this partition key (we're re-inserting them in order)
-	deleteQuery := fmt.Sprintf(`delete from "%s" 
+	tableName, err := database.SanitizeDuckDBIdentifier(pk.tpTable)
+	if err != nil {
+		return err
+	}
+	//nolint: gosec // sanitized
+	deleteQuery := fmt.Sprintf(`delete from %s 
 		where tp_partition = ?
 		  and tp_index = ?
 		  and tp_timestamp >= ?
 		  and tp_timestamp <= ?`,
-		pk.tpTable)
+		tableName)
 
 	args := []interface{}{pk.tpPartition, pk.tpIndex, startTime, endTime}
 
-	_, err := tx.ExecContext(ctx, deleteQuery, args...)
+	_, err = tx.ExecContext(ctx, deleteQuery, args...)
 	if err != nil {
 		return fmt.Errorf("failed to delete unordered entries for time range: %w", err)
 	}
@@ -342,34 +358,4 @@ func determineChunkingInterval(startTime, endTime time.Time, rowCount int64) (ch
 	}
 
 	return chunks, intervalDuration
-}
-
-// SafeIdentifier ensures that SQL identifiers (like table or column names)
-// are safely quoted using double quotes and escaped appropriately.
-//
-// For example:
-//
-//	input:  my_table         → output:  "my_table"
-//	input:  some"col         → output:  "some""col"
-//	input:  select           → output:  "select"    (reserved keyword)
-//
-// TODO move to pipe-helpers https://github.com/turbot/tailpipe/issues/517
-func SafeIdentifier(identifier string) string {
-	escaped := strings.ReplaceAll(identifier, `"`, `""`)
-	return `"` + escaped + `"`
-}
-
-// EscapeLiteral safely escapes SQL string literals for use in WHERE clauses,
-// INSERTs, etc. It wraps the string in single quotes and escapes any internal
-// single quotes by doubling them.
-//
-// For example:
-//
-//	input:  O'Reilly         → output:  'O''Reilly'
-//	input:  2025-08-01       → output:  '2025-08-01'
-//
-// TODO move to pipe-helpers https://github.com/turbot/tailpipe/issues/517
-func EscapeLiteral(literal string) string {
-	escaped := strings.ReplaceAll(literal, `'`, `''`)
-	return `'` + escaped + `'`
 }
