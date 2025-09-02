@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/turbot/pipe-fittings/v2/backend"
 	"github.com/turbot/tailpipe/internal/database"
 )
 
@@ -286,7 +287,7 @@ func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitio
 	// So we reorder all rows in the time range for this partition
 	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex}
 
-	tableName, err := database.SanitizeDuckDBIdentifier(pk.tpTable)
+	tableName, err := backend.SanitizeDuckDBIdentifier(pk.tpTable)
 	if err != nil {
 		return 0, err
 	}
@@ -316,7 +317,7 @@ func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitio
 // deleteUnorderedEntriesForTimeRange deletes the original unordered entries for a specific time range within a partition key
 func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time) error {
 	// Delete all rows in the time range for this partition key (we're re-inserting them in order)
-	tableName, err := database.SanitizeDuckDBIdentifier(pk.tpTable)
+	tableName, err := backend.SanitizeDuckDBIdentifier(pk.tpTable)
 	if err != nil {
 		return err
 	}
