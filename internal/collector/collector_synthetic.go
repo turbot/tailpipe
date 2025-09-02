@@ -230,9 +230,9 @@ func generateRowData(rowIndex int, partition *config.Partition, tableSchema *sch
 	rowMap := make(map[string]any, len(tableSchema.Columns))
 	timestamp := fromTime.Add(time.Duration(rowIndex) * timestampInterval).Format("2006-01-02 15:04:05")
 
-	// Populate row map (skip tp_index)
+	// Populate row map (skip tp_index and tp_date)
 	for _, column := range tableSchema.Columns {
-		if column.ColumnName == "tp_index" {
+		if column.ColumnName == "tp_index" || column.ColumnName == "tp_date" {
 			continue
 		}
 
@@ -360,7 +360,7 @@ func buildsyntheticchema(columns int) *schema.TableSchema {
 	// Create a basic schema with the required number of columns
 	// Start with required tp_ fields
 	s := &schema.TableSchema{
-		Columns: make([]*schema.ColumnSchema, 0, columns+4), // +4 for tp_ fields
+		Columns: make([]*schema.ColumnSchema, 0, columns+5), // +5 for tp_ fields (including tp_index and tp_date)
 	}
 
 	// Add required tp_ fields first
@@ -373,6 +373,7 @@ func buildsyntheticchema(columns int) *schema.TableSchema {
 		{"tp_partition", "VARCHAR", "Partition identifier"},
 		{"tp_table", "VARCHAR", "Table identifier"},
 		{"tp_index", "VARCHAR", "Index identifier"},
+		{"tp_date", "VARCHAR", "Date identifier"},
 	}
 
 	for _, tpField := range tpFields {

@@ -168,7 +168,6 @@ func newInvalidParquetError(parquetFilePath string) error {
 	parts := strings.Split(parquetFilePath, "/")
 	for _, part := range parts {
 		switch {
-
 		case strings.HasPrefix(part, "tp_table="):
 			err.table = strings.TrimPrefix(part, "tp_table=")
 		case strings.HasPrefix(part, "tp_partition="):

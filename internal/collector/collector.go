@@ -117,11 +117,6 @@ func (c *Collector) Close() {
 	// delete the collection temp dir
 	_ = os.RemoveAll(c.collectionTempDir)
 
-
-	if c.parquetConvertor != nil {
-		c.parquetConvertor.Close()
-	}
-
 	// close the tea app
 	if c.app != nil {
 		c.app.Quit()

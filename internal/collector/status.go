@@ -71,7 +71,7 @@ func (s *status) CollectionHeader() string {
 func (s *status) String() string {
 	var out strings.Builder
 
-	// determine if we should show an Artifacts or InitialFiles section (source currently only shown if we have errors)
+	// determine if we should show an Artifacts or Source section (source currently only shown if we have errors)
 	switch {
 	case s.ArtifactsDiscovered > 0 || s.LatestArtifactLocation != "":
 		out.WriteString(s.displayArtifactSection())
@@ -147,7 +147,7 @@ func (s *status) displaySourceSection() string {
 
 	// build source section
 	var out strings.Builder
-	out.WriteString("InitialFiles:\n")
+	out.WriteString("Source:\n")
 	out.WriteString(writeCountLine("Errors:", sourceMaxKeyLen, sourceErrorCount, len(humanize.Comma(sourceErrorCount)), nil))
 	out.WriteString("\n")
 

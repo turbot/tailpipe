@@ -101,7 +101,7 @@ func runSourceListCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// Show InitialFiles
+// Show Source
 func sourceShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "show [source]",

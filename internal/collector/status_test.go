@@ -18,8 +18,8 @@ func TestErrorCountsToDisplay(t *testing.T) {
 	}{
 		{"All Types: Over", 10, 10, 10, defaultMax, 5, 5, 5},
 		{"All Types: Under", 2, 2, 2, defaultMax, 2, 2, 2},
-		{"Only InitialFiles: Under", 10, 0, 0, defaultMax, 10, 0, 0},
-		{"Only InitialFiles: Over", 20, 0, 0, defaultMax, 15, 0, 0},
+		{"Only Source: Under", 10, 0, 0, defaultMax, 10, 0, 0},
+		{"Only Source: Over", 20, 0, 0, defaultMax, 15, 0, 0},
 		{"Only Row: Under", 0, 0, 10, defaultMax, 0, 0, 10},
 		{"Only Row: Over", 0, 0, 20, defaultMax, 0, 0, 15},
 		{"Adjusted Max: Odd", 10, 10, 10, 9, 3, 3, 3},
@@ -27,7 +27,7 @@ func TestErrorCountsToDisplay(t *testing.T) {
 		{"Max > Available (Exhausted)", 2, 2, 1, defaultMax, 2, 2, 1},
 		{"One Over Others Zero", 20, 0, 0, defaultMax, 15, 0, 0},
 		{"Uneven: Cascading", 5, 10, 15, defaultMax, 5, 5, 5},
-		{"Uneven: Spare To InitialFiles", 20, 3, 3, defaultMax, 9, 3, 3},
+		{"Uneven: Spare To Source", 20, 3, 3, defaultMax, 9, 3, 3},
 		{"Uneven: Spare To Conversion", 3, 20, 3, defaultMax, 3, 9, 3},
 		{"Uneven: Spare To Row", 3, 3, 20, defaultMax, 3, 3, 9},
 	}

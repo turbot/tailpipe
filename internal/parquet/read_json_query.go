@@ -5,11 +5,10 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/turbot/tailpipe/internal/config"
-
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/config"
 )
 
 // buildReadJsonQueryFormat creates a SQL query template for reading JSONL files with DuckDB.
@@ -30,6 +29,9 @@ func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partiti
 
 		var selectClause string
 		switch column.ColumnName {
+		case constants.TpDate:
+			// skip this column - it is derived from tp_timestamp
+			continue
 		case constants.TpIndex:
 			// NOTE: we ignore tp_index in the source data and ONLY add it based ont he default or configured value
 			slog.Warn("tp_index is a reserved column name and should not be used in the source data. It will be added automatically based on the configured value.")

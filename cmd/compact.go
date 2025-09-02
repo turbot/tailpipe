@@ -4,9 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/turbot/go-kit/types"
-	"github.com/turbot/tailpipe/internal/config"
-	"golang.org/x/exp/maps"
 	"log/slog"
 	"os"
 	"time"
@@ -15,14 +12,17 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
+	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/parquet"
+	"golang.org/x/exp/maps"
 )
 
 // TODO #DL update docs - no longer support compacting single partition
