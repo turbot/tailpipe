@@ -1,6 +1,7 @@
 package parse
 
 import (
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"sort"
@@ -35,34 +36,55 @@ func pluginVersionsEqual(l, r map[string]*versionfile.InstalledVersion) (bool, s
 			return false, fmt.Sprintf("PluginVersions['%s'] presence mismatch", k)
 		}
 		if v != nil {
-			if v.Name != wv.Name || v.Version != wv.Version || v.ImageDigest != wv.ImageDigest || v.BinaryDigest != wv.BinaryDigest || v.BinaryArchitecture != wv.BinaryArchitecture || v.InstalledFrom != wv.InstalledFrom || v.StructVersion != wv.StructVersion {
-				return false
+			if v.Name != wv.Name {
+				return false, fmt.Sprintf("PluginVersions['%s'].Name mismatch: got '%s' want '%s'", k, v.Name, wv.Name)
+			}
+			if v.Version != wv.Version {
+				return false, fmt.Sprintf("PluginVersions['%s'].Version mismatch: got '%s' want '%s'", k, v.Version, wv.Version)
+			}
+			if v.ImageDigest != wv.ImageDigest {
+				return false, fmt.Sprintf("PluginVersions['%s'].ImageDigest mismatch: got '%s' want '%s'", k, v.ImageDigest, wv.ImageDigest)
+			}
+			if v.BinaryDigest != wv.BinaryDigest {
+				return false, fmt.Sprintf("PluginVersions['%s'].BinaryDigest mismatch: got '%s' want '%s'", k, v.BinaryDigest, wv.BinaryDigest)
+			}
+			if v.BinaryArchitecture != wv.BinaryArchitecture {
+				return false, fmt.Sprintf("PluginVersions['%s'].BinaryArchitecture mismatch: got '%s' want '%s'", k, v.BinaryArchitecture, wv.BinaryArchitecture)
+			}
+			if v.InstalledFrom != wv.InstalledFrom {
+				return false, fmt.Sprintf("PluginVersions['%s'].InstalledFrom mismatch: got '%s' want '%s'", k, v.InstalledFrom, wv.InstalledFrom)
+			}
+			if v.StructVersion != wv.StructVersion {
+				return false, fmt.Sprintf("PluginVersions['%s'].StructVersion mismatch: got '%d' want '%d'", k, v.StructVersion, wv.StructVersion)
 			}
 			if (v.Metadata == nil) != (wv.Metadata == nil) {
-				return false
+				return false, fmt.Sprintf("PluginVersions['%s'].Metadata presence mismatch", k)
 			}
 			if v.Metadata != nil {
 				if len(v.Metadata) != len(wv.Metadata) {
-					return false
+					return false, fmt.Sprintf("PluginVersions['%s'].Metadata length mismatch", k)
 				}
 				for mk, ma := range v.Metadata {
 					mb, ok := wv.Metadata[mk]
-					if !ok || len(ma) != len(mb) {
-						return false
+					if !ok {
+						return false, fmt.Sprintf("PluginVersions['%s'].Metadata missing key '%s'", k, mk)
+					}
+					if len(ma) != len(mb) {
+						return false, fmt.Sprintf("PluginVersions['%s'].Metadata['%s'] length mismatch", k, mk)
 					}
 					maCopy, mbCopy := append([]string(nil), ma...), append([]string(nil), mb...)
 					sort.Strings(maCopy)
 					sort.Strings(mbCopy)
 					for i := range maCopy {
 						if maCopy[i] != mbCopy[i] {
-							return false
+							return false, fmt.Sprintf("PluginVersions['%s'].Metadata['%s'][%d] mismatch: got '%s' want '%s'", k, mk, i, maCopy[i], mbCopy[i])
 						}
 					}
 				}
 			}
 		}
 	}
-	return true
+	return true, ""
 }
 
 func connectionsEqual(l, r map[string]*config.TailpipeConnection) (bool, string) {
@@ -84,18 +106,26 @@ func connectionsEqual(l, r map[string]*config.TailpipeConnection) (bool, string)
 			return false, fmt.Sprintf("Connections['%s'] presence mismatch", k)
 		}
 		if conn != nil {
-			if conn.HclResourceImpl.FullName != wconn.HclResourceImpl.FullName || conn.HclResourceImpl.ShortName != wconn.HclResourceImpl.ShortName || conn.HclResourceImpl.UnqualifiedName != wconn.HclResourceImpl.UnqualifiedName || conn.HclResourceImpl.BlockType != wconn.HclResourceImpl.BlockType {
-				return false
+			if conn.HclResourceImpl.FullName != wconn.HclResourceImpl.FullName {
+				return false, fmt.Sprintf("Connections['%s'].HclResourceImpl.FullName mismatch: got '%s' want '%s'", k, conn.HclResourceImpl.FullName, wconn.HclResourceImpl.FullName)
+			}
+			if conn.HclResourceImpl.ShortName != wconn.HclResourceImpl.ShortName {
+				return false, fmt.Sprintf("Connections['%s'].HclResourceImpl.ShortName mismatch: got '%s' want '%s'", k, conn.HclResourceImpl.ShortName, wconn.HclResourceImpl.ShortName)
+			}
+			if conn.HclResourceImpl.UnqualifiedName != wconn.HclResourceImpl.UnqualifiedName {
+				return false, fmt.Sprintf("Connections['%s'].HclResourceImpl.UnqualifiedName mismatch: got '%s' want '%s'", k, conn.HclResourceImpl.UnqualifiedName, wconn.HclResourceImpl.UnqualifiedName)
+			}
+			if conn.HclResourceImpl.BlockType != wconn.HclResourceImpl.BlockType {
+				return false, fmt.Sprintf("Connections['%s'].HclResourceImpl.BlockType mismatch: got '%s' want '%s'", k, conn.HclResourceImpl.BlockType, wconn.HclResourceImpl.BlockType)
 			}
 			if conn.Plugin != wconn.Plugin {
-				return false
+				return false, fmt.Sprintf("Connections['%s'].Plugin mismatch: got '%s' want '%s'", k, conn.Plugin, wconn.Plugin)
 			}
-			// HclRange: presence mismatch fails; when both present, use DeepEqual
 			zero := hclhelpers.Range{}
 			connZero := conn.HclRange == zero
 			wconnZero := wconn.HclRange == zero
 			if connZero != wconnZero {
-				return false
+				return false, fmt.Sprintf("Connections['%s'].HclRange presence mismatch", k)
 			}
 			if !connZero && !wconnZero {
 				if !reflect.DeepEqual(conn.HclRange, wconn.HclRange) {
@@ -107,7 +137,7 @@ func connectionsEqual(l, r map[string]*config.TailpipeConnection) (bool, string)
 			}
 		}
 	}
-	return true
+	return true, ""
 }
 
 func customTablesEqual(l, r map[string]*config.Table) (bool, string) {
@@ -158,8 +188,8 @@ func customTablesEqual(l, r map[string]*config.Table) (bool, string) {
 				}
 			}
 			if ct.DefaultSourceFormat != nil && wct.DefaultSourceFormat != nil {
-				if ct.DefaultSourceFormat.Type != wct.DefaultSourceFormat.Type || ct.DefaultSourceFormat.PresetName != wct.DefaultSourceFormat.PresetName {
-					return false
+				if ct.DefaultSourceFormat.Type != wct.DefaultSourceFormat.Type {
+					return false, fmt.Sprintf("CustomTables['%s'].DefaultSourceFormat.Type mismatch: got '%s' want '%s'", k, ct.DefaultSourceFormat.Type, wct.DefaultSourceFormat.Type)
 				}
 				if ct.DefaultSourceFormat.PresetName != wct.DefaultSourceFormat.PresetName {
 					return false, fmt.Sprintf("CustomTables['%s'].DefaultSourceFormat.PresetName mismatch: got '%s' want '%s'", k, ct.DefaultSourceFormat.PresetName, wct.DefaultSourceFormat.PresetName)
@@ -194,33 +224,32 @@ func customTablesEqual(l, r map[string]*config.Table) (bool, string) {
 				}
 			}
 			if len(ct.Columns) != len(wct.Columns) {
-				return false
+				return false, fmt.Sprintf("CustomTables['%s'].Columns length mismatch: got %d want %d", k, len(ct.Columns), len(wct.Columns))
 			}
 			for i := range ct.Columns {
 				ac, bc := ct.Columns[i], wct.Columns[i]
 				if ac.Name != bc.Name {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].Name mismatch: got '%s' want '%s'", k, i, ac.Name, bc.Name)
 				}
 				if ac.Type != nil && bc.Type != nil && *ac.Type != *bc.Type {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].Type mismatch: got '%s' want '%s'", k, i, *ac.Type, *bc.Type)
 				}
 				if ac.Source != nil && bc.Source != nil && *ac.Source != *bc.Source {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].Source mismatch: got '%s' want '%s'", k, i, *ac.Source, *bc.Source)
 				}
 				if ac.Description != nil && bc.Description != nil && *ac.Description != *bc.Description {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].Description mismatch", k, i)
 				}
 				if ac.Required != nil && bc.Required != nil && *ac.Required != *bc.Required {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].Required mismatch", k, i)
 				}
 				if ac.NullIf != nil && bc.NullIf != nil && *ac.NullIf != *bc.NullIf {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].NullIf mismatch", k, i)
 				}
 				if ac.Transform != nil && bc.Transform != nil && *ac.Transform != *bc.Transform {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].Columns[%d].Transform mismatch", k, i)
 				}
 			}
-			// map_fields
 			mfA := append([]string(nil), ct.MapFields...)
 			if len(mfA) == 0 {
 				mfA = []string{"*"}
@@ -232,19 +261,19 @@ func customTablesEqual(l, r map[string]*config.Table) (bool, string) {
 			sort.Strings(mfA)
 			sort.Strings(mfB)
 			if len(mfA) != len(mfB) {
-				return false
+				return false, fmt.Sprintf("CustomTables['%s'].MapFields length mismatch: got %d want %d", k, len(mfA), len(mfB))
 			}
 			for i := range mfA {
 				if mfA[i] != mfB[i] {
-					return false
+					return false, fmt.Sprintf("CustomTables['%s'].MapFields[%d] mismatch: got '%s' want '%s'", k, i, mfA[i], mfB[i])
 				}
 			}
 			if ct.NullIf != wct.NullIf {
-				return false
+				return false, fmt.Sprintf("CustomTables['%s'].NullIf mismatch: got '%s' want '%s'", k, ct.NullIf, wct.NullIf)
 			}
 		}
 	}
-	return true
+	return true, ""
 }
 
 func formatsEqual(l, r map[string]*config.Format) (bool, string) {
@@ -267,7 +296,7 @@ func formatsEqual(l, r map[string]*config.Format) (bool, string) {
 		}
 		if f != nil {
 			if f.Type != wf.Type {
-				return false
+				return false, fmt.Sprintf("Formats['%s'].Type mismatch: got '%s' want '%s'", k, f.Type, wf.Type)
 			}
 			if f.HclResourceImpl.FullName != wf.HclResourceImpl.FullName {
 				return false, fmt.Sprintf("Formats['%s'].HclResourceImpl.FullName mismatch: got '%s' want '%s'", k, f.HclResourceImpl.FullName, wf.HclResourceImpl.FullName)
@@ -298,11 +327,11 @@ func formatsEqual(l, r map[string]*config.Format) (bool, string) {
 				}
 			}
 			if f.PresetName != "" && wf.PresetName != "" && f.PresetName != wf.PresetName {
-				return false
+				return false, fmt.Sprintf("Formats['%s'].PresetName mismatch: got '%s' want '%s'", k, f.PresetName, wf.PresetName)
 			}
 		}
 	}
-	return true
+	return true, ""
 }
 
 func partitionsEqual(l, r map[string]*config.Partition) (bool, string) {
@@ -353,64 +382,82 @@ func partitionsEqual(l, r map[string]*config.Partition) (bool, string) {
 				}
 			}
 			if p.TableName != wp.TableName {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].TableName mismatch: got '%s' want '%s'", k, p.TableName, wp.TableName)
 			}
-			// source
 			if p.Source.Type != wp.Source.Type {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].Source.Type mismatch: got '%s' want '%s'", k, p.Source.Type, wp.Source.Type)
 			}
 			if (p.Source.Connection == nil) != (wp.Source.Connection == nil) {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].Source.Connection presence mismatch", k)
 			}
 			if p.Source.Connection != nil && wp.Source.Connection != nil {
 				if p.Source.Connection.HclResourceImpl.UnqualifiedName != wp.Source.Connection.HclResourceImpl.UnqualifiedName {
-					return false
+					return false, fmt.Sprintf("Partitions['%s'].Source.Connection.HclResourceImpl.UnqualifiedName mismatch: got '%s' want '%s'", k, p.Source.Connection.HclResourceImpl.UnqualifiedName, wp.Source.Connection.HclResourceImpl.UnqualifiedName)
 				}
 			}
 			if (p.Source.Format == nil) != (wp.Source.Format == nil) {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].Source.Format presence mismatch", k)
 			}
 			if p.Source.Format != nil && wp.Source.Format != nil {
 				pf, of := p.Source.Format, wp.Source.Format
-				if pf.Type != of.Type || pf.PresetName != of.PresetName {
-					return false
+				if pf.Type != of.Type {
+					return false, fmt.Sprintf("Partitions['%s'].Source.Format.Type mismatch: got '%s' want '%s'", k, pf.Type, of.Type)
 				}
-				if pf.HclResourceImpl.FullName != of.HclResourceImpl.FullName || pf.HclResourceImpl.ShortName != of.HclResourceImpl.ShortName || pf.HclResourceImpl.UnqualifiedName != of.HclResourceImpl.UnqualifiedName || pf.HclResourceImpl.BlockType != of.HclResourceImpl.BlockType {
-					return false
+				if pf.PresetName != of.PresetName {
+					return false, fmt.Sprintf("Partitions['%s'].Source.Format.PresetName mismatch: got '%s' want '%s'", k, pf.PresetName, of.PresetName)
+				}
+				if pf.HclResourceImpl.FullName != of.HclResourceImpl.FullName {
+					return false, fmt.Sprintf("Partitions['%s'].Source.Format.HclResourceImpl.FullName mismatch: got '%s' want '%s'", k, pf.HclResourceImpl.FullName, of.HclResourceImpl.FullName)
+				}
+				if pf.HclResourceImpl.ShortName != of.HclResourceImpl.ShortName {
+					return false, fmt.Sprintf("Partitions['%s'].Source.Format.HclResourceImpl.ShortName mismatch: got '%s' want '%s'", k, pf.HclResourceImpl.ShortName, of.HclResourceImpl.ShortName)
+				}
+				if pf.HclResourceImpl.UnqualifiedName != of.HclResourceImpl.UnqualifiedName {
+					return false, fmt.Sprintf("Partitions['%s'].Source.Format.HclResourceImpl.UnqualifiedName mismatch: got '%s' want '%s'", k, pf.HclResourceImpl.UnqualifiedName, of.HclResourceImpl.UnqualifiedName)
+				}
+				if pf.HclResourceImpl.BlockType != of.HclResourceImpl.BlockType {
+					return false, fmt.Sprintf("Partitions['%s'].Source.Format.HclResourceImpl.BlockType mismatch: got '%s' want '%s'", k, pf.HclResourceImpl.BlockType, of.HclResourceImpl.BlockType)
 				}
 			}
 			if (p.Source.Config == nil) != (wp.Source.Config == nil) {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].Source.Config presence mismatch", k)
 			}
 			if p.Source.Config != nil && p.Source.Config.Range != wp.Source.Config.Range {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].Source.Config.Range mismatch", k)
 			}
-			// partition config
 			if !(len(p.Config) == 0 && len(wp.Config) == 0) {
-				if string(p.Config) != string(wp.Config) || p.ConfigRange != wp.ConfigRange {
-					return false
+				if string(p.Config) != string(wp.Config) {
+					return false, fmt.Sprintf("Partitions['%s'].Config bytes mismatch", k)
+				}
+				if p.ConfigRange != wp.ConfigRange {
+					return false, fmt.Sprintf("Partitions['%s'].ConfigRange mismatch", k)
 				}
 			}
 			if p.Filter != wp.Filter || p.TpIndexColumn != wp.TpIndexColumn {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].Filter/TpIndexColumn mismatch", k)
 			}
 			if (p.CustomTable == nil) != (wp.CustomTable == nil) {
-				return false
+				return false, fmt.Sprintf("Partitions['%s'].CustomTable presence mismatch", k)
 			}
 			if p.CustomTable != nil && wp.CustomTable != nil {
 				if !reflect.DeepEqual(p.CustomTable, wp.CustomTable) {
-					return false
+					return false, fmt.Sprintf("Partitions['%s'].CustomTable mismatch", k)
 				}
 			}
-			// plugin
 			if p.Plugin != nil && wp.Plugin != nil {
-				if p.Plugin.Instance != wp.Plugin.Instance || p.Plugin.Alias != wp.Plugin.Alias || p.Plugin.Plugin != wp.Plugin.Plugin {
-					return false
+				if p.Plugin.Instance != wp.Plugin.Instance {
+					return false, fmt.Sprintf("Partitions['%s'].Plugin.Instance mismatch: got '%s' want '%s'", k, p.Plugin.Instance, wp.Plugin.Instance)
+				}
+				if p.Plugin.Alias != wp.Plugin.Alias {
+					return false, fmt.Sprintf("Partitions['%s'].Plugin.Alias mismatch: got '%s' want '%s'", k, p.Plugin.Alias, wp.Plugin.Alias)
+				}
+				if p.Plugin.Plugin != wp.Plugin.Plugin {
+					return false, fmt.Sprintf("Partitions['%s'].Plugin.Plugin mismatch: got '%s' want '%s'", k, p.Plugin.Plugin, wp.Plugin.Plugin)
 				}
 			}
 		}
 	}
-	return true
+	return true, ""
 }
 
 func tailpipeConfigEqual(l, r *config.TailpipeConfig) (bool, string) {
@@ -435,7 +482,7 @@ func tailpipeConfigEqual(l, r *config.TailpipeConfig) (bool, string) {
 	if ok, msg := formatsEqual(l.Formats, r.Formats); !ok {
 		return false, msg
 	}
-	return true
+	return true, ""
 }
 
 func TestParseTailpipeConfig(t *testing.T) {
@@ -557,7 +604,6 @@ func TestParseTailpipeConfig(t *testing.T) {
 			name: "dynamic tables",
 			args: args{
 				configPath: "test_data/custom_table_config",
-				// partition:  "partition.aws_cloudtrail_log.cloudtrail_logs",
 			},
 			want: &config.TailpipeConfig{
 				Partitions: map[string]*config.Partition{
@@ -576,7 +622,7 @@ func TestParseTailpipeConfig(t *testing.T) {
 								End: hcl.Pos{
 									Line:   10,
 									Column: 2,
-									Byte:   230,
+									Byte:   239,
 								},
 							},
 							BlockType: "partition",
