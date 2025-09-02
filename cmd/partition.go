@@ -17,6 +17,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
@@ -271,7 +272,12 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	error_helpers.FailOnError(err)
 	defer db.Close()
 
+	// show spinner while deleting the partition
+	spinner := statushooks.NewStatusSpinnerHook()
+	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
+	spinner.Show()
 	rowsDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
+	spinner.Hide()
 	error_helpers.FailOnError(err)
 
 	// build the collection state path

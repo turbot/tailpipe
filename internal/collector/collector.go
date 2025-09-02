@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
@@ -169,7 +170,13 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, ove
 
 	// if we are overwriting, we need to delete any existing data in the partition
 	if overwrite {
-		if err := c.deletePartitionData(ctx, resolvedFromTime.Time, toTime); err != nil {
+		// show spinner while deleting the partition
+		spinner := statushooks.NewStatusSpinnerHook()
+		spinner.SetStatus(fmt.Sprintf("Deleting partition %s", c.partition.TableName))
+		spinner.Show()
+		err := c.deletePartitionData(ctx, resolvedFromTime.Time, toTime)
+		spinner.Hide()
+		if err != nil {
 			// set execution to error
 			c.execution.done(err)
 			// and return error
