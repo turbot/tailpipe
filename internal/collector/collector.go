@@ -98,7 +98,6 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	if err != nil {
 		return nil, fmt.Errorf("failed to create DuckDB connection: %w", err)
 	}
-	slog.Warn(fmt.Sprintf("GOT DB  %p", db))
 	c.db = db
 
 	return c, nil

@@ -3,7 +3,6 @@ package parquet
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -76,8 +75,6 @@ func getUnorderedRangesForPartitionKey(ctx context.Context, db *database.DuckDb,
 			rangesStr.WriteString(", ")
 		}
 	}
-	slog.Info("File ranges for partition key", "partition_key", pk, "ranges", rangesStr.String())
-
 	// Build unordered time ranges
 	unorderedRanges, err := pk.findOverlappingFileRanges(fileRanges)
 	if err != nil {

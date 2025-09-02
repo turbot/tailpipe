@@ -108,7 +108,6 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 			return nil, fmt.Errorf("failed to set max_memory: %w", err)
 		}
 	}
-	slog.Warn(fmt.Sprintf("created duckdb - db %p", w.DB))
 
 	return w, nil
 }

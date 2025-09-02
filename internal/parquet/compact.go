@@ -114,24 +114,14 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			slog.Error("failed to get unorderedRanges", "partition", pk, "error", err)
 			return nil, err
 		}
-		slog.Debug("Partition key unorderedRanges",
-			"tp_table", pk.tpTable,
-			"tp_partition", pk.tpPartition,
-			"tp_index", pk.tpIndex,
-			"year", pk.year,
-			"month", pk.month,
-
-			"overlapping sets", len(unorderedRanges),
-		)
 		// if no files out of order, nothing to do
 		if len(unorderedRanges) == 0 {
-			slog.Info("Partition key is not fragmented - skipping compaction",
+			slog.Debug("Partition key is not out of order - skipping reordering",
 				"tp_table", pk.tpTable,
 				"tp_partition", pk.tpPartition,
 				"tp_index", pk.tpIndex,
 				"year", pk.year,
 				"month", pk.month,
-				"file_count", pk.fileCount,
 			)
 			continue
 		}
@@ -148,7 +138,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			"tp_index", pk.tpIndex,
 			"year", pk.year,
 			"month", pk.month,
-			"file_count", pk.fileCount,
+			"unorderedRanges",len(unorderedRanges),
 		)
 
 		// func to update status with number of rows compacted for this partition key
@@ -324,10 +314,11 @@ func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *par
 		where tp_partition = ?
 		  and tp_index = ?
 		  and tp_timestamp >= ?
-		  and tp_timestamp <= ?`,
+		  and tp_timestamp <= ? 
+		  and rowid <= ?`,
 		tableName)
 
-	args := []interface{}{pk.tpPartition, pk.tpIndex, startTime, endTime}
+	args := []interface{}{pk.tpPartition, pk.tpIndex, startTime, endTime, pk.stats.maxRowId}
 
 	_, err = tx.ExecContext(ctx, deleteQuery, args...)
 	if err != nil {
