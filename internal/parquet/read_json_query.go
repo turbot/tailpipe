@@ -23,10 +23,11 @@ import (
 //	       "default" as "tp_index"
 //	from read_ndjson(%s, columns = {"user_id": 'varchar', "name": 'varchar', "created_at": 'timestamp'})
 func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partition *config.Partition) string {
+	var tpTimestampMapped bool
+
 	// first build the select clauses - use the table def columns
 	var selectClauses []string
 	for _, column := range conversionSchema.Columns {
-
 		var selectClause string
 		switch column.ColumnName {
 		case constants.TpDate:
@@ -37,6 +38,10 @@ func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partiti
 			slog.Warn("tp_index is a reserved column name and should not be used in the source data. It will be added automatically based on the configured value.")
 			// skip this column - it will be populated manually using the partition config
 			continue
+		case constants.TpTimestamp:
+			tpTimestampMapped = true
+			// fallthrough to populate the select clasue as normal
+			fallthrough
 		default:
 			selectClause = getSelectSqlForField(column)
 		}
@@ -47,6 +52,16 @@ func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partiti
 	// add the tp_index - this is determined by the partition - it defaults to "default" but may be overridden in the partition config
 	// NOTE: we DO NOT wrap the tp_index expression in quotes - that will have already been done as part of partition config validation
 	selectClauses = append(selectClauses, fmt.Sprintf("\t%s as \"tp_index\"", partition.TpIndexColumn))
+
+	// if we have a mapping for tp_timestamp, add tp_date as well
+	// (if we DO NOT have tp_timestamp, the validation will fail - but we want the validation error -
+	//  NOT an error when we try to select tp_date using tp_timestamp as source)
+	if tpTimestampMapped {
+		// Add tp_date after tp_timestamp is defined
+		selectClauses = append(selectClauses, `	case
+		when tp_timestamp is not null then date_trunc('day', tp_timestamp::timestamp)
+	end as tp_date`)
+	}
 
 	// build column definitions - these will be passed to the read_json function
 	columnDefinitions := getReadJSONColumnDefinitions(conversionSchema.SourceColumns)
