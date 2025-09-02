@@ -36,7 +36,6 @@ jobs:
         with:
           repository: turbot/tailpipe-plugin-sdk
           path: tailpipe-plugin-sdk
-          token: ${{ secrets.GH_ACCESS_TOKEN }}
           ref: develop
 
       - name: Checkout Tailpipe Core Plugin repository
