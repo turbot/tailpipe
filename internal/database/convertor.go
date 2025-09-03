@@ -174,8 +174,9 @@ func (w *Converter) onFirstChunk(executionId string, chunk int32) error {
 		// err will be returned by the parent function
 		return err
 	}
-	// create the DuckDB table fpr this partition if it does not already exist
-	if err := w.ensureDuckLakeTable(w.Partition.TableName); err != nil {
+	slog.Error("schema: %v", w.tableSchema)
+	// create the DuckDB table for this partition if it does not already exist
+	if err := EnsureDuckLakeTable(w.conversionSchema.Columns, w.db, w.Partition.TableName); err != nil {
 		return fmt.Errorf("failed to create DuckDB table: %w", err)
 	}
 	w.readJsonQueryFormat = buildReadJsonQueryFormat(w.conversionSchema, w.Partition)

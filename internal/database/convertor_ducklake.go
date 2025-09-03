@@ -8,29 +8,30 @@ import (
 	"github.com/turbot/pipe-fittings/v2/backend"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 // determine whether we have a ducklake table for this table, and if so, whether it needs schema updating
-func (w *Converter) ensureDuckLakeTable(tableName string) error {
+func EnsureDuckLakeTable(columns []*schema.ColumnSchema, db *database.DuckDb, tableName string) error {
 	query := fmt.Sprintf("select exists (select 1 from information_schema.tables where table_name = '%s')", tableName)
 	var exists bool
-	if err := w.db.QueryRow(query).Scan(&exists); err != nil {
+	if err := db.QueryRow(query).Scan(&exists); err != nil {
 		return err
 	}
 	if !exists {
-		return w.createDuckLakeTable(tableName)
+		return createDuckLakeTable(columns, db, tableName)
 	}
 	return nil
 }
 
 // createDuckLakeTable creates a DuckLake table based on the ConversionSchema
-func (w *Converter) createDuckLakeTable(tableName string) error {
+func createDuckLakeTable(columns []*schema.ColumnSchema, db *database.DuckDb, tableName string) error {
 
 	// Generate the CREATE TABLE SQL
-	createTableSQL := w.buildCreateDucklakeTableSQL(tableName)
+	createTableSQL := buildCreateDucklakeTableSQL(columns, tableName)
 
 	// Execute the CREATE TABLE statement
-	_, err := w.db.Exec(createTableSQL)
+	_, err := db.Exec(createTableSQL)
 	if err != nil {
 		return fmt.Errorf("failed to create table %s: %w", tableName, err)
 	}
@@ -42,7 +43,7 @@ func (w *Converter) createDuckLakeTable(tableName string) error {
 		tableName,
 		strings.Join(partitionColumns, ", "))
 
-	_, err = w.db.Exec(alterTableSQL)
+	_, err = db.Exec(alterTableSQL)
 	if err != nil {
 		return fmt.Errorf("failed to set partitioning for table %s: %w", tableName, err)
 	}
@@ -51,11 +52,11 @@ func (w *Converter) createDuckLakeTable(tableName string) error {
 }
 
 // buildCreateDucklakeTableSQL generates the CREATE TABLE SQL statement based on the ConversionSchema
-func (w *Converter) buildCreateDucklakeTableSQL(tableName string) string {
+func buildCreateDucklakeTableSQL(columns []*schema.ColumnSchema, tableName string) string {
 	// Build column definitions in sorted order
 	var columnDefinitions []string
-	for _, column := range w.conversionSchema.Columns {
-		columnDef := w.buildColumnDefinition(column)
+	for _, column := range columns {
+		columnDef := buildColumnDefinition(column)
 		columnDefinitions = append(columnDefinitions, columnDef)
 	}
 
@@ -67,14 +68,14 @@ func (w *Converter) buildCreateDucklakeTableSQL(tableName string) string {
 }
 
 // buildColumnDefinition generates the SQL definition for a single column
-func (w *Converter) buildColumnDefinition(column *schema.ColumnSchema) string {
+func buildColumnDefinition(column *schema.ColumnSchema) string {
 	columnName := fmt.Sprintf("\"%s\"", column.ColumnName)
 
 	// Handle different column types
 	switch column.Type {
 	case "struct":
 		// For struct types, we need to build the struct definition
-		structDef := w.buildStructDefinition(column)
+		structDef := buildStructDefinition(column)
 		return fmt.Sprintf("\t%s %s", columnName, structDef)
 	case "json":
 		// json type
@@ -86,7 +87,7 @@ func (w *Converter) buildColumnDefinition(column *schema.ColumnSchema) string {
 }
 
 // buildStructDefinition generates the SQL struct definition for a struct column
-func (w *Converter) buildStructDefinition(column *schema.ColumnSchema) string {
+func buildStructDefinition(column *schema.ColumnSchema) string {
 	if len(column.StructFields) == 0 {
 		return "struct"
 	}
@@ -98,7 +99,7 @@ func (w *Converter) buildStructDefinition(column *schema.ColumnSchema) string {
 
 		if field.Type == "struct" {
 			// Recursively build nested struct definition
-			nestedStruct := w.buildStructDefinition(field)
+			nestedStruct := buildStructDefinition(field)
 			fieldDefinitions = append(fieldDefinitions, fmt.Sprintf("%s %s", fieldName, nestedStruct))
 		} else {
 			fieldDefinitions = append(fieldDefinitions, fmt.Sprintf("%s %s", fieldName, fieldType))

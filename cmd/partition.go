@@ -26,6 +26,7 @@ import (
 	"github.com/turbot/tailpipe/internal/display"
 	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/tailpipe/internal/migration"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -103,7 +104,9 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// open a readonly db connection
+	// here migration
+	migration.MigrateDataToDucklake(ctx)
+
 	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	error_helpers.FailOnError(err)
 	defer db.Close()
