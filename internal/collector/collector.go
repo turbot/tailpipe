@@ -269,7 +269,10 @@ func (c *Collector) Compact(ctx context.Context) error {
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)
 
-	err := parquet.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, partitionPattern)
+	// NOTE: we DO NOT reindex when compacting after collection
+	reindex := false
+
+	err := parquet.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, reindex, partitionPattern)
 
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)

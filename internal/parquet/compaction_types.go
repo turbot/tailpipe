@@ -9,12 +9,60 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 )
 
-// getUnorderedRangesForPartitionKey analyzes file fragmentation and creates disorder metrics for a partition key.
+// getTimeRangesToReorder analyzes file fragmentation and creates disorder metrics for a partition key.
 // It queries DuckLake metadata to get all files for the partition, their timestamp ranges, and row counts.
 // Then it identifies groups of files with overlapping time ranges that need compaction.
 // Returns metrics including total file count and overlapping file sets with their metadata.
-func getUnorderedRangesForPartitionKey(ctx context.Context, db *database.DuckDb, pk *partitionKey) ([]unorderedDataTimeRange, error) {
-	// Single query to get files and their timestamp ranges and row counts for this partition key
+func getTimeRangesToReorder(ctx context.Context, db *database.DuckDb, pk *partitionKey, reindex bool) (*reorderMetadata, error) {
+	// NOTE: if we are reindexing, we must rewrite the entire partition key
+	//  - return a single range for the entire partition key
+	if reindex {
+		rm, err := newReorderMetadata(ctx, db, pk)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retiever stats for partition key: %w", err)
+		}
+
+		// make a single time range
+		rm.unorderedRanges = []unorderedDataTimeRange{
+			{
+				StartTime: rm.minTimestamp,
+				EndTime:   rm.maxTimestamp,
+				RowCount:  rm.rowCount,
+			},
+		}
+
+		return rm, nil
+	}
+
+	// first query the metadata to get a list of files, their timestamp ranges and row counts for this partition key
+	fileRanges, err := getFileRangesForPartitionKey(ctx, db, pk)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get file ranges for partition key: %w", err)
+	}
+
+	// Now identify which of these ranges overlap and for each overlapping set, build a superset time range
+	unorderedRanges, err := pk.findOverlappingFileRanges(fileRanges)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build unordered time ranges: %w", err)
+	}
+
+	// if there are no unordered ranges, return nil
+	if len(unorderedRanges) == 0 {
+		return nil, nil
+	}
+
+	// get stats for the partition key
+	rm, err := newReorderMetadata(ctx, db, pk)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retiever stats for partition key: %w", err)
+	}
+	rm.unorderedRanges = unorderedRanges
+	return rm, nil
+
+}
+
+// query the metadata to get a list of files, their timestamp ranges and row counts for this partition key
+func getFileRangesForPartitionKey(ctx context.Context, db *database.DuckDb, pk *partitionKey) ([]fileTimeRange, error) {
 	query := `select 
 		df.path,
 		cast(fcs.min_value as timestamp) as min_timestamp,
@@ -75,13 +123,7 @@ func getUnorderedRangesForPartitionKey(ctx context.Context, db *database.DuckDb,
 			rangesStr.WriteString(", ")
 		}
 	}
-	// Build unordered time ranges
-	unorderedRanges, err := pk.findOverlappingFileRanges(fileRanges)
-	if err != nil {
-		return nil, fmt.Errorf("failed to build unordered time ranges: %w", err)
-	}
-
-	return unorderedRanges, nil
+	return fileRanges, nil
 }
 
 type fileTimeRange struct {

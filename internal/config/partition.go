@@ -52,7 +52,7 @@ type Partition struct {
 	// an option filter in the format of a SQL where clause
 	Filter string `cty:"filter"`
 	// the sql column to use for the tp_index
-	TpIndexColumn string `cty:"tp_index_column"`
+	TpIndexColumn string `cty:"tp_index"`
 
 	// if this is a synthetic partition for testing, this will be non-null
 	SyntheticMetadata *SyntheticMetadata

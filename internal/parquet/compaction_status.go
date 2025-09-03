@@ -1,16 +1,25 @@
 package parquet
 
 import (
+	"context"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/turbot/pipe-fittings/v2/utils"
+	"strings"
 	"time"
+
+	"github.com/dustin/go-humanize"
+	"github.com/turbot/go-kit/types"
+	"github.com/turbot/pipe-fittings/v2/backend"
+	"github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/utils"
+	"github.com/turbot/tailpipe/internal/database"
 )
 
 type CompactionStatus struct {
+	Message         string
 	InitialFiles    int
 	FinalFiles      int
 	RowsCompacted   int64
+	RowsToCompact   int64
 	TotalRows       int64
 	ProgressPercent float64
 
@@ -93,4 +102,95 @@ func (s *CompactionStatus) RowsCompactedString() any {
 }
 func (s *CompactionStatus) ProgressPercentString() string {
 	return fmt.Sprintf("%.1f%%", s.ProgressPercent)
+}
+
+func (s *CompactionStatus) UpdateProgress() {
+	// calc percentage from RowsToCompact but print TotalRows in status message
+	s.ProgressPercent = (float64(s.RowsCompacted) / float64(s.RowsToCompact)) * 100
+	s.Message = fmt.Sprintf(" (%0.1f%% of %s rows)", s.ProgressPercent, types.ToHumanisedString(s.TotalRows))
+
+}
+
+func (s *CompactionStatus) getInitialCounts(ctx context.Context, db *database.DuckDb, partitionKeys []*partitionKey) error {
+	partitionNameMap := make(map[string]map[string]struct{})
+	for _, pk := range partitionKeys {
+		s.InitialFiles += pk.fileCount
+		if partitionNameMap[pk.tpTable] == nil {
+			partitionNameMap[pk.tpTable] = make(map[string]struct{})
+		}
+		partitionNameMap[pk.tpTable][pk.tpPartition] = struct{}{}
+	}
+
+	// get row count for each table
+	totalRows := int64(0)
+	for tpTable, tpPartitions := range partitionNameMap {
+
+		// Sanitize partition values for SQL injection protection
+		sanitizedPartitions := make([]string, 0, len(tpPartitions))
+		for partition := range tpPartitions {
+			sp, err := backend.SanitizeDuckDBIdentifier(partition)
+			if err != nil {
+				return fmt.Errorf("failed to sanitize partition %s: %w", partition, err)
+			}
+			// Quote the sanitized partition name for the IN clause
+			sanitizedPartitions = append(sanitizedPartitions, fmt.Sprintf("'%s'", sp))
+		}
+
+		tableName, err := backend.SanitizeDuckDBIdentifier(tpTable)
+		if err != nil {
+			return fmt.Errorf("failed to sanitize table name %s: %w", tpTable, err)
+		}
+
+		query := fmt.Sprintf("select count(*) from %s where tp_partition in (%s)",
+			tableName,
+			strings.Join(sanitizedPartitions, ", "))
+
+		var tableRowCount int64
+		err = db.QueryRowContext(ctx, query).Scan(&tableRowCount)
+		if err != nil {
+			return fmt.Errorf("failed to get row count for table %s: %w", tpTable, err)
+		}
+
+		totalRows += tableRowCount
+	}
+
+	s.TotalRows = totalRows
+	return nil
+}
+
+func (s *CompactionStatus) getFinalFileCounts(ctx context.Context, db *database.DuckDb, partitionKeys []*partitionKey) error {
+	// Get unique table names from partition keys
+	tableNames := make(map[string]struct{})
+	for _, pk := range partitionKeys {
+		tableNames[pk.tpTable] = struct{}{}
+	}
+
+	// Count files for each table from metadata
+	totalFileCount := 0
+	for tableName := range tableNames {
+		// Sanitize table name
+		sanitizedTableName, err := backend.SanitizeDuckDBIdentifier(tableName)
+		if err != nil {
+			return fmt.Errorf("failed to sanitize table name %s: %w", tableName, err)
+		}
+
+		// Query to count files for this table from DuckLake metadata
+		query := fmt.Sprintf(`select count(*) from %s.ducklake_data_file df
+			join %s.ducklake_table t on df.table_id = t.table_id
+			where t.table_name = '%s' and df.end_snapshot is null`,
+			constants.DuckLakeMetadataCatalog,
+			constants.DuckLakeMetadataCatalog,
+			sanitizedTableName)
+
+		var tableFileCount int
+		err = db.QueryRowContext(ctx, query).Scan(&tableFileCount)
+		if err != nil {
+			return fmt.Errorf("failed to get file count for table %s: %w", tableName, err)
+		}
+
+		totalFileCount += tableFileCount
+	}
+
+	s.FinalFiles = totalFileCount
+	return nil
 }

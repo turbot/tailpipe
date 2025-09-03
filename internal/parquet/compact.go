@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/turbot/pipe-fittings/v2/backend"
+	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe/internal/database"
 )
 
@@ -16,7 +18,7 @@ const (
 	maxCompactionRowsPerChunk = 5_000_000
 )
 
-func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), patterns ...PartitionPattern) error {
+func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), reindex bool, patterns ...PartitionPattern) error {
 	slog.Info("Compacting DuckLake data files")
 
 	t := time.Now()
@@ -32,13 +34,12 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 		return nil
 	}
 
-	status, err := orderDataFiles(ctx, db, updateFunc, partitionKeys)
+	status, err := orderDataFiles(ctx, db, updateFunc, partitionKeys, reindex)
 	if err != nil {
 		slog.Error("Failed to compact DuckLake parquet files", "error", err)
 		return err
 	}
 
-	slog.Info("Expiring old DuckLake snapshots")
 	// now expire unused snapshots
 	if err := expirePrevSnapshots(ctx, db); err != nil {
 		slog.Error("Failed to expire previous DuckLake snapshots", "error", err)
@@ -55,7 +56,6 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 	//	return nil, err
 	// }
 
-	slog.Info("Cleaning up expired files in DuckLake")
 	// delete unused files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
 		slog.Error("Failed to cleanup expired files", "error", err)
@@ -63,12 +63,11 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 	}
 
 	// get the file count after merging and cleanup
-	finalFileCount, err := getFileCountForPartitionKeys(ctx, db, partitionKeys)
+	err = status.getFinalFileCounts(ctx, db, partitionKeys)
 	if err != nil {
-		return err
+		// just log
+		slog.Error("Failed to get final file counts", "error", err)
 	}
-	// update status
-	status.FinalFiles = finalFileCount
 	// set the compaction time
 	status.Duration = time.Since(t)
 
@@ -79,7 +78,7 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 	return nil
 }
 
-//nolint: unused // TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
+// nolint: unused // TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
 // mergeParquetFiles combines adjacent parquet files in the DuckDB database.
 func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
@@ -96,34 +95,67 @@ func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
 //   - analyze file fragmentation to identify overlapping time ranges
 //   - for each overlapping time range, reorder all data in that range
 //   - delete original unordered entries for that time range
-func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), partitionKeys []*partitionKey) (*CompactionStatus, error) {
+func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), partitionKeys []*partitionKey, reindex bool) (*CompactionStatus, error) {
 	slog.Info("Ordering DuckLake data files")
 
 	status := NewCompactionStatus()
-	// get total file and row count for status - iterating over partition keys
-	for _, pk := range partitionKeys {
-		status.InitialFiles += pk.fileCount
-		status.TotalRows += pk.stats.rowCount
+	// get total file and row count into status
+	err := status.getInitialCounts(ctx, db, partitionKeys)
+	if err != nil {
+		return nil, err
 	}
 
-	// Process each partition
+	// map of table columns, allowing us to lazy load them
+	tableColumnLookup := make(map[string][]string)
+
+	// build list of partition keys to reorder
+	var reorderList []*reorderMetadata
+
+	status.Message = "identifying files to reorder"
+	updateFunc(*status)
+
+	// Process each partition key to determine if we need to reorder
 	for _, pk := range partitionKeys {
-		// determine which files are not time ordered
-		unorderedRanges, err := getUnorderedRangesForPartitionKey(ctx, db, pk)
+		// determine which files are not time ordered and build a set of time ranges which need reordering
+		// (NOTS: if we are reindexing, we need to reorder the ALL data for the partition key)
+		reorderMetadata, err := getTimeRangesToReorder(ctx, db, pk, reindex)
 		if err != nil {
 			slog.Error("failed to get unorderedRanges", "partition", pk, "error", err)
 			return nil, err
 		}
+
 		// if no files out of order, nothing to do
-		if len(unorderedRanges) == 0 {
+		if reorderMetadata != nil {
+			reorderList = append(reorderList, reorderMetadata)
+		} else {
 			slog.Debug("Partition key is not out of order - skipping reordering",
 				"tp_table", pk.tpTable,
 				"tp_partition", pk.tpPartition,
-				"tp_index", pk.tpIndex,
+				// "tp_index", pk.tpIndex,
 				"year", pk.year,
 				"month", pk.month,
 			)
-			continue
+		}
+	}
+
+	// now get the total rows to reorder
+	for _, rm := range reorderList {
+		status.InitialFiles += rm.pk.fileCount
+		status.RowsToCompact += rm.rowCount
+	}
+
+	// clear message - it will be sent on next update func
+	status.Message = ""
+
+	// now iterate over reorderlist to do reordering
+	for _, rm := range reorderList {
+		pk := rm.pk
+
+		// get the columns for this table - check map first - if not present, read from metadata and populate the map
+		columns, err := getColumns(ctx, db, pk.tpTable, tableColumnLookup)
+		if err != nil {
+			slog.Error("failed to get columns", "table", pk.tpTable, "error", err)
+			return nil, err
 		}
 
 		tx, err := db.BeginTx(ctx, nil)
@@ -132,26 +164,26 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 			return nil, fmt.Errorf("failed to begin transaction for partition %v: %w", pk, err)
 		}
 
-		slog.Info("Compacting partition entries",
+		slog.Debug("Compacting partition entries",
 			"tp_table", pk.tpTable,
 			"tp_partition", pk.tpPartition,
 			"tp_index", pk.tpIndex,
 			"year", pk.year,
 			"month", pk.month,
-			"unorderedRanges",len(unorderedRanges),
+			"unorderedRanges", len(rm.unorderedRanges),
 		)
 
 		// func to update status with number of rows compacted for this partition key
-		// - passed to compactAndOrderPartitionKeyEntries
+		// - passed to orderPartitionKey
 		updateRowsFunc := func(rowsCompacted int64) {
 			status.RowsCompacted += rowsCompacted
 			if status.TotalRows > 0 {
-				status.ProgressPercent = (float64(status.RowsCompacted) / float64(status.TotalRows)) * 100
+				status.UpdateProgress()
 			}
 			updateFunc(*status)
 		}
 
-		if err := compactAndOrderPartitionKeyEntries(ctx, tx, pk, unorderedRanges, updateRowsFunc); err != nil {
+		if err := orderPartitionKey(ctx, tx, pk, rm, updateRowsFunc, reindex, columns); err != nil {
 			slog.Error("failed to compact partition", "partition", pk, "error", err)
 			txErr := tx.Rollback()
 			if txErr != nil {
@@ -184,11 +216,55 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 	return status, nil
 }
 
-// compactAndOrderPartitionKeyEntries processes overlapping time ranges for a partition key:
+// getColumns retrieves column information for a table, checking the map first and reading from metadata if not present
+func getColumns(ctx context.Context, db *database.DuckDb, table string, columns map[string][]string) ([]string, error) {
+	// Check if columns are already cached
+	if cachedColumns, exists := columns[table]; exists {
+		return cachedColumns, nil
+	}
+
+	// Read top level columns from DuckLake metadata
+	query := fmt.Sprintf(`
+		select c.column_name 
+		from %s.ducklake_column c
+		join %s.ducklake_table t on c.table_id = t.table_id
+		where t.table_name = ? 
+		  and t.end_snapshot is null 
+		  and c.end_snapshot is null
+          and c.parent_column is null
+		order by c.column_order`, constants.DuckLakeMetadataCatalog, constants.DuckLakeMetadataCatalog)
+
+	rows, err := db.QueryContext(ctx, query, table)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get columns for table %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	var columnNames []string
+	for rows.Next() {
+		var columnName string
+		if err := rows.Scan(&columnName); err != nil {
+			return nil, fmt.Errorf("failed to scan column: %w", err)
+		}
+		columnNames = append(columnNames, columnName)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error reading columns: %w", err)
+	}
+
+	// Cache the columns for future use
+	columns[table] = columnNames
+
+	// and return
+	return columnNames, nil
+}
+
+// orderPartitionKey processes overlapping time ranges for a partition key:
 // - iterates over each unordered time range
 // - reorders all data within each time range (potentially in chunks for large ranges)
 // - deletes original unordered entries for that time range
-func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *partitionKey, unorderedRanges []unorderedDataTimeRange, updateRowsCompactedFunc func(int64)) error {
+func orderPartitionKey(ctx context.Context, tx *sql.Tx, pk *partitionKey, rm *reorderMetadata, updateRowsCompactedFunc func(int64), reindex bool, columns []string) error {
 
 	slog.Debug("partition statistics",
 		"tp_table", pk.tpTable,
@@ -196,15 +272,15 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 		"tp_index", pk.tpIndex,
 		"year", pk.year,
 		"month", pk.month,
-		"row_count", pk.stats.rowCount,
+		"row_count", rm.rowCount,
 		"total file_count", pk.fileCount,
-		"min_timestamp", pk.stats.minTimestamp,
-		"max_timestamp", pk.stats.maxTimestamp,
-		"total_ranges", len(unorderedRanges),
+		"min_timestamp", rm.minTimestamp,
+		"max_timestamp", rm.maxTimestamp,
+		"total_ranges", len(rm.unorderedRanges),
 	)
 
 	// Process each overlapping time range
-	for i, timeRange := range unorderedRanges {
+	for i, timeRange := range rm.unorderedRanges {
 		slog.Debug("processing overlapping time range",
 			"range_index", i+1,
 			"start_time", timeRange.StartTime,
@@ -236,7 +312,7 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 			// For the final chunk, make it inclusive to catch the last row
 			isFinalChunk := currentEnd.Equal(maxTime)
 
-			rowsInserted, err := insertOrderedDataForTimeRange(ctx, tx, pk, currentStart, currentEnd, isFinalChunk)
+			rowsInserted, err := insertOrderedDataForTimeRange(ctx, tx, pk, currentStart, currentEnd, isFinalChunk, reindex, columns)
 			if err != nil {
 				return fmt.Errorf("failed to insert ordered data for time range %s to %s: %w",
 					currentStart.Format("2006-01-02 15:04:05"),
@@ -250,7 +326,7 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 		}
 
 		// Delete original unordered entries for this time range
-		err := deleteUnorderedEntriesForTimeRange(ctx, tx, pk, minTime, maxTime)
+		err := deleteUnorderedEntriesForTimeRange(ctx, tx, rm, minTime, maxTime)
 		if err != nil {
 			return fmt.Errorf("failed to delete unordered entries for time range: %w", err)
 		}
@@ -263,33 +339,44 @@ func compactAndOrderPartitionKeyEntries(ctx context.Context, tx *sql.Tx, pk *par
 }
 
 // insertOrderedDataForTimeRange inserts ordered data for a specific time range within a partition key
-func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time, isFinalChunk bool) (int64, error) {
+func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time, isFinalChunk, reindex bool, columns []string) (int64, error) {
+	// sanitize table name
+	tableName, err := backend.SanitizeDuckDBIdentifier(pk.tpTable)
+	if err != nil {
+		return 0, err
+	}
+
+	// Build column list for insert
+	insertColumns := strings.Join(columns, ", ")
+
+	// Build select fields
+	selectFields := insertColumns
+	// For reindexing, replace tp_index with the partition config column
+	if reindex && pk.partitionConfig != nil {
+		selectFields = strings.ReplaceAll(selectFields, "tp_index", fmt.Sprintf("%s as tp_index", pk.partitionConfig.TpIndexColumn))
+	}
 	// For the final chunk, use inclusive end time to catch the last row
 	timeEndOperator := "<"
 	if isFinalChunk {
 		timeEndOperator = "<="
 	}
 
-	// For overlapping files, we need to reorder ALL rows in the overlapping time range
-	// Since files overlap, we can't distinguish which specific rows came from which files
-	// So we reorder all rows in the time range for this partition
-	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex}
-
-	tableName, err := backend.SanitizeDuckDBIdentifier(pk.tpTable)
-	if err != nil {
-		return 0, err
-	}
 	//nolint: gosec // sanitized
-	insertQuery := fmt.Sprintf(`insert into %s 
-		select * from %s 
+	insertQuery := fmt.Sprintf(`insert into %s (%s)
+		select %s
+		from %s
 		where tp_timestamp >= ?
 		  and tp_timestamp %s ?
 		  and tp_partition = ?
 		  and tp_index = ?
 		order by tp_timestamp`,
 		tableName,
+		insertColumns,
+		selectFields,
 		tableName,
 		timeEndOperator)
+	// For overlapping files, we need to reorder ALL rows in the overlapping time range
+	args := []interface{}{startTime, endTime, pk.tpPartition, pk.tpIndex}
 
 	result, err := tx.ExecContext(ctx, insertQuery, args...)
 	if err != nil {
@@ -303,9 +390,9 @@ func insertOrderedDataForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitio
 }
 
 // deleteUnorderedEntriesForTimeRange deletes the original unordered entries for a specific time range within a partition key
-func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *partitionKey, startTime, endTime time.Time) error {
+func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, rm *reorderMetadata, startTime, endTime time.Time) error {
 	// Delete all rows in the time range for this partition key (we're re-inserting them in order)
-	tableName, err := backend.SanitizeDuckDBIdentifier(pk.tpTable)
+	tableName, err := backend.SanitizeDuckDBIdentifier(rm.pk.tpTable)
 	if err != nil {
 		return err
 	}
@@ -318,7 +405,7 @@ func deleteUnorderedEntriesForTimeRange(ctx context.Context, tx *sql.Tx, pk *par
 		  and rowid <= ?`,
 		tableName)
 
-	args := []interface{}{pk.tpPartition, pk.tpIndex, startTime, endTime, pk.stats.maxRowId}
+	args := []interface{}{rm.pk.tpPartition, rm.pk.tpIndex, startTime, endTime, rm.maxRowId}
 
 	_, err = tx.ExecContext(ctx, deleteQuery, args...)
 	if err != nil {

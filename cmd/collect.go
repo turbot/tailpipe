@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,7 +72,6 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				err = nil
 				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)

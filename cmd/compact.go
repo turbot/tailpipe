@@ -12,7 +12,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
-	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
@@ -53,7 +52,13 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 		}
 		if err != nil {
 			setExitCodeForCompactError(err)
-			error_helpers.ShowError(ctx, err)
+
+			if errors.Is(err, context.Canceled) {
+				//nolint:forbidigo // ui
+				fmt.Println("Compact cancelled")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
 		}
 	}()
 
@@ -64,13 +69,6 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	}
 
 	slog.Info("Compacting parquet files")
-
-	// if the flag was provided, migrate the tp_index files
-	if viper.GetBool(pconstants.ArgReindex) {
-		// TODO #DL update tpIndex migration for ducklake
-		//  https://github.com/turbot/tailpipe/issues/475
-		panic("Reindexing is not yet implemented for ducklake")
-	}
 
 	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
 	error_helpers.FailOnError(err)
@@ -86,24 +84,11 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
 	// do the compaction
+
 	status, err := doCompaction(ctx, db, patterns)
-	if errors.Is(err, context.Canceled) {
-		// TODO verify
-		// clear error so we don't show it with normal error reporting
-		err = nil
-	}
-
+	// print the final status
+	statusString := status.VerboseString()
 	if err == nil {
-		// print the final status
-		statusString := status.VerboseString()
-		if statusString == "" {
-			statusString = "No files to compact."
-		}
-		if ctx.Err() != nil {
-			// instead show the status as cancelled
-			statusString = "Compaction cancelled: " + statusString
-		}
-
 		fmt.Println(statusString) //nolint:forbidigo // ui
 	}
 
@@ -117,6 +102,8 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.P
 		spinner.WithHiddenCursor(true),
 		spinner.WithWriter(os.Stdout),
 	)
+	// if the flag was provided, migrate the tp_index files
+	reindex := viper.GetBool(pconstants.ArgReindex)
 
 	// start and stop spinner around the processing
 	s.Start()
@@ -127,11 +114,13 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.P
 
 	updateTotals := func(updatedStatus parquet.CompactionStatus) {
 		status = &updatedStatus
-		s.Suffix = fmt.Sprintf(" compacting parquet files (%0.1f%% of %s rows)", status.ProgressPercent, types.ToHumanisedString(status.TotalRows))
+		if status.Message != "" {
+			s.Suffix = " compacting parquet files: " + status.Message
+		}
 	}
 
 	// do compaction
-	err := parquet.CompactDataFiles(ctx, db, updateTotals, patterns...)
+	err := parquet.CompactDataFiles(ctx, db, updateTotals, reindex, patterns...)
 
 	return status, err
 }
