@@ -54,8 +54,13 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	// for duckdb, limit connections to 1 - DuckDB is designed for single-connection usage
 	d.SetMaxOpenConns(1)
 
+	// set the extension directory
+	if _, err := d.DB.Exec("set extension_directory = ?;", pf.EnsurePipesDuckDbExtensionsDir()); err != nil {
+		return nil, fmt.Errorf("failed to set extension_directory: %w", err)
+	}
+
 	if len(d.extensions) > 0 {
-		// install and load the JSON extension
+		// set extension dir and install any specified extensions
 		if err := d.installAndLoadExtensions(); err != nil {
 			return nil, fmt.Errorf(": %d", err)
 		}
@@ -142,11 +147,6 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	}
 	if len(d.extensions) == 0 {
 		return nil
-	}
-
-	// set the extension directory
-	if _, err := d.DB.Exec("set extension_directory = ?;", pf.EnsurePipesDuckDbExtensionsDir()); err != nil {
-		return fmt.Errorf("failed to set extension_directory: %w", err)
 	}
 
 	// install and load the extensions
