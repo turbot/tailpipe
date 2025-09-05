@@ -168,7 +168,7 @@ func (d *DuckDb) connectDucklake(ctx context.Context) error {
 	if len(d.viewFilters) == 0 {
 		commands = append(commands, SqlCommand{
 			Description: "set default catalog to ducklake",
-			Command:     fmt.Sprintf("set catalog '%s';", pconstants.DuckLakeCatalog),
+			Command:     fmt.Sprintf("use %s", pconstants.DuckLakeCatalog),
 		})
 	}
 
