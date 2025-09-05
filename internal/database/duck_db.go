@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
-	"os"
-
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
+	"log/slog"
+	"os"
 )
 
 // DuckDb provides a wrapper around the sql.DB connection to DuckDB with enhanced error handling
@@ -25,81 +24,70 @@ type DuckDb struct {
 	tempDir         string
 	maxMemoryMb     int
 	ducklakeEnabled bool
+	viewFilters     []string
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	slog.Info("Initializing DuckDB connection")
 
-	w := &DuckDb{}
+	d := &DuckDb{}
 	for _, opt := range opts {
-		opt(w)
+		opt(d)
 	}
 	defer func() {
 		if err != nil {
 			// If an error occurs during initialization, close the DB connection if it was opened
-			if w.DB != nil {
-				_ = w.DB.Close()
+			if d.DB != nil {
+				_ = d.DB.Close()
 			}
-			w.DB = nil // ensure DB is nil to avoid further operations on a closed connection
+			d.DB = nil // ensure DB is nil to avoid further operations on a closed connection
 		}
 	}()
 
 	// Connect to DuckDB
-	db, err := sql.Open("duckdb", w.dataSourceName)
+	db, err := sql.Open("duckdb", d.dataSourceName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
+		return nil, fmt.Errorf("failed to open DuckDB connection: %d", err)
 	}
-	w.DB = db
+	d.DB = db
 
 	// for duckdb, limit connections to 1 - DuckDB is designed for single-connection usage
-	w.SetMaxOpenConns(1)
+	d.SetMaxOpenConns(1)
 
-	if len(w.extensions) > 0 {
+	if len(d.extensions) > 0 {
 		// install and load the JSON extension
-		if err := w.installAndLoadExtensions(); err != nil {
-			return nil, fmt.Errorf(": %w", err)
+		if err := d.installAndLoadExtensions(); err != nil {
+			return nil, fmt.Errorf(": %d", err)
 		}
 	}
-	if w.ducklakeEnabled {
-		if err := w.connectDucklake(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to connect to DuckLake: %w", err)
-		}
-
-		// Set the default catalog to tailpipe_ducklake to avoid catalog context issues
-		if _, err := db.Exec(`use "tailpipe_ducklake"`); err != nil {
-			return nil, fmt.Errorf("failed to set default catalog: %w", err)
+	if d.ducklakeEnabled {
+		if err := d.connectDucklake(context.Background()); err != nil {
+			return nil, fmt.Errorf("failed to connect to DuckLake: %d", err)
 		}
 	}
 
-	// Configure DuckDB's temp directory:
-	// - If WithTempDir option was provided, use that directory
-	// - Otherwise, use the collection temp directory (a subdirectory in the user's home directory
-	//   where temporary files for data collection are stored)
-	tempDir := w.tempDir
-	if tempDir == "" {
-		baseDir := filepaths.EnsureCollectionTempDir()
-		// Create a unique subdirectory with 'duckdb-' prefix
-		// it is important to use a unique directory for each DuckDB instance as otherwise temp files from
-		// different instances can conflict with each other, causing memory swapping issues
-		uniqueTempDir, err := os.MkdirTemp(baseDir, "duckdb-")
+	// view filters are used to create a database with a filtered set of data to query,
+	// used to support date filtering for the index command
+	if len(d.viewFilters) > 0 {
+		err = d.createFilteredViews(d.viewFilters)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create unique temp directory: %w", err)
-		}
-		tempDir = uniqueTempDir
-	}
-
-	if _, err := db.Exec("set temp_directory = ?;", tempDir); err != nil {
-		_ = w.Close()
-		return nil, fmt.Errorf("failed to set temp_directory: %w", err)
-	}
-	if w.maxMemoryMb > 0 {
-		if _, err := db.Exec("set max_memory = ? || 'MB';", w.maxMemoryMb); err != nil {
-			_ = w.Close()
-			return nil, fmt.Errorf("failed to set max_memory: %w", err)
+			return nil, fmt.Errorf("failed to create filtered views: %d", err)
 		}
 	}
 
-	return w, nil
+	// Configure DuckDB's temp directory
+	if err := d.setTempDir(); err != nil {
+		return nil, fmt.Errorf("failed to set DuckDB temp directory: %d", err)
+	}
+	// set the max memory if specified
+	if d.maxMemoryMb > 0 {
+		if _, err := db.Exec("set max_memory = ? || 'MB';", d.maxMemoryMb); err != nil {
+			_ = d.Close()
+			return nil, fmt.Errorf("failed to set max_memory: %d", err)
+		}
+	}
+
+	return d, nil
 }
 
 func (d *DuckDb) Query(query string, args ...any) (*sql.Rows, error) {
@@ -175,6 +163,15 @@ func (d *DuckDb) installAndLoadExtensions() error {
 func (d *DuckDb) connectDucklake(ctx context.Context) error {
 	// we share the same set of commands for tailpipe connection - get init commands and execute them
 	commands := GetDucklakeInitCommands()
+	// if there are NO view filters, set the default catalog to ducklake
+	// if there are view filters, the views will be created in the default memory catalog so do not change the default
+	if len(d.viewFilters) == 0 {
+		commands = append(commands, SqlCommand{
+			Description: "set default catalog to ducklake",
+			Command:     fmt.Sprintf("set catalog '%s';", pconstants.DuckLakeCatalog),
+		})
+	}
+
 	for _, cmd := range commands {
 		slog.Info(cmd.Description, "command", cmd.Command)
 		_, err := d.ExecContext(ctx, cmd.Command)
@@ -183,6 +180,47 @@ func (d *DuckDb) connectDucklake(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+func (d *DuckDb) createFilteredViews(filters []string) error {
+	// get the sql to create the views based on the filters
+	viewSql, err := GetCreateViewsSql(context.Background(), d, d.viewFilters...)
+	if err != nil {
+		return fmt.Errorf("failed to get create views sql: %w", err)
+	}
+	// execute the commands to create the views
+	slog.Info("Creating views")
+	for _, cmd := range viewSql {
+		if _, err := d.Exec(cmd.Command); err != nil {
+			return fmt.Errorf("failed to create view: %w", err)
+		}
+	}
+	return nil
+}
+
+// Configure DuckDB's temp directory
+//   - If WithTempDir option was provided, use that directory
+//   - Otherwise, use the collection temp directory (a subdirectory in the user's home directory
+//     where temporary files for data collection are stored)
+func (d *DuckDb) setTempDir() error {
+	tempDir := d.tempDir
+	if tempDir == "" {
+		baseDir := filepaths.EnsureCollectionTempDir()
+		// Create a unique subdirectory with 'duckdb-' prefix
+		// it is important to use a unique directory for each DuckDB instance as otherwise temp files from
+		// different instances can conflict with each other, causing memory swapping issues
+		uniqueTempDir, err := os.MkdirTemp(baseDir, "duckdb-")
+		if err != nil {
+			return fmt.Errorf("failed to create unique temp directory: %d", err)
+		}
+		tempDir = uniqueTempDir
+	}
+
+	if _, err := d.Exec("set temp_directory = ?;", tempDir); err != nil {
+		_ = d.Close()
+		return fmt.Errorf("failed to set temp_directory: %d", err)
+	}
 	return nil
 }
 

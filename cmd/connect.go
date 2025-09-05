@@ -199,9 +199,8 @@ func getFilters() ([]string, error) {
 			return nil, fmt.Errorf("invalid date format for 'from': %s", from)
 		}
 		// format as SQL timestamp
-		fromDate := t.Format(time.DateOnly)
 		fromTimestamp := t.Format(time.DateTime)
-		result = append(result, fmt.Sprintf("tp_date >= date '%s' and tp_timestamp >= timestamp '%s'", fromDate, fromTimestamp))
+		result = append(result, fmt.Sprintf("tp_timestamp >= timestamp '%s'", fromTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgTo) {
 		to := viper.GetString(pconstants.ArgTo)
@@ -213,9 +212,8 @@ func getFilters() ([]string, error) {
 			return nil, fmt.Errorf("invalid date format for 'to': %s", to)
 		}
 		// format as SQL timestamp
-		toDate := t.Format(time.DateOnly)
 		toTimestamp := t.Format(time.DateTime)
-		result = append(result, fmt.Sprintf("tp_date <= date '%s' and tp_timestamp <= timestamp '%s'", toDate, toTimestamp))
+		result = append(result, fmt.Sprintf("tp_timestamp <= timestamp '%s'", toTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgPartition) {
 		// we have loaded tailpipe config by this time

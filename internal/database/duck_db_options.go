@@ -45,3 +45,11 @@ func WithDuckLakeEnabled(enabled bool) DuckDbOpt {
 		d.ducklakeEnabled = enabled
 	}
 }
+
+// WithViewFilters sets the view filters for DuckDB.
+// filters is a list of SQL filter expressions to apply to views.
+func WithViewFilters(filters []string) DuckDbOpt {
+	return func(d *DuckDb) {
+		d.viewFilters = filters
+	}
+}
