@@ -18,7 +18,7 @@ const (
 	maxCompactionRowsPerChunk = 5_000_000
 )
 
-func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), reindex bool, patterns ...PartitionPattern) error {
+func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), reindex bool, patterns ...*PartitionPattern) error {
 	slog.Info("Compacting DuckLake data files")
 
 	t := time.Now()

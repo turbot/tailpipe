@@ -125,7 +125,7 @@ func Test_getPartition(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := getPartitionsForArg(tt.args.partitions, tt.args.name)
+			got, err := GetPartitionsForArg(tt.args.partitions, tt.args.name)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getPartitions() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -241,16 +241,16 @@ func Test_getPartitionMatchPatternsForArg(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotTablePattern, gotPartPattern, err := getPartitionMatchPatternsForArg(tt.args.partitions, tt.args.arg)
+			gotTablePattern, gotPartPattern, err := GetPartitionMatchPatternsForArg(tt.args.partitions, tt.args.arg)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("getPartitionMatchPatternsForArg() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("GetPartitionMatchPatternsForArg() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotTablePattern != tt.wantTablePattern {
-				t.Errorf("getPartitionMatchPatternsForArg() gotTablePattern = %v, want %v", gotTablePattern, tt.wantTablePattern)
+				t.Errorf("GetPartitionMatchPatternsForArg() gotTablePattern = %v, want %v", gotTablePattern, tt.wantTablePattern)
 			}
 			if gotPartPattern != tt.wantPartPattern {
-				t.Errorf("getPartitionMatchPatternsForArg() gotPartPattern = %v, want %v", gotPartPattern, tt.wantPartPattern)
+				t.Errorf("GetPartitionMatchPatternsForArg() gotPartPattern = %v, want %v", gotPartPattern, tt.wantPartPattern)
 			}
 		})
 	}

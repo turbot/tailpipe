@@ -80,7 +80,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get table and partition patterns
-	patterns, err := getPartitionPatterns(args, maps.Keys(config.GlobalConfig.Partitions))
+	patterns, err := parquet.GetPartitionPatternsForArgs(maps.Keys(config.GlobalConfig.Partitions), args...)
 	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
 	// do the compaction
@@ -95,7 +95,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
+func doCompaction(ctx context.Context, db *database.DuckDb, patterns []*parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -123,21 +123,6 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []parquet.P
 	err := parquet.CompactDataFiles(ctx, db, updateTotals, reindex, patterns...)
 
 	return status, err
-}
-
-// getPartitionPatterns returns the table and partition patterns for the given partition args
-func getPartitionPatterns(partitionArgs []string, partitions []string) ([]parquet.PartitionPattern, error) {
-	var res []parquet.PartitionPattern
-	for _, arg := range partitionArgs {
-		tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
-		if err != nil {
-			return nil, fmt.Errorf("error processing partition arg '%s': %w", arg, err)
-		}
-
-		res = append(res, parquet.PartitionPattern{Table: tablePattern, Partition: partitionPattern})
-	}
-
-	return res, nil
 }
 
 func setExitCodeForCompactError(err error) {

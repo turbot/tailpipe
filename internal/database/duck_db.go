@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
@@ -53,7 +52,7 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	w.DB = db
 
 	// for duckdb, limit connections to 1 - DuckDB is designed for single-connection usage
-	w.DB.SetMaxOpenConns(1)
+	w.SetMaxOpenConns(1)
 
 	if len(w.extensions) > 0 {
 		// install and load the JSON extension
@@ -62,16 +61,7 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 		}
 	}
 	if w.ducklakeEnabled {
-		dataDir := config.GlobalWorkspaceProfile.GetDataDir()
-		// TODO #DL tactical - for now check env for data dir override
-		// remove this for prod release https://github.com/turbot/tailpipe/issues/520
-		if envDir := os.Getenv("TAILPIPE_DATA_DIR"); envDir != "" {
-			dataDir = envDir
-		}
-
-		ducklakeDb := config.GlobalWorkspaceProfile.GetDucklakeDbPath()
-
-		if err := connectDucklake(context.Background(), db, ducklakeDb, dataDir); err != nil {
+		if err := w.connectDucklake(context.Background()); err != nil {
 			return nil, fmt.Errorf("failed to connect to DuckLake: %w", err)
 		}
 
@@ -181,75 +171,40 @@ func (d *DuckDb) installAndLoadExtensions() error {
 	return nil
 }
 
-// TODO share logic with connect to build sql for this
-func connectDucklake(ctx context.Context, db *sql.DB, dbPath, dataPath string) error {
-
-	// 1. Install sqlite extension
-	slog.Info("loading sqlite extension")
-	_, err := db.ExecContext(ctx, "install sqlite")
-	if err != nil {
-		return fmt.Errorf("failed to install sqlite extension: %w", err)
+// connectDucklake connects the given DuckDB connection to DuckLake
+func (d *DuckDb) connectDucklake(ctx context.Context) error {
+	// we share the same set of commands for tailpipe connection - get init commands and execute them
+	commands := GetDucklakeInitCommands()
+	for _, cmd := range commands {
+		slog.Info(cmd.Description, "command", cmd.Command)
+		_, err := d.ExecContext(ctx, cmd.Command)
+		if err != nil {
+			return fmt.Errorf("%s failed: %w", cmd.Description, err)
+		}
 	}
 
-	// 2. Install extensions
-	// TODO #DL tactical code for S3 - remove before release https://github.com/turbot/tailpipe/issues/520
-	if envDir := os.Getenv("TAILPIPE_DATA_DIR"); strings.HasPrefix(envDir, "s3") {
-		slog.Info("loading parquet, httpfs, aws extensions for S3")
+	return nil
+}
 
-		// load aws, http and parquet for S3 support
-		_, err = db.ExecContext(ctx, "install parquet")
-		if err != nil {
-			return fmt.Errorf("failed to install parquet extension: %w", err)
-		}
-		_, err = db.ExecContext(ctx, "install httpfs")
-		if err != nil {
-			return fmt.Errorf("failed to install httpfs extension: %w", err)
-		}
-		_, err = db.ExecContext(ctx, "install aws")
-		if err != nil {
-			return fmt.Errorf("failed to install aws extension: %w", err)
-		}
-		slog.Info("loading aws credentials")
-		// load aws creds
-		_, err = db.ExecContext(ctx, "call load_aws_credentials()")
-		if err != nil {
-			return fmt.Errorf("failed to load aws credentials: %w", err)
-		}
-
-	}
-
-	// TODO #DL change to using prod extension when stable
-	//  https://github.com/turbot/tailpipe/issues/476
-	// _, err = db.Exec("install ducklake;")
-	_, err = db.ExecContext(ctx, "force install ducklake from core_nightly")
-	if err != nil {
-		return fmt.Errorf("failed to install ducklake nightly extension: %w", err)
-	}
-
-	// 3. Attach the sqlite database as my_ducklake
-	// NOTE: set journal mode to WAL and synchronous to NORMAL for better performance
-	slog.Info("attaching sqlite database", "bbPath", dbPath, "dataPath", dataPath)
-
-	// set journal mode to WAL and synchronous to NORMAL for better performance
-	var attachQuery = fmt.Sprintf(`attach 'ducklake:sqlite:%s' AS %s (
+// GetDucklakeInitCommands returns the set of SQL commands required to initialize and connect to DuckLake.
+// this is used both for tailpipe to connect to ducklake and also for tailpipe connect to build the init script
+// It returns an ordered slice of SQL commands.
+func GetDucklakeInitCommands() []SqlCommand {
+	attachQuery := fmt.Sprintf(`attach 'ducklake:sqlite:%s' AS %s (
 	data_path '%s/', 
 	meta_journal_mode 'WAL', 
 	meta_synchronous 'NORMAL')`,
-		dbPath,
+		config.GlobalWorkspaceProfile.GetDucklakeDbPath(),
 		pconstants.DuckLakeCatalog,
-		dataPath)
-	_, err = db.ExecContext(ctx, attachQuery)
-	if err != nil {
-		return fmt.Errorf("failed to attach sqlite database: %w", err)
+		config.GlobalWorkspaceProfile.GetDataDir())
+
+	commands := []SqlCommand{
+		{Description: "install sqlite extension", Command: "install sqlite"},
+		// TODO #DL change to using prod extension when stable
+		//  https://github.com/turbot/tailpipe/issues/476
+		// _, err = db.Exec("install ducklake;")
+		{Description: "install ducklake extension", Command: "force install ducklake from core_nightly"},
+		{Description: "attach to ducklake database", Command: attachQuery},
 	}
-
-	// TODO #DL figure out appropriate row group size https://github.com/turbot/tailpipe/issues/514
-	// 4. Set the row group size for parquet files
-	// rowGroupQuery := fmt.Sprintf("call ducklake_set_option('%s', 'parquet_row_group_size', 10000);", constants.DuckLakeCatalog)
-	// _, err = db.ExecContext(ctx, rowGroupQuery)
-	// if err != nil {
-	//	return fmt.Errorf("failed to attach sqlite database: %v", err)
-	// }
-
-	return nil
+	return commands
 }

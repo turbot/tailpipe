@@ -4,12 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/exp/maps"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"golang.org/x/exp/maps"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -117,53 +116,40 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 }
 
 func generateInitFile(ctx context.Context) (string, error) {
+	// generate a filename to write the init sql to, inside the data dir
 	initFilePath := generateInitFilename(config.GlobalWorkspaceProfile.GetDataDir())
 
-	// first build the filters
+	// get the sql to attach to the database
+	commands := database.GetDucklakeInitCommands()
+
+	// build the filters from the to, from and index args
+	// these will be used in the view definitions
 	filters, err := getFilters()
 	if err != nil {
 		return "", fmt.Errorf("error building filters: %w", err)
 	}
 
-	// get the sql to attach to the database
-	attachQuery := fmt.Sprintf(`attach 'ducklake:sqlite:%s' AS %s (
-	data_path '%s/', 
-	meta_journal_mode 'WAL', 
-	meta_synchronous 'NORMAL')`,
-		config.GlobalWorkspaceProfile.GetDucklakeDbPath(),
-		pconstants.DuckLakeCatalog,
-		config.GlobalWorkspaceProfile.GetDataDir())
-
-	commands := []string{
-		"-- Install SQLite extension",
-		"install sqlite",
-		"-- Install DuckLake extension",
-		// TODO #DL change to using prod extension when stable
-		//  https://github.com/turbot/tailpipe/issues/476
-		// _, err = db.Exec("install ducklake;")
-		"force install ducklake from core_nightly",
-		"-- Attach Tailpipe database",
-		attachQuery,
-	}
-
+	// create a temporary duckdb instance pass to get the view definitions
 	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
 	if err != nil {
 		return "", fmt.Errorf("failed to create duckdb: %w", err)
 	}
 	defer db.Close()
 
-	// get list of tables
-	tables, err := database.GetTables(ctx, db)
+	// get the view creation SQL, with filters applied
+	viewCommands, err := database.GetCreateViewsSql(ctx, db, filters...)
 	if err != nil {
-		return "", fmt.Errorf("failed to get db tables: %w", err)
+		return "", err
 	}
-
-	// get sql to create views for the tables
-	viewCommands := getCreateViewsSql(tables, filters...)
 	commands = append(commands, viewCommands...)
 
+	// now build a string
+	var str strings.Builder
+	for _, cmd := range commands {
+		str.WriteString(fmt.Sprintf("-- %s\n%s;\n\n", cmd.Description, cmd.Command))
+	}
 	// write out the init file
-	err = os.WriteFile(initFilePath, []byte(strings.Join(commands, ";\n")+";\n"), 0644)
+	err = os.WriteFile(initFilePath, []byte(str.String()), 0644)
 	if err != nil {
 		return "", fmt.Errorf("failed to write init file: %w", err)
 	}
@@ -199,21 +185,8 @@ func displayOutput(ctx context.Context, databaseFilePath string, err error) {
 	}
 }
 
-func getCreateViewsSql(tables []string, filters ...string) []string {
-	// Step 3: Build the where clause
-	filterString := ""
-	if len(filters) > 0 {
-		filterString = fmt.Sprintf(" where %s", strings.Join(filters, " and "))
-	}
-
-	results := make([]string, len(tables)*2) // comments + queries
-	for i, table := range tables {
-		results[i*2] = fmt.Sprintf("-- Query table: %s", table)
-		results[i*2+1] = fmt.Sprintf("select * from %s.%s%s", pconstants.DuckLakeCatalog, table, filterString)
-	}
-	return results
-}
-
+// getFilters builds a set of SQL filters based on the provided command line args
+// supported args are `from`, `to`, `partition` and `index`
 func getFilters() ([]string, error) {
 	var result []string
 	if viper.IsSet(pconstants.ArgFrom) {
@@ -267,9 +240,10 @@ func getFilters() ([]string, error) {
 	return result, nil
 }
 
+// getPartitionSqlFilters builds SQL filters for the provided partition args
 func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string) (string, error) {
-	// Get table and partition patterns using getPartitionPatterns
-	patterns, err := getPartitionPatterns(partitionArgs, availablePartitions)
+	// Get table and partition patterns using GetPartitionPatternsForArgs
+	patterns, err := parquet.GetPartitionPatternsForArgs(availablePartitions, partitionArgs...)
 	if err != nil {
 		return "", fmt.Errorf("error processing partition args: %w", err)
 	}
@@ -325,6 +299,7 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 	return sqlFilters, nil
 }
 
+// getIndexSqlFilters builds SQL filters for the provided index args
 func getIndexSqlFilters(indexArgs []string) (string, error) {
 	// Return empty if no indexes provided
 	if len(indexArgs) == 0 {
@@ -354,11 +329,11 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 }
 
 // convert partition patterns with '*' wildcards to SQL '%' wildcards
-func replaceWildcards(patterns []parquet.PartitionPattern) []parquet.PartitionPattern {
-	updatedPatterns := make([]parquet.PartitionPattern, len(patterns))
+func replaceWildcards(patterns []*parquet.PartitionPattern) []*parquet.PartitionPattern {
+	updatedPatterns := make([]*parquet.PartitionPattern, len(patterns))
 
 	for i, p := range patterns {
-		updatedPatterns[i] = parquet.PartitionPattern{
+		updatedPatterns[i] = &parquet.PartitionPattern{
 			Table:     strings.ReplaceAll(p.Table, "*", "%"),
 			Partition: strings.ReplaceAll(p.Partition, "*", "%")}
 	}

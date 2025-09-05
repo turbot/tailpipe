@@ -23,7 +23,7 @@ type partitionKey struct {
 
 // query the ducklake_data_file table to get all partition keys combinations which satisfy the provided patterns,
 // along with the file and row stats for each partition key combination
-func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, patterns []PartitionPattern) ([]*partitionKey, error) {
+func getPartitionKeysMatchingPattern(ctx context.Context, db *database.DuckDb, patterns []*PartitionPattern) ([]*partitionKey, error) {
 	// This query joins the DuckLake metadata tables to get partition key combinations:
 	// - ducklake_data_file: contains file metadata and links to tables
 	// - ducklake_file_partition_value: contains partition values for each file

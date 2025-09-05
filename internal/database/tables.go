@@ -30,8 +30,8 @@ func GetTables(ctx context.Context, db *DuckDb) ([]string, error) {
 	return tableViews, nil
 }
 
-func GetTableSchema(ctx context.Context, viewName string, db *DuckDb) (map[string]string, error) {
-
+// GetTableSchema returns the schema of the specified table as a map of column names to their types
+func GetTableSchema(ctx context.Context, tableName string, db *DuckDb) (map[string]string, error) {
 	query := fmt.Sprintf(`select c.column_name, c.column_type
 from %s.ducklake_table t
 join %s.ducklake_column c
@@ -39,9 +39,9 @@ join %s.ducklake_column c
 where t.table_name = ?
 order by c.column_name;`, constants.DuckLakeMetadataCatalog, constants.DuckLakeMetadataCatalog)
 
-	rows, err := db.QueryContext(ctx, query, viewName)
+	rows, err := db.QueryContext(ctx, query, tableName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get view schema for %s: %w", viewName, err)
+		return nil, fmt.Errorf("failed to get view schema for %s: %w", tableName, err)
 	}
 	defer rows.Close()
 
