@@ -8,6 +8,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/constants"
 )
 
+// GetTables returns the list of tables in the DuckLake metadata catalog
 func GetTables(ctx context.Context, db *DuckDb) ([]string, error) {
 
 	query := fmt.Sprintf("select table_name from %s.ducklake_table", constants.DuckLakeMetadataCatalog)
