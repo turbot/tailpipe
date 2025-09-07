@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"log/slog"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
@@ -9,9 +11,11 @@ import (
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/migration"
 )
 
 var exitCode int
+var withMigration func(run func(cmd *cobra.Command, args []string)) func(cmd *cobra.Command, args []string)
 
 // Build the cobra command that handles our command line tool.
 func rootCommand() *cobra.Command {
@@ -32,6 +36,17 @@ func rootCommand() *cobra.Command {
 
 	rootCmd.SetVersionTemplate("Tailpipe v{{.Version}}\n")
 
+	// helper: wrap any Run func with migration
+	withMigration = func(run func(cmd *cobra.Command, args []string)) func(cmd *cobra.Command, args []string) {
+		return func(cmd *cobra.Command, args []string) {
+			if err := migration.MigrateDataToDucklake(cmd.Context()); err != nil {
+				slog.Error("Failed to migrate legacy data: ", "error", err)
+			}
+			run(cmd, args)
+		}
+	}
+
+	// TODO #config this will not reflect changes to install-dir - do we need to default in a different way https://github.com/turbot/tailpipe/issues/112
 	defaultConfigPath := filepaths.EnsureConfigDir()
 
 	cmdconfig.

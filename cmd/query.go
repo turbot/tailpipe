@@ -27,7 +27,7 @@ func queryCmd() *cobra.Command {
 		Use:              "query [sql] [flags]",
 		Args:             cobra.ArbitraryArgs,
 		TraverseChildren: true,
-		Run:              runQueryCmd,
+		Run:              withMigration(runQueryCmd),
 		Short:            "Execute a query against the workspace database",
 		Long: `Execute SQL queries interactively, or by a query argument.
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
@@ -21,96 +22,142 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
 
-	dataHasDb := hasTailpipeDb(dataDefaultDir)
-	migratingHasDb := hasTailpipeDb(migratingDefaultDir)
+	// if the ~/.tailpipe/data directory has a .db file, it means that this is the first time we are migrating
+	// if the ~/.tailpipe/migration/migrating directory has a .db file, it means that this is a resume migration
+	initialMigration := hasTailpipeDb(dataDefaultDir)
+	continueMigration := hasTailpipeDb(migratingDefaultDir)
 
-	if !dataHasDb && !migratingHasDb {
+	// STEP 1: Check if migration is needed
+	// We need to migrate if it is the first time we are migrating or if we are resuming a migration
+	if !initialMigration && !continueMigration {
 		slog.Info("No migration needed - no tailpipe.db found in data or migrating directory")
 		return nil
 	}
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
+	}
 
 	// Choose DB path for discovery
+	// If this is the first time we are migrating, we need to use .db file from the ~/.tailpipe/data directory
+	// If this is a resume migration, we need to use .db file from the ~/.tailpipe/migration/migrating directory
 	var discoveryDbPath string
-	if dataHasDb {
+	if initialMigration {
 		discoveryDbPath = filepath.Join(dataDefaultDir, "tailpipe.db")
 	} else {
 		discoveryDbPath = filepath.Join(migratingDefaultDir, "tailpipe.db")
 	}
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
+	}
 
-	// STEP 1: Discover legacy tables and their schemas (from chosen DB)
-	views, schemas, err := discoverLegacyTables(ctx, discoveryDbPath)
+	// STEP 2: Discover legacy tables and their schemas (from chosen DB path)
+	// This returns the list of views and a map of view name to its schema
+	views, schemas, err := discoverLegacyTablesAndSchemas(ctx, discoveryDbPath)
 	if err != nil {
 		return fmt.Errorf("failed to discover legacy tables: %w", err)
+	}
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
 	}
 	slog.Info("Views: ", "views", views)
 	slog.Info("Schemas: ", "schemas", schemas)
 
-	// STEP 2: If migration is needed (detected .db in data dir), move the whole contents of data dir
+	// STEP 3: If this is the first time we are migrating(tables in ~/.tailpipe/data) then move the whole contents of data dir
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
-	if dataHasDb {
+	if initialMigration {
 		if err := utils.MoveDirContents(dataDefaultDir, migratingDefaultDir); err != nil {
 			return fmt.Errorf("failed to move data dir contents to migrating: %w", err)
 		}
 	}
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
+	}
 
-	// Scan migrating/default for tp_table=*
+	// STEP 4: We have now moved the data into migrating. We have the list of views from the legacy DB.
+	// We now need to find the matching table directories in migrating/default by scanning migrating/
+	// for tp_table=* directories.
+	// The matching table directories are the ones that have a view in the database.
+	// The unmatched table directories are the ones that have data(.parquet files) but no view in the database.
+	// We will move these to migrated/default.
+
+	// set the base directory to ~.tailpipe/migration/migrating/
 	baseDir := migratingDefaultDir
-	matchedTableDirs, unmatchedTableDirs, err := findMatchingTableDirs(baseDir, views)
+	matchedTableDirs, err := getMatchedTableDirs(ctx, baseDir, views)
 	if err != nil {
 		return err
 	}
-	slog.Info("Matched tp_table directories", "dirs", matchedTableDirs)
-	for _, d := range unmatchedTableDirs {
-		tname := strings.TrimPrefix(filepath.Base(d), "tp_table=")
-		slog.Warn("Table %s has data but no view in database; moving without migration", "table", tname, "dir", d)
-		if err := moveDirFromMigratingToMigrated(d); err != nil {
-			return err
-		}
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
 	}
 
-	// STEP 3: Traverse matched table directories, find leaf nodes with parquet files,
+	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
 	// and perform INSERT within a transaction. On success, move leaf dir to migrated.
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	failedTables, err := doMigration(ctx, matchedTableDirs, schemas)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
+	}
 
-	for _, tableDir := range matchedTableDirs {
-		tableName := strings.TrimPrefix(filepath.Base(tableDir), "tp_table=")
-		if tableName == "" {
-			continue
-		}
-		ts := schemas[tableName]
-		if err := migrateTableDirectory(ctx, db, tableName, tableDir, ts); err != nil {
+	// If any tables failed, do NOT move the legacy DB file - this signals resume is needed
+	// TODO comment - If successful, we can move the legacy DB file
+	// TODO also find if there are still parquet files in migrating
+	if len(failedTables) == 0 {
+		// After migrating all leaf nodes, move the legacy tailpipe.db file to migrated (if present)
+		if err := moveLegacyDbFile(migratingDefaultDir); err != nil {
 			return err
 		}
+	} else {
+		slog.Warn("Migration completed with failures; leaving legacy DB in migrating to allow resume", "failed_tables", failedTables)
 	}
-
-	// After migrating all leaf nodes, move the legacy tailpipe.db file to migrated (if present)
-	if err := moveLegacyDbFile(migratingDefaultDir); err != nil {
-		return err
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return ctx.Err()
 	}
-	// Finally, prune any empty directories left in migrating/default
+	// Prune any empty directories left in migrating/default (successful leaves already moved)
 	if err := filepaths.PruneTree(migratingDefaultDir); err != nil {
 		return fmt.Errorf("failed to prune empty directories in migrating: %w", err)
 	}
 
+	// print migration summary to stderr
+	successCount := len(matchedTableDirs) - len(failedTables)
+	if len(failedTables) == 0 {
+		fmt.Fprintln(os.Stderr, "Migration status: SUCCESS")
+	} else {
+		fmt.Fprintln(os.Stderr, "Migration status: INCOMPLETE")
+	}
+	fmt.Fprintf(os.Stderr, "Tables migrated successfully: %d\n", successCount)
+	fmt.Fprintf(os.Stderr, "Tables failed: %d\n", len(failedTables))
+
 	return nil
 }
 
-// discoverLegacyTables enumerates legacy DuckDB views and, for each view, its schema.
+// discoverLegacyTablesAndSchemas enumerates legacy DuckDB views and, for each view, its schema.
 // It returns the list of view names and a map of view name to its schema (column->type).
 // If the legacy database contains no views, both return values are empty.
-func discoverLegacyTables(ctx context.Context, dbPath string) ([]string, map[string]*schema.TableSchema, error) {
-	views, err := database.GetLegacyTableViews(ctx, dbPath)
+func discoverLegacyTablesAndSchemas(ctx context.Context, dbPath string) ([]string, map[string]*schema.TableSchema, error) {
+	// open a duckdb connection to the legacy legacyDb
+	legacyDb, err := database.NewDuckDb(database.WithDbFile(dbPath))
+	if err != nil {
+		return nil, nil, err
+	}
+	defer legacyDb.Close()
+
+	views, err := database.GetLegacyTableViews(ctx, legacyDb)
 	if err != nil || len(views) == 0 {
 		return []string{}, map[string]*schema.TableSchema{}, err
+	}
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return nil, nil, ctx.Err()
 	}
 
 	schemas := make(map[string]*schema.TableSchema)
 	for _, v := range views {
-		ts, err := database.GetLegacyTableViewSchema(ctx, v, dbPath)
+		if perr.IsContextCancelledError(ctx.Err()) {
+			return nil, nil, ctx.Err()
+		}
+		// get row count for the view (optional future optimization) and schema
+		ts, err := database.GetLegacyTableViewSchema(ctx, v, legacyDb)
 		if err != nil {
 			continue
 		}
@@ -126,6 +173,7 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 	// create the table if not exists
 	err := parquet.EnsureDuckLakeTable(ts.Columns, db, tableName)
 	if err != nil {
+		// fatal
 		return err
 	}
 	entries, err := os.ReadDir(dirPath)
@@ -134,11 +182,19 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 	}
 
 	var parquetFiles []string
+	var firstErr error
 	for _, entry := range entries {
+		if perr.IsContextCancelledError(ctx.Err()) {
+			return ctx.Err()
+		}
 		if entry.IsDir() {
 			subDir := filepath.Join(dirPath, entry.Name())
 			if err := migrateTableDirectory(ctx, db, tableName, subDir, ts); err != nil {
-				return err
+				// record the first error but continue to process siblings
+				if firstErr == nil {
+					firstErr = err
+				}
+				continue
 			}
 			continue
 		}
@@ -182,44 +238,96 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		_, err = tx.ExecContext(ctx, insertQuery)
 
 		if err != nil {
+			slog.Debug("Rollbacking transaction", "table", tableName, "error", err)
 			_ = tx.Rollback()
 			return err
 		}
 
 		if err := tx.Commit(); err != nil {
+			slog.Error("Committing transaction", "table", tableName, "error", err)
 			return err
 		}
+
+		slog.Info(">> successfully committed", "table", tableName, "dir", dirPath, "files", len(parquetFiles))
 
 		// On success, move the entire leaf directory from migrating to migrated
 		migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
 		migratedRoot := config.GlobalWorkspaceProfile.GetMigratedDir()
-		destDir := strings.Replace(dirPath, migratingRoot, migratedRoot, 1)
+		rel, err := filepath.Rel(migratingRoot, dirPath)
+		if err != nil {
+			return err
+		}
+		destDir := filepath.Join(migratedRoot, rel)
 		if err := os.MkdirAll(filepath.Dir(destDir), 0755); err != nil {
 			return err
 		}
-		if err := os.Rename(dirPath, destDir); err != nil {
+		if err := utils.MoveDirContents(dirPath, destDir); err != nil {
 			return err
 		}
+		_ = os.Remove(dirPath)
 		slog.Info("Migrated leaf node", "table", tableName, "source", dirPath, "destination", destDir)
 	}
 
-	return nil
+	return firstErr
 }
 
-// moveDirFromMigratingToMigrated moves a directory tree from the migrating root to the migrated root.
-func moveDirFromMigratingToMigrated(srcPath string) error {
-	migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
-	migratedRoot := config.GlobalWorkspaceProfile.GetMigratedDir()
-	if !strings.HasPrefix(srcPath, migratingRoot) {
-		return fmt.Errorf("path %s is not within migrating root %s", srcPath, migratingRoot)
-	}
-	rel, err := filepath.Rel(migratingRoot, srcPath)
+// getMatchedTableDirs returns the list of matched table directories
+// any unmatched(no views in db) table directories are moved to ~/.tailpipe/migration/migrated/
+func getMatchedTableDirs(ctx context.Context, baseDir string, views []string) ([]string, error) {
+	matchedTableDirs, unmatchedTableDirs, err := findMatchingTableDirs(baseDir, views)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	destPath := filepath.Join(migratedRoot, rel)
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
-		return err
+	slog.Info("Matched tp_table directories", "dirs", matchedTableDirs)
+	for _, d := range unmatchedTableDirs {
+		if perr.IsContextCancelledError(ctx.Err()) {
+			return matchedTableDirs, ctx.Err()
+		}
+		// move to ~/.tailpipe/migration/migrated/
+		tname := strings.TrimPrefix(filepath.Base(d), "tp_table=")
+		slog.Warn("Table %s has data but no view in database; moving without migration", "table", tname, "dir", d)
+		migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
+		migratedRoot := config.GlobalWorkspaceProfile.GetMigratedDir()
+		rel, err := filepath.Rel(migratingRoot, d)
+		if err != nil {
+			return matchedTableDirs, err
+		}
+		destPath := filepath.Join(migratedRoot, rel)
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return matchedTableDirs, err
+		}
+		if err := utils.MoveDirContents(d, destPath); err != nil {
+			return matchedTableDirs, err
+		}
+		_ = os.Remove(d)
 	}
-	return os.Rename(srcPath, destPath)
+	return matchedTableDirs, nil
+}
+
+// doMigration performs the migration of the matched table directories
+// it returns a list of tables that failed to migrate
+func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema) ([]string, error) {
+	ducklakeDb, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	if err != nil {
+		return nil, err
+	}
+	defer ducklakeDb.Close()
+
+	var failedTables []string
+	for _, tableDir := range matchedTableDirs {
+		if perr.IsContextCancelledError(ctx.Err()) {
+			return failedTables, ctx.Err()
+		}
+		tableName := strings.TrimPrefix(filepath.Base(tableDir), "tp_table=")
+		if tableName == "" {
+			continue
+		}
+		ts := schemas[tableName]
+		if err := migrateTableDirectory(ctx, ducklakeDb, tableName, tableDir, ts); err != nil {
+			slog.Warn("Migration failed for table; continuing", "table", tableName, "error", err)
+			failedTables = append(failedTables, tableName)
+			continue
+		}
+	}
+	return failedTables, nil
 }

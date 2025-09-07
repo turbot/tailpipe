@@ -36,7 +36,7 @@ func connectCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "connect [flags]",
 		Args:  cobra.ArbitraryArgs,
-		Run:   runConnectCmd,
+		Run:   withMigration(runConnectCmd),
 		Short: "Return the path of SQL script to initialise DuckDB to use the tailpipe database",
 		Long: `Return the path of SQL script to initialise DuckDB to use the tailpipe database.
 

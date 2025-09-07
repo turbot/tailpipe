@@ -78,7 +78,7 @@ func pluginInstallCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "install [flags] [registry/org/]name[@version]",
 		Args:  cobra.ArbitraryArgs,
-		Run:   runPluginInstallCmd,
+		Run:   withMigration(runPluginInstallCmd),
 		Short: "Install one or more plugins",
 		Long: `Install one or more plugins.
 
@@ -99,10 +99,7 @@ Examples:
   tailpipe plugin install turbot/azure@0.1.0
 
   # Hide progress bars during installation
-  tailpipe plugin install --progress=false aws
-
-  # Skip creation of default plugin config file
-  tailpipe plugin install --skip-config aws`,
+  tailpipe plugin install --progress=false aws`,
 	}
 
 	cmdconfig.
@@ -117,7 +114,7 @@ func pluginUpdateCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "update [flags] [registry/org/]name[@version]",
 		Args:  cobra.ArbitraryArgs,
-		Run:   runPluginUpdateCmd,
+		Run:   withMigration(runPluginUpdateCmd),
 		Short: "Update one or more plugins",
 		Long: `Update plugins.
 
@@ -155,7 +152,7 @@ func pluginListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "list",
 		Args:  cobra.NoArgs,
-		Run:   runPluginListCmd,
+		Run:   withMigration(runPluginListCmd),
 		Short: "List currently installed plugins",
 		Long: `List currently installed plugins.
 
@@ -185,9 +182,10 @@ Examples:
 // Show plugin
 func pluginShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   "show <plugin>",
-		Args:  cobra.ExactArgs(1),
-		Run:   runPluginShowCmd,
+		Use:  "show <plugin>",
+		Args: cobra.ExactArgs(1),
+		Run:  withMigration(runPluginShowCmd),
+		// TODO improve descriptions https://github.com/turbot/tailpipe/issues/111
 		Short: "Show details of a plugin",
 		Long:  `Show the tables and sources provided by plugin`,
 	}
@@ -206,7 +204,7 @@ func pluginUninstallCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "uninstall [flags] [registry/org/]name",
 		Args:  cobra.ArbitraryArgs,
-		Run:   runPluginUninstallCmd,
+		Run:   withMigration(runPluginUninstallCmd),
 		Short: "Uninstall a plugin",
 		Long: `Uninstall a plugin.
 

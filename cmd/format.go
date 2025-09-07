@@ -54,7 +54,7 @@ func formatListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "list",
 		Args:  cobra.NoArgs,
-		Run:   runFormatListCmd,
+		Run:   withMigration(runFormatListCmd),
 		Short: "List all formats.",
 		Long:  `List all formats.`,
 	}
@@ -118,7 +118,7 @@ func formatShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "show [format]",
 		Args:  cobra.ExactArgs(1),
-		Run:   runFormatShowCmd,
+		Run:   withMigration(runFormatShowCmd),
 		Short: "Show details for a specific format",
 		Long:  `Show details for a specific format.`,
 	}

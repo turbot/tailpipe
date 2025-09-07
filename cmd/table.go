@@ -52,7 +52,7 @@ func tableListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "list",
 		Args:  cobra.NoArgs,
-		Run:   runTableListCmd,
+		Run:   withMigration(runTableListCmd),
 		Short: "List all tables.",
 		Long:  `List all tables.`,
 	}
@@ -122,7 +122,7 @@ func tableShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "show <table>",
 		Args:  cobra.ExactArgs(1),
-		Run:   runTableShowCmd,
+		Run:   withMigration(runTableShowCmd),
 		Short: "Show details for a specific table.",
 		Long:  `Show details for a specific table.`,
 	}

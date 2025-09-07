@@ -66,14 +66,7 @@ order by c.column_name;`, constants.DuckLakeMetadataCatalog, constants.DuckLakeM
 	return schema, nil
 }
 
-func GetLegacyTableViews(ctx context.Context, dbPath string) ([]string, error) {
-	// Open a DuckDB connection
-	db, err := NewDuckDb(WithDbFile(dbPath))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
+func GetLegacyTableViews(ctx context.Context, db *DuckDb) ([]string, error) {
 	query := "select table_name from information_schema.tables where table_type='VIEW';"
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
@@ -93,14 +86,7 @@ func GetLegacyTableViews(ctx context.Context, dbPath string) ([]string, error) {
 	return tableViews, nil
 }
 
-func GetLegacyTableViewSchema(ctx context.Context, viewName string, dbPath string) (*schema.TableSchema, error) {
-	// Open a DuckDB connection
-	db, err := NewDuckDb(WithDbFile(dbPath))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
+func GetLegacyTableViewSchema(ctx context.Context, viewName string, db *DuckDb) (*schema.TableSchema, error) {
 	query := `
 		select column_name, data_type 
 		from information_schema.columns 

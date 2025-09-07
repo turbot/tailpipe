@@ -26,7 +26,7 @@ func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compact [table|table.partition] [flags]",
 		Args:  cobra.MaximumNArgs(1),
-		Run:   runCompactCmd,
+		Run:   withMigration(runCompactCmd),
 		Short: "Compact multiple parquet files per day to one per day",
 		Long:  `Compact multiple parquet files per day to one per day.`,
 	}
