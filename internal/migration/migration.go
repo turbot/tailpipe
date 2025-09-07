@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
@@ -21,6 +22,17 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
+	migratedDefaultDir := config.GlobalWorkspaceProfile.GetMigratedDir()
+	// failed dir is derived via GetMigrationFailedDir() where needed
+
+	var matchedTableDirs []string
+	var failedTables []string
+	cancelledHandled := false
+	defer func() {
+		if perr.IsContextCancelledError(ctx.Err()) && !cancelledHandled {
+			_ = onCancelled(ctx, matchedTableDirs, failedTables)
+		}
+	}()
 
 	// if the ~/.tailpipe/data directory has a .db file, it means that this is the first time we are migrating
 	// if the ~/.tailpipe/migration/migrating directory has a .db file, it means that this is a resume migration
@@ -64,7 +76,14 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// STEP 3: If this is the first time we are migrating(tables in ~/.tailpipe/data) then move the whole contents of data dir
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
+	// First-run: copy tailpipe.db into migrated immediately, then move data contents into migrating
 	if initialMigration {
+		if err := os.MkdirAll(migratedDefaultDir, 0755); err != nil {
+			return err
+		}
+		if err := utils.CopyFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(migratedDefaultDir, "tailpipe.db")); err != nil {
+			return fmt.Errorf("failed to copy legacy db to migrated: %w", err)
+		}
 		if err := utils.MoveDirContents(dataDefaultDir, migratingDefaultDir); err != nil {
 			return fmt.Errorf("failed to move data dir contents to migrating: %w", err)
 		}
@@ -82,7 +101,7 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// set the base directory to ~.tailpipe/migration/migrating/
 	baseDir := migratingDefaultDir
-	matchedTableDirs, err := getMatchedTableDirs(ctx, baseDir, views)
+	matchedTableDirs, err = getMatchedTableDirs(ctx, baseDir, views)
 	if err != nil {
 		return err
 	}
@@ -92,42 +111,28 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
 	// and perform INSERT within a transaction. On success, move leaf dir to migrated.
-	failedTables, err := doMigration(ctx, matchedTableDirs, schemas)
-	if err != nil {
+	failedTables, err = doMigration(ctx, matchedTableDirs, schemas)
+	if perr.IsContextCancelledError(err) || perr.IsContextCancelledError(ctx.Err()) {
+		_ = onCancelled(ctx, matchedTableDirs, failedTables)
+		cancelledHandled = true
 		return err
 	}
-	if perr.IsContextCancelledError(ctx.Err()) {
-		return ctx.Err()
+	if err != nil {
+		// Unexpected error — treat as failure outcome
+		_ = onFailed(ctx, matchedTableDirs, failedTables)
+		return err
 	}
 
-	// If any tables failed, do NOT move the legacy DB file - this signals resume is needed
-	// TODO comment - If successful, we can move the legacy DB file
-	// TODO also find if there are still parquet files in migrating
-	if len(failedTables) == 0 {
-		// After migrating all leaf nodes, move the legacy tailpipe.db file to migrated (if present)
-		if err := moveLegacyDbFile(migratingDefaultDir); err != nil {
+	// Post-migration outcomes
+	if len(failedTables) > 0 {
+		if err := onFailed(ctx, matchedTableDirs, failedTables); err != nil {
 			return err
 		}
 	} else {
-		slog.Warn("Migration completed with failures; leaving legacy DB in migrating to allow resume", "failed_tables", failedTables)
+		if err := onSuccessful(ctx, matchedTableDirs, failedTables); err != nil {
+			return err
+		}
 	}
-	if perr.IsContextCancelledError(ctx.Err()) {
-		return ctx.Err()
-	}
-	// Prune any empty directories left in migrating/default (successful leaves already moved)
-	if err := filepaths.PruneTree(migratingDefaultDir); err != nil {
-		return fmt.Errorf("failed to prune empty directories in migrating: %w", err)
-	}
-
-	// print migration summary to stderr
-	successCount := len(matchedTableDirs) - len(failedTables)
-	if len(failedTables) == 0 {
-		fmt.Fprintln(os.Stderr, "Migration status: SUCCESS")
-	} else {
-		fmt.Fprintln(os.Stderr, "Migration status: INCOMPLETE")
-	}
-	fmt.Fprintf(os.Stderr, "Tables migrated successfully: %d\n", successCount)
-	fmt.Fprintf(os.Stderr, "Tables failed: %d\n", len(failedTables))
 
 	return nil
 }
@@ -173,11 +178,13 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 	// create the table if not exists
 	err := parquet.EnsureDuckLakeTable(ts.Columns, db, tableName)
 	if err != nil {
-		// fatal
+		// fatal – move table dir to failed and return error
+		moveTableDirToFailed(dirPath)
 		return err
 	}
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
+		moveTableDirToFailed(dirPath)
 		return err
 	}
 
@@ -211,6 +218,7 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		// Begin transaction
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
+			moveTableDirToFailed(dirPath)
 			return err
 		}
 
@@ -240,11 +248,14 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		if err != nil {
 			slog.Debug("Rollbacking transaction", "table", tableName, "error", err)
 			_ = tx.Rollback()
+			moveTableDirToFailed(dirPath)
 			return err
 		}
+		// Note: cancellation will be handled by outer logic; if needed, you can check and rollback here.
 
 		if err := tx.Commit(); err != nil {
 			slog.Error("Committing transaction", "table", tableName, "error", err)
+			moveTableDirToFailed(dirPath)
 			return err
 		}
 
@@ -255,17 +266,22 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		migratedRoot := config.GlobalWorkspaceProfile.GetMigratedDir()
 		rel, err := filepath.Rel(migratingRoot, dirPath)
 		if err != nil {
+			moveTableDirToFailed(dirPath)
 			return err
 		}
 		destDir := filepath.Join(migratedRoot, rel)
 		if err := os.MkdirAll(filepath.Dir(destDir), 0755); err != nil {
+			moveTableDirToFailed(dirPath)
 			return err
 		}
 		if err := utils.MoveDirContents(dirPath, destDir); err != nil {
+			moveTableDirToFailed(dirPath)
 			return err
 		}
 		_ = os.Remove(dirPath)
 		slog.Info("Migrated leaf node", "table", tableName, "source", dirPath, "destination", destDir)
+		fmt.Printf("migrated %s, sleeping for 3 seconds\n", dirPath)
+		time.Sleep(3 * time.Second)
 	}
 
 	return firstErr
@@ -324,10 +340,68 @@ func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[str
 		}
 		ts := schemas[tableName]
 		if err := migrateTableDirectory(ctx, ducklakeDb, tableName, tableDir, ts); err != nil {
-			slog.Warn("Migration failed for table; continuing", "table", tableName, "error", err)
+			slog.Warn("Migration failed for table; moving to migration/failed", "table", tableName, "error", err)
 			failedTables = append(failedTables, tableName)
 			continue
 		}
 	}
 	return failedTables, nil
+}
+
+// moveTableDirToFailed moves a table directory from migrating to failed, preserving relative path.
+func moveTableDirToFailed(dirPath string) {
+	migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
+	failedRoot := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
+	rel, err := filepath.Rel(migratingRoot, dirPath)
+	if err != nil {
+		return
+	}
+	destDir := filepath.Join(failedRoot, rel)
+	_ = os.MkdirAll(filepath.Dir(destDir), 0755)
+	_ = utils.MoveDirContents(dirPath, destDir)
+	_ = os.Remove(dirPath)
+}
+
+// onSuccessful handles success outcome: cleans migrating db, prunes empty dirs, prints summary
+func onSuccessful(ctx context.Context, matchedTableDirs []string, failedTables []string) error {
+	// Remove any leftover db in migrating
+	_ = os.Remove(filepath.Join(config.GlobalWorkspaceProfile.GetMigratingDir(), "tailpipe.db"))
+	// Prune empty dirs in migrating
+	if err := filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir()); err != nil {
+		return fmt.Errorf("failed to prune empty directories in migrating: %w", err)
+	}
+	printSummary("SUCCESS", matchedTableDirs, failedTables)
+	return nil
+}
+
+// onCancelled handles cancellation outcome: keep migrating db, prune empties, print summary
+func onCancelled(ctx context.Context, matchedTableDirs []string, failedTables []string) error {
+	// Do not move db; just prune empties so tree is clean
+	_ = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir())
+	printSummary("CANCELLED", matchedTableDirs, failedTables)
+	return nil
+}
+
+// onFailed handles failure outcome: move db to failed, prune empties, print summary
+func onFailed(ctx context.Context, matchedTableDirs []string, failedTables []string) error {
+	failedDefaultDir := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
+	if err := os.MkdirAll(failedDefaultDir, 0755); err != nil {
+		return err
+	}
+	srcDb := filepath.Join(config.GlobalWorkspaceProfile.GetMigratingDir(), "tailpipe.db")
+	if _, err := os.Stat(srcDb); err == nil {
+		if err := utils.MoveFile(srcDb, filepath.Join(failedDefaultDir, "tailpipe.db")); err != nil {
+			return fmt.Errorf("failed to move legacy db to failed: %w", err)
+		}
+	}
+	_ = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir())
+	printSummary("INCOMPLETE", matchedTableDirs, failedTables)
+	return nil
+}
+
+func printSummary(status string, matchedTableDirs []string, failedTables []string) {
+	successCount := len(matchedTableDirs) - len(failedTables)
+	fmt.Fprintln(os.Stderr, "Migration status:", status)
+	fmt.Fprintf(os.Stderr, "Tables migrated successfully: %d\n", successCount)
+	fmt.Fprintf(os.Stderr, "Tables failed: %d\n", len(failedTables))
 }

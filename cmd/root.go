@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"log/slog"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -39,7 +41,12 @@ func rootCommand() *cobra.Command {
 	// helper: wrap any Run func with migration
 	withMigration = func(run func(cmd *cobra.Command, args []string)) func(cmd *cobra.Command, args []string) {
 		return func(cmd *cobra.Command, args []string) {
-			if err := migration.MigrateDataToDucklake(cmd.Context()); err != nil {
+			// create signal-aware context derived from the current command context
+			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)
+			defer stop()
+			cmd.SetContext(ctx)
+
+			if err := migration.MigrateDataToDucklake(ctx); err != nil {
 				slog.Error("Failed to migrate legacy data: ", "error", err)
 			}
 			run(cmd, args)
