@@ -68,7 +68,7 @@ func tableListCmd() *cobra.Command {
 }
 
 func runTableListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runSourceListCmd start")
@@ -86,7 +86,8 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	error_helpers.FailOnError(err)
 	defer db.Close()
 
@@ -128,7 +129,7 @@ func tableShowCmd() *cobra.Command {
 }
 
 func runTableShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runTableShowCmd start")
@@ -146,7 +147,8 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	error_helpers.FailOnError(err)
 	defer db.Close()
 

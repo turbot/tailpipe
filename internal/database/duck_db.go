@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"log/slog"
-	"os"
 )
 
 // DuckDb provides a wrapper around the sql.DB connection to DuckDB with enhanced error handling
@@ -24,7 +26,13 @@ type DuckDb struct {
 	tempDir         string
 	maxMemoryMb     int
 	ducklakeEnabled bool
-	viewFilters     []string
+	// create a read only connection to ducklake
+	duckLakeReadOnly bool
+
+	// a list of view filters - if this is set, we create a set of views in the database, one per table,
+	// applying the specified filter
+	// NOTE: if view filters are specified, the connection is set to READ ONLY mode (even if read only option is not set)
+	viewFilters []string
 }
 
 func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
@@ -162,7 +170,7 @@ func (d *DuckDb) installAndLoadExtensions() error {
 // connectDucklake connects the given DuckDB connection to DuckLake
 func (d *DuckDb) connectDucklake(ctx context.Context) error {
 	// we share the same set of commands for tailpipe connection - get init commands and execute them
-	commands := GetDucklakeInitCommands()
+	commands := GetDucklakeInitCommands(d.duckLakeReadOnly)
 	// if there are NO view filters, set the default catalog to ducklake
 	// if there are view filters, the views will be created in the default memory catalog so do not change the default
 	if len(d.viewFilters) == 0 {
@@ -227,14 +235,21 @@ func (d *DuckDb) setTempDir() error {
 // GetDucklakeInitCommands returns the set of SQL commands required to initialize and connect to DuckLake.
 // this is used both for tailpipe to connect to ducklake and also for tailpipe connect to build the init script
 // It returns an ordered slice of SQL commands.
-func GetDucklakeInitCommands() []SqlCommand {
+func GetDucklakeInitCommands(readonly bool) []SqlCommand {
+	attachOptions := []string{
+		fmt.Sprintf("data_path '%s'", config.GlobalWorkspaceProfile.GetDataDir()),
+		"meta_journal_mode 'WAL'",
+		"meta_synchronous 'NORMAL'",
+	}
+	// if readonly mode is requested, add the option
+	if readonly {
+		attachOptions = append(attachOptions, "READ_ONLY")
+	}
 	attachQuery := fmt.Sprintf(`attach 'ducklake:sqlite:%s' AS %s (
-	data_path '%s/', 
-	meta_journal_mode 'WAL', 
-	meta_synchronous 'NORMAL')`,
+	%s)`,
 		config.GlobalWorkspaceProfile.GetDucklakeDbPath(),
 		pconstants.DuckLakeCatalog,
-		config.GlobalWorkspaceProfile.GetDataDir())
+		strings.Join(attachOptions, ",\n\t"))
 
 	commands := []SqlCommand{
 		{Description: "install sqlite extension", Command: "install sqlite"},

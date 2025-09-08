@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"golang.org/x/exp/maps"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/connection"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
@@ -116,11 +118,17 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 }
 
 func generateInitFile(ctx context.Context) (string, error) {
+	// cleanup the old db files if not in use
+	err := cleanupOldInitFiles()
+	if err != nil {
+		return "", err
+	}
+
 	// generate a filename to write the init sql to, inside the data dir
 	initFilePath := generateInitFilename(config.GlobalWorkspaceProfile.GetDataDir())
 
-	// get the sql to attach to the database
-	commands := database.GetDucklakeInitCommands()
+	// get the sql to attach readonly to the database
+	commands := database.GetDucklakeInitCommands(true)
 
 	// build the filters from the to, from and index args
 	// these will be used in the view definitions
@@ -130,7 +138,7 @@ func generateInitFile(ctx context.Context) (string, error) {
 	}
 
 	// create a temporary duckdb instance pass to get the view definitions
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	if err != nil {
 		return "", fmt.Errorf("failed to create duckdb: %w", err)
 	}
@@ -154,6 +162,63 @@ func generateInitFile(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("failed to write init file: %w", err)
 	}
 	return initFilePath, err
+}
+
+// cleanupOldInitFiles deletes old db init files (older than a day)
+func cleanupOldInitFiles() error {
+	baseDir := pfilepaths.GetDataDir()
+	log.Printf("[INFO] Cleaning up old init files in %s\n", baseDir)
+	cutoffTime := time.Now().Add(-constants.InitFileMaxAge) // Files older than 1 day
+
+	// The baseDir ("$TAILPIPE_INSTALL_DIR/data") is expected to have subdirectories for different workspace
+	// profiles(default, work etc). Each subdirectory may contain multiple .db files.
+	// Example structure:
+	// data/
+	// ├── default/
+	// │   ├── tailpipe_init_20250115182129.sql
+	// │   ├── tailpipe_init_20250115193816.sql
+	// │   └── ...
+	// ├── work/
+	// │   ├── tailpipe_init_20250115182129.sql
+	// │   ├── tailpipe_init_20250115193816.sql
+	// │   └── ...
+	// So we traverse all these subdirectories for each workspace and process the relevant files.
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("error accessing path %s: %v", path, err)
+		}
+
+		// skip directories and non-`.sql` files
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".sql") {
+			return nil
+		}
+
+		// only process `tailpipe_init_*.sql` files
+		if !strings.HasPrefix(info.Name(), "tailpipe_init_") {
+			return nil
+		}
+
+		// check if the file is older than the cutoff time
+		if info.ModTime().After(cutoffTime) {
+			log.Printf("[DEBUG] Skipping deleting file %s(%s) as it is not older than %s\n", path, info.ModTime().String(), cutoffTime)
+			return nil
+		}
+
+		err = os.Remove(path)
+		if err != nil {
+			log.Printf("[INFO] Failed to delete db file %s: %v", path, err)
+		} else {
+			log.Printf("[DEBUG] Cleaned up old unused db file: %s\n", path)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
+
 }
 
 func displayOutput(ctx context.Context, initFilePath string, err error) {

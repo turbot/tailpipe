@@ -70,7 +70,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 
 	slog.Info("Compacting parquet files")
 
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	db, err := database.NewDuckDb(database.WithDuckLake())
 	error_helpers.FailOnError(err)
 	defer db.Close()
 

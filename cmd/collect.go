@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"log/slog"
 	"os"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )

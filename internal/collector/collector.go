@@ -89,10 +89,10 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	c.sourcePath = sourcePath
 
 	// create the DuckDB connection
-	// load json and inet extension in addition to the DuckLake extension - the convertor will need them
+	// load inet extension in addition to the DuckLake extension
 	db, err := database.NewDuckDb(
 		database.WithDuckDbExtensions(pconstants.DuckDbExtensions),
-		database.WithDuckLakeEnabled(true),
+		database.WithDuckLake(),
 	)
 
 	if err != nil {
