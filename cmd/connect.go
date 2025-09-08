@@ -157,7 +157,7 @@ func generateInitFile(ctx context.Context) (string, error) {
 		str.WriteString(fmt.Sprintf("-- %s\n%s;\n\n", cmd.Description, cmd.Command))
 	}
 	// write out the init file
-	err = os.WriteFile(initFilePath, []byte(str.String()), 0644)
+	err = os.WriteFile(initFilePath, []byte(str.String()), 0644) //nolint:gosec // we want the init file to be readable
 	if err != nil {
 		return "", fmt.Errorf("failed to write init file: %w", err)
 	}

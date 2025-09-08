@@ -78,17 +78,17 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 	return nil
 }
 
-// nolint: unused // TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
-// mergeParquetFiles combines adjacent parquet files in the DuckDB database.
-func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
-	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
-		if ctx.Err() != nil {
-			return err
-		}
-		return fmt.Errorf("failed to merge parquet files: %w", err)
-	}
-	return nil
-}
+// TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
+//// mergeParquetFiles combines adjacent parquet files in the DuckDB database.
+//func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
+//	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
+//		if ctx.Err() != nil {
+//			return err
+//		}
+//		return fmt.Errorf("failed to merge parquet files: %w", err)
+//	}
+//	return nil
+//}
 
 // we order data files as follows:
 // - get list of partition keys matching patterns. For each key:
