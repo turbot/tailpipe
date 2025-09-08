@@ -156,18 +156,18 @@ func generateInitFile(ctx context.Context) (string, error) {
 	return initFilePath, err
 }
 
-func displayOutput(ctx context.Context, databaseFilePath string, err error) {
+func displayOutput(ctx context.Context, initFilePath string, err error) {
 	switch viper.GetString(pconstants.ArgOutput) {
 	case pconstants.OutputFormatText:
 		if err == nil {
 			// output the filepath
-			fmt.Println(databaseFilePath) //nolint:forbidigo // ui output
+			fmt.Println(initFilePath) //nolint:forbidigo // ui output
 		} else {
 			error_helpers.ShowError(ctx, err)
 		}
 	case pconstants.OutputFormatJSON:
 		res := connection.TailpipeConnectResponse{
-			DatabaseFilepath: databaseFilePath,
+			InitScriptPath: initFilePath,
 		}
 		if err != nil {
 			res.Error = err.Error()
