@@ -67,22 +67,21 @@ func (s *MigrationStatus) StatusMessage() {
 	case "SUCCESS":
 		perr.ShowWarning(fmt.Sprintf(
 			"DuckLake migration complete.\n"+
-				"Tables migrated: %d of %d (%.1f%%)\n"+
+				"Tables migrated: %d of %d \n"+
 				"Failed: %d\n"+
 				"Remaining: %d\n"+
-				"Legacy data has been backed up to '%s'.\n"+
-				"You can now query your data using DuckLake.\n",
-			s.Migrated, s.Total, s.ProgressPercent, s.Failed, s.Remaining, migratedDir,
+				"Legacy data has been backed up to '%s'.\n",
+			s.Migrated, s.Total, s.Failed, s.Remaining, migratedDir,
 		))
 	case "CANCELLED":
 		perr.ShowWarning(fmt.Sprintf(
-			"DuckLake migration cancelled by user.\n"+
-				"Tables migrated: %d of %d (%.1f%%)\n"+
+			"DuckLake migration cancelled.\n"+
+				"Tables migrated: %d of %d \n"+
 				"Failed: %d\n"+
 				"Remaining: %d\n"+
 				"Migration can be resumed on the next run of tailpipe.\n"+
 				"Legacy DB is preserved at '%s/tailpipe.db'.\n",
-			s.Migrated, s.Total, s.ProgressPercent, s.Failed, s.Remaining, migratingDir,
+			s.Migrated, s.Total, s.Failed, s.Remaining, migratingDir,
 		))
 	case "INCOMPLETE":
 		failedList := "(none)"
@@ -91,11 +90,12 @@ func (s *MigrationStatus) StatusMessage() {
 		}
 		perr.ShowWarning(fmt.Sprintf(
 			"DuckLake migration completed with issues.\n"+
-				"Tables migrated: %d of %d (%.1f%%)\n"+
+				"Tables migrated: %d of %d \n"+
 				"Failed (%d): %s\n"+
 				"Remaining: %d\n"+
-				"Failed table data and legacy DB have been moved to '%s'.\n",
-			s.Migrated, s.Total, s.ProgressPercent, s.Failed, failedList, s.Remaining, failedDir,
+				"Failed table data and legacy DB have been moved to '%s'.\n"+
+				"Legacy data has been backed up to '%s'\n",
+			s.Migrated, s.Total, s.Failed, failedList, s.Remaining, failedDir, migratedDir,
 		))
 	}
 }
@@ -201,11 +201,11 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		spinner.WithHiddenCursor(true),
 		spinner.WithWriter(os.Stdout),
 	)
-	sp.Suffix = fmt.Sprintf(" migrating tables (%d/%d, %0.1f%%)", status.Migrated, status.Total, status.ProgressPercent)
+	sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%)", status.Migrated, status.Total, status.ProgressPercent)
 	sp.Start()
 
 	updateStatus := func(st MigrationStatus) {
-		sp.Suffix = fmt.Sprintf(" migrating tables (%d/%d, %0.1f%%)", st.Migrated, st.Total, st.ProgressPercent)
+		sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%)", st.Migrated, st.Total, st.ProgressPercent)
 	}
 
 	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
