@@ -8,11 +8,10 @@ import (
 	"github.com/turbot/pipe-fittings/v2/backend"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // determine whether we have a ducklake table for this table, and if so, whether it needs schema updating
-func EnsureDuckLakeTable(columns []*schema.ColumnSchema, db *database.DuckDb, tableName string) error {
+func EnsureDuckLakeTable(columns []*schema.ColumnSchema, db *DuckDb, tableName string) error {
 	query := fmt.Sprintf("select exists (select 1 from information_schema.tables where table_name = '%s')", tableName)
 	var exists bool
 	if err := db.QueryRow(query).Scan(&exists); err != nil {
@@ -25,7 +24,7 @@ func EnsureDuckLakeTable(columns []*schema.ColumnSchema, db *database.DuckDb, ta
 }
 
 // createDuckLakeTable creates a DuckLake table based on the ConversionSchema
-func createDuckLakeTable(columns []*schema.ColumnSchema, db *database.DuckDb, tableName string) error {
+func createDuckLakeTable(columns []*schema.ColumnSchema, db *DuckDb, tableName string) error {
 
 	// Generate the CREATE TABLE SQL
 	createTableSQL := buildCreateDucklakeTableSQL(columns, tableName)

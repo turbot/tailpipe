@@ -16,7 +16,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 type MigrationStatus struct {
@@ -278,7 +277,7 @@ func discoverLegacyTablesAndSchemas(ctx context.Context, dbPath string) ([]strin
 // On success, it moves the leaf directory from migrating to migrated.
 func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName string, dirPath string, ts *schema.TableSchema) error {
 	// create the table if not exists
-	err := parquet.EnsureDuckLakeTable(ts.Columns, db, tableName)
+	err := database.EnsureDuckLakeTable(ts.Columns, db, tableName)
 	if err != nil {
 		// fatal – move table dir to failed and return error
 		moveTableDirToFailed(dirPath)
@@ -424,7 +423,7 @@ func getMatchedTableDirs(ctx context.Context, baseDir string, views []string) ([
 
 // doMigration performs the migration of the matched table directories and updates status
 func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema, status *MigrationStatus, onUpdate func(MigrationStatus)) error {
-	ducklakeDb, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	ducklakeDb, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	if err != nil {
 		return err
 	}
