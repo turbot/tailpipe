@@ -1,9 +1,8 @@
-package parquet
+package database
 
 import (
 	"context"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"time"
 )
 
@@ -17,7 +16,7 @@ type reorderMetadata struct {
 	maxTimestamp time.Time
 }
 
-func newReorderMetadata(ctx context.Context, db *database.DuckDb, p *partitionKey) (*reorderMetadata, error) {
+func newReorderMetadata(ctx context.Context, db *DuckDb, p *partitionKey) (*reorderMetadata, error) {
 	var rm = &reorderMetadata{pk: p}
 
 	// Query to get row count and time range for this partition

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"log/slog"
 	"os"
 	"strconv"
@@ -24,7 +25,6 @@ import (
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
@@ -215,7 +215,7 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 			continue
 		}
 
-		partitionNames, err := parquet.GetPartitionsForArg(tailpipeConfig.Partitions, arg)
+		partitionNames, err := database.GetPartitionsForArg(tailpipeConfig.Partitions, arg)
 		if err != nil {
 			errorList = append(errorList, err)
 		} else if len(partitionNames) == 0 {

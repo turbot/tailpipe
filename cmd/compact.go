@@ -20,7 +20,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"golang.org/x/exp/maps"
 )
 
@@ -80,7 +79,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	}
 
 	// Get table and partition patterns
-	patterns, err := parquet.GetPartitionPatternsForArgs(maps.Keys(config.GlobalConfig.Partitions), args...)
+	patterns, err := database.GetPartitionPatternsForArgs(maps.Keys(config.GlobalConfig.Partitions), args...)
 	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
 	// do the compaction
@@ -95,7 +94,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	// defer block will show the error
 }
 
-func doCompaction(ctx context.Context, db *database.DuckDb, patterns []*parquet.PartitionPattern) (*parquet.CompactionStatus, error) {
+func doCompaction(ctx context.Context, db *database.DuckDb, patterns []*database.PartitionPattern) (*database.CompactionStatus, error) {
 	s := spinner.New(
 		spinner.CharSets[14],
 		100*time.Millisecond,
@@ -110,9 +109,9 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []*parquet.
 	defer s.Stop()
 	s.Suffix = " compacting parquet files"
 	// define func to update the spinner suffix with the number of files compacted
-	var status = parquet.NewCompactionStatus()
+	var status = database.NewCompactionStatus()
 
-	updateTotals := func(updatedStatus parquet.CompactionStatus) {
+	updateTotals := func(updatedStatus database.CompactionStatus) {
 		status = &updatedStatus
 		if status.Message != "" {
 			s.Suffix = " compacting parquet files: " + status.Message
@@ -120,7 +119,7 @@ func doCompaction(ctx context.Context, db *database.DuckDb, patterns []*parquet.
 	}
 
 	// do compaction
-	err := parquet.CompactDataFiles(ctx, db, updateTotals, reindex, patterns...)
+	err := database.CompactDataFiles(ctx, db, updateTotals, reindex, patterns...)
 
 	return status, err
 }

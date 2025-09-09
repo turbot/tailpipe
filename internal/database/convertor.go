@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // TODO #DL
@@ -78,10 +77,10 @@ type Converter struct {
 	statusFunc func(int64, int64, ...error)
 
 	// the DuckDB database connection - this must have a ducklake attachment
-	db *database.DuckDb
+	db *DuckDb
 }
 
-func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *database.DuckDb) (*Converter, error) {
+func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *DuckDb) (*Converter, error) {
 	// get the data dir - this will already have been created by the config loader
 	destDir := config.GlobalWorkspaceProfile.GetDataDir()
 

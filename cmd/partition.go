@@ -25,7 +25,6 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -278,7 +277,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	spinner := statushooks.NewStatusSpinnerHook()
 	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
 	spinner.Show()
-	rowsDeleted, err := parquet.DeletePartition(ctx, partition, fromTime, toTime, db)
+	rowsDeleted, err := database.DeletePartition(ctx, partition, fromTime, toTime, db)
 	spinner.Hide()
 	error_helpers.FailOnError(err)
 

@@ -272,8 +272,6 @@ func GetDucklakeInitCommands(readonly bool) []SqlCommand {
 		fmt.Sprintf("data_path '%s'", config.GlobalWorkspaceProfile.GetDataDir()),
 		"meta_journal_mode 'WAL'",
 		"meta_synchronous 'NORMAL'",
-		// TODO temp disable timeout
-		"meta_busy_timeout 0",
 	}
 	// if readonly mode is requested, add the option
 	if readonly {

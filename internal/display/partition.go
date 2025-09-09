@@ -6,7 +6,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 // PartitionResource represents a partition resource and is used for list/show commands
@@ -95,7 +94,7 @@ func GetPartitionResource(ctx context.Context, p *config.Partition, db *database
 func (r *PartitionResource) setFileInformation(ctx context.Context, db *database.DuckDb) error {
 
 	// Get file metadata using shared function
-	metadata, err := parquet.GetPartitionFileMetadata(ctx, r.table, r.partition, db)
+	metadata, err := database.GetPartitionFileMetadata(ctx, r.table, r.partition, db)
 	if err != nil {
 		return fmt.Errorf("unable to obtain file metadata: %w", err)
 	}

@@ -1,11 +1,10 @@
-package parquet
+package database
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // FileMetadata represents the result of a file metadata query
@@ -16,7 +15,7 @@ type FileMetadata struct {
 }
 
 // TableExists checks if a table exists in the DuckLake metadata tables
-func TableExists(ctx context.Context, tableName string, db *database.DuckDb) (bool, error) {
+func TableExists(ctx context.Context, tableName string, db *DuckDb) (bool, error) {
 	query := fmt.Sprintf(`select count(*) from %s.ducklake_table where table_name = ?`, constants.DuckLakeMetadataCatalog)
 
 	var count int64
@@ -29,7 +28,7 @@ func TableExists(ctx context.Context, tableName string, db *database.DuckDb) (bo
 }
 
 // GetTableFileMetadata gets file metadata for a specific table from DuckLake metadata tables
-func GetTableFileMetadata(ctx context.Context, tableName string, db *database.DuckDb) (*FileMetadata, error) {
+func GetTableFileMetadata(ctx context.Context, tableName string, db *DuckDb) (*FileMetadata, error) {
 	// first see if the table exists
 	exists, err := TableExists(ctx, tableName, db)
 	if err != nil {
@@ -66,7 +65,7 @@ where tp.table_name = ? and f.end_snapshot is null`,
 }
 
 // GetPartitionFileMetadata gets file metadata for a specific partition from DuckLake metadata tables
-func GetPartitionFileMetadata(ctx context.Context, tableName, partitionName string, db *database.DuckDb) (*FileMetadata, error) {
+func GetPartitionFileMetadata(ctx context.Context, tableName, partitionName string, db *DuckDb) (*FileMetadata, error) {
 	// first see if the table exists
 	exists, err := TableExists(ctx, tableName, db)
 	if err != nil {

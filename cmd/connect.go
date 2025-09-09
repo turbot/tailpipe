@@ -25,7 +25,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 // variable used to assign the output mode flag
@@ -306,7 +305,7 @@ func getFilters() ([]string, error) {
 // getPartitionSqlFilters builds SQL filters for the provided partition args
 func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string) (string, error) {
 	// Get table and partition patterns using GetPartitionPatternsForArgs
-	patterns, err := parquet.GetPartitionPatternsForArgs(availablePartitions, partitionArgs...)
+	patterns, err := database.GetPartitionPatternsForArgs(availablePartitions, partitionArgs...)
 	if err != nil {
 		return "", fmt.Errorf("error processing partition args: %w", err)
 	}
@@ -392,11 +391,11 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 }
 
 // convert partition patterns with '*' wildcards to SQL '%' wildcards
-func replaceWildcards(patterns []*parquet.PartitionPattern) []*parquet.PartitionPattern {
-	updatedPatterns := make([]*parquet.PartitionPattern, len(patterns))
+func replaceWildcards(patterns []*database.PartitionPattern) []*database.PartitionPattern {
+	updatedPatterns := make([]*database.PartitionPattern, len(patterns))
 
 	for i, p := range patterns {
-		updatedPatterns[i] = &parquet.PartitionPattern{
+		updatedPatterns[i] = &database.PartitionPattern{
 			Table:     strings.ReplaceAll(p.Table, "*", "%"),
 			Partition: strings.ReplaceAll(p.Partition, "*", "%")}
 	}

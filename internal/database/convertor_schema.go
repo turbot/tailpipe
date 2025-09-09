@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"encoding/json"
@@ -7,7 +7,6 @@ import (
 
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // populate the ConversionSchema
@@ -98,7 +97,7 @@ func (w *Converter) inferSchemaForJSONLFileWithJSONStructure(filePath string) (*
 	return res, nil
 }
 
-func (w *Converter) inferSchemaForJSONLFileWithDescribe(db *database.DuckDb, filePath string) (*schema.TableSchema, error) {
+func (w *Converter) inferSchemaForJSONLFileWithDescribe(db *DuckDb, filePath string) (*schema.TableSchema, error) {
 	// Use DuckDB to describe the schema of the JSONL file
 	query := `SELECT column_name, column_type FROM (DESCRIBE (SELECT * FROM read_json_auto(?)))`
 

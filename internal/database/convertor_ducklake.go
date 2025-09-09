@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"fmt"

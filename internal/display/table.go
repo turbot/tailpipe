@@ -14,7 +14,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -213,7 +212,7 @@ func (r *TableResource) setPartitions() {
 
 func (r *TableResource) setFileInformation(ctx context.Context, db *database.DuckDb) error {
 	// Get file metadata using shared function
-	metadata, err := parquet.GetTableFileMetadata(ctx, r.Name, db)
+	metadata, err := database.GetTableFileMetadata(ctx, r.Name, db)
 	if err != nil {
 		return fmt.Errorf("unable to obtain file metadata: %w", err)
 	}
