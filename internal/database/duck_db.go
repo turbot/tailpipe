@@ -55,7 +55,7 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	// Connect to DuckDB
 	db, err := sql.Open("duckdb", d.dataSourceName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %d", err)
+		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
 	}
 	d.DB = db
 
@@ -70,12 +70,12 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	if len(d.extensions) > 0 {
 		// set extension dir and install any specified extensions
 		if err := d.installAndLoadExtensions(); err != nil {
-			return nil, fmt.Errorf(": %d", err)
+			return nil, fmt.Errorf(": %w", err)
 		}
 	}
 	if d.ducklakeEnabled {
 		if err := d.connectDucklake(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to connect to DuckLake: %d", err)
+			return nil, fmt.Errorf("failed to connect to DuckLake: %w", err)
 		}
 	}
 
@@ -84,19 +84,19 @@ func NewDuckDb(opts ...DuckDbOpt) (_ *DuckDb, err error) {
 	if len(d.viewFilters) > 0 {
 		err = d.createFilteredViews(d.viewFilters)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create filtered views: %d", err)
+			return nil, fmt.Errorf("failed to create filtered views: %w", err)
 		}
 	}
 
 	// Configure DuckDB's temp directory
 	if err := d.setTempDir(); err != nil {
-		return nil, fmt.Errorf("failed to set DuckDB temp directory: %d", err)
+		return nil, fmt.Errorf("failed to set DuckDB temp directory: %w", err)
 	}
 	// set the max memory if specified
 	if d.maxMemoryMb > 0 {
 		if _, err := db.Exec("set max_memory = ? || 'MB';", d.maxMemoryMb); err != nil {
 			_ = d.Close()
-			return nil, fmt.Errorf("failed to set max_memory: %d", err)
+			return nil, fmt.Errorf("failed to set max_memory: %w", err)
 		}
 	}
 
@@ -180,6 +180,15 @@ func (d *DuckDb) connectDucklake(ctx context.Context) error {
 		})
 	}
 
+	// tactical: if read only mode is set and the ducklake database does not exists, create it
+	// (creating a read only connection will FAIL if the ducklake database has not been created yet
+	// - writeable connections will create the database if it does not exist)
+	if d.duckLakeReadOnly {
+		if err := ensureDucklakeDb(); err != nil {
+			return fmt.Errorf("failed to ensure ducklake database exists: %w", err)
+		}
+	}
+
 	for _, cmd := range commands {
 		slog.Info(cmd.Description, "command", cmd.Command)
 		_, err := d.ExecContext(ctx, cmd.Command)
@@ -189,6 +198,29 @@ func (d *DuckDb) connectDucklake(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// ensureDucklakeDb checks if the ducklake database file exists, and if not, creates it by opening
+// and closing a duckdb connection with ducklake enabled
+// this is used if we we are creating a readonly db connection to ducklake
+// - readonly connections will fail if the ducklake database does not exist
+func ensureDucklakeDb() error {
+	//check db file exists
+	_, err := os.Stat(config.GlobalWorkspaceProfile.GetDucklakeDbPath())
+	if err == nil {
+		// file exists - nothing to do
+		return nil
+	}
+	// create a duck db connection then close again
+	db, err := NewDuckDb(WithDuckLake())
+	if err != nil {
+		return err
+	}
+	if err := db.Close(); err != nil {
+		return fmt.Errorf("failed to close duckdb connection: %w", err)
+	}
+	return nil
+
 }
 
 func (d *DuckDb) createFilteredViews(filters []string) error {
@@ -220,14 +252,14 @@ func (d *DuckDb) setTempDir() error {
 		// different instances can conflict with each other, causing memory swapping issues
 		uniqueTempDir, err := os.MkdirTemp(baseDir, "duckdb-")
 		if err != nil {
-			return fmt.Errorf("failed to create unique temp directory: %d", err)
+			return fmt.Errorf("failed to create unique temp directory: %w", err)
 		}
 		tempDir = uniqueTempDir
 	}
 
 	if _, err := d.Exec("set temp_directory = ?;", tempDir); err != nil {
 		_ = d.Close()
-		return fmt.Errorf("failed to set temp_directory: %d", err)
+		return fmt.Errorf("failed to set temp_directory: %w", err)
 	}
 	return nil
 }
