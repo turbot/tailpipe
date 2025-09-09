@@ -26,7 +26,9 @@ func buildReadJsonQueryFormat(conversionSchema *schema.ConversionSchema, partiti
 	var tpTimestampMapped bool
 
 	// first build the select clauses - use the table def columns
-	var selectClauses []string
+	var selectClauses = []string{
+		"row_number() over () as row_id", // add a row_id column to use with validation
+	}
 	for _, column := range conversionSchema.Columns {
 		var selectClause string
 		switch column.ColumnName {

@@ -5,11 +5,9 @@ import (
 	"strings"
 )
 
-// validateRows copies the data from the given select query to a temp table and validates required fields are non null
+// validateRows validates required fields are non null
 // it also validates that the schema of the chunk is the same as the inferred schema and if it is not, reports a useful error
 // the query count of invalid rows and a list of null fields
-//
-//nolint:unused // TODO re-add validation https://github.com/turbot/tailpipe/issues/479
 func (w *Converter) validateRows(jsonlFilePaths []string) error {
 	// build array of required columns to validate
 	var requiredColumns []string
@@ -93,8 +91,6 @@ from (`)
 }
 
 // buildNullCheckQuery builds a WHERE clause to check for null values in the specified columns
-//
-//nolint:unused // TODO re-add validation https://github.com/turbot/tailpipe/issues/479
 func (w *Converter) buildNullCheckQuery(requiredColumns []string) string {
 
 	// build a slice of null check conditions
@@ -106,8 +102,6 @@ func (w *Converter) buildNullCheckQuery(requiredColumns []string) string {
 }
 
 // deleteInvalidRows removes rows with null values in the specified columns from the temp table
-//
-//nolint:unused // TODO re-add validation https://github.com/turbot/tailpipe/issues/479
 func (w *Converter) deleteInvalidRows(requiredColumns []string) error {
 	whereClause := w.buildNullCheckQuery(requiredColumns)
 	query := fmt.Sprintf("delete from temp_data where %s;", whereClause)

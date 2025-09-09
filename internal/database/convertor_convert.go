@@ -97,7 +97,7 @@ func (w *Converter) chunkNumbersToFilenames(chunks []int32) ([]string, error) {
 	return filenames, nil
 }
 
-func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
+func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 	t := time.Now()
 	// ensure we signal the converter when we are done
 	defer w.wg.Add(len(filenames) * -1)
@@ -110,33 +110,31 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) error {
 
 	tempTime := time.Now()
 
-	// TODO #DL re-add validation
-	//  https://github.com/turbot/tailpipe/issues/479
-
 	// now validate the data
-	//if validateRowsError := w.validateRows(jsonlFilePath); validateRowsError != nil {
-	//	// if the error is NOT RowValidationError, just return it
-	//	if !errors.Is(validateRowsError, &RowValidationError{}) {
-	//		return handleConversionError(validateRowsError, jsonlFilePath)
-	//	}
-	//
-	//	// so it IS a row validation error - the invalid rows will have been removed from the temp table
-	//	// - process the rest of the chunk
-	//	// ensure that we return the row validation error, merged with any other error we receive
-	//	defer func() {
-	//		if err == nil {
-	//			err = validateRowsError
-	//		} else {
-	//			var conversionError *ConversionError
-	//			if errors.As(validateRowsError, &conversionError) {
-	//				// we have a conversion error - we need to set the row count to 0
-	//				// so we can report the error
-	//				conversionError.Merge(err)
-	//			}
-	//			err = conversionError
-	//		}
-	//	}()
-	//}
+	if validateRowsError := w.validateRows(filenames); validateRowsError != nil {
+		// if the error is NOT RowValidationError, just return it
+		if !errors.Is(validateRowsError, &RowValidationError{}) {
+			// TODO KAI think about conversion error handling here - we actually just want to pass in rows affected
+			return handleConversionError(validateRowsError, filenames[0])
+		}
+
+		// so it IS a row validation error - the invalid rows will have been removed from the temp table
+		// - process the rest of the chunk
+		// ensure that we return the row validation error, merged with any other error we receive
+		defer func() {
+			if err == nil {
+				err = validateRowsError
+			} else {
+				var conversionError *ConversionError
+				if errors.As(validateRowsError, &conversionError) {
+					// we have a conversion error - we need to set the row count to 0
+					// so we can report the error
+					conversionError.Merge(err)
+				}
+				err = conversionError
+			}
+		}()
+	}
 
 	slog.Debug("about to insert rows into ducklake table")
 
