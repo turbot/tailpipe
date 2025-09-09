@@ -423,7 +423,7 @@ func getMatchedTableDirs(ctx context.Context, baseDir string, views []string) ([
 
 // doMigration performs the migration of the matched table directories and updates status
 func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema, status *MigrationStatus, onUpdate func(MigrationStatus)) error {
-	ducklakeDb, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	ducklakeDb, err := database.NewDuckDb(database.WithDuckLake())
 	if err != nil {
 		return err
 	}
