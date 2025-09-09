@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/briandowns/spinner"
 	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
@@ -18,19 +19,100 @@ import (
 	"github.com/turbot/tailpipe/internal/parquet"
 )
 
+type MigrationStatus struct {
+	Status          string        `json:"status"`
+	Total           int           `json:"total"`
+	Migrated        int           `json:"migrated"`
+	Failed          int           `json:"failed"`
+	Remaining       int           `json:"remaining"`
+	ProgressPercent float64       `json:"progress_percent"`
+	FailedTables    []string      `json:"failed_tables,omitempty"`
+	StartTime       time.Time     `json:"start_time"`
+	Duration        time.Duration `json:"duration"`
+}
+
+func NewMigrationStatus(total int) *MigrationStatus {
+	return &MigrationStatus{Total: total, Remaining: total, StartTime: time.Now()}
+}
+
+func (s *MigrationStatus) OnTableMigrated() {
+	s.Migrated++
+	s.update()
+}
+
+func (s *MigrationStatus) OnTableFailed(tableName string) {
+	s.Failed++
+	s.FailedTables = append(s.FailedTables, tableName)
+	s.update()
+}
+
+func (s *MigrationStatus) update() {
+	s.Remaining = s.Total - s.Migrated - s.Failed
+	if s.Total > 0 {
+		s.ProgressPercent = float64(s.Migrated) * 100.0 / float64(s.Total)
+	}
+}
+
+func (s *MigrationStatus) Finish(outcome string) {
+	s.Status = outcome
+	s.Duration = time.Since(s.StartTime)
+}
+
+// StatusMessage prints a user-facing status message (with stats) based on current status
+func (s *MigrationStatus) StatusMessage() {
+	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
+	failedDir := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
+	migratingDir := config.GlobalWorkspaceProfile.GetMigratingDir()
+
+	switch s.Status {
+	case "SUCCESS":
+		perr.ShowWarning(fmt.Sprintf(
+			"DuckLake migration complete.\n"+
+				"Tables migrated: %d of %d (%.1f%%)\n"+
+				"Failed: %d\n"+
+				"Remaining: %d\n"+
+				"Legacy data has been backed up to '%s'.\n"+
+				"You can now query your data using DuckLake.\n",
+			s.Migrated, s.Total, s.ProgressPercent, s.Failed, s.Remaining, migratedDir,
+		))
+	case "CANCELLED":
+		perr.ShowWarning(fmt.Sprintf(
+			"DuckLake migration cancelled by user.\n"+
+				"Tables migrated: %d of %d (%.1f%%)\n"+
+				"Failed: %d\n"+
+				"Remaining: %d\n"+
+				"Migration can be resumed on the next run of tailpipe.\n"+
+				"Legacy DB is preserved at '%s/tailpipe.db'.\n",
+			s.Migrated, s.Total, s.ProgressPercent, s.Failed, s.Remaining, migratingDir,
+		))
+	case "INCOMPLETE":
+		failedList := "(none)"
+		if len(s.FailedTables) > 0 {
+			failedList = strings.Join(s.FailedTables, ", ")
+		}
+		perr.ShowWarning(fmt.Sprintf(
+			"DuckLake migration completed with issues.\n"+
+				"Tables migrated: %d of %d (%.1f%%)\n"+
+				"Failed (%d): %s\n"+
+				"Remaining: %d\n"+
+				"Failed table data and legacy DB have been moved to '%s'.\n",
+			s.Migrated, s.Total, s.ProgressPercent, s.Failed, failedList, s.Remaining, failedDir,
+		))
+	}
+}
+
 func MigrateDataToDucklake(ctx context.Context) error {
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
-	migratedDefaultDir := config.GlobalWorkspaceProfile.GetMigratedDir()
 	// failed dir is derived via GetMigrationFailedDir() where needed
 
 	var matchedTableDirs []string
-	var failedTables []string
+	status := NewMigrationStatus(0)
 	cancelledHandled := false
 	defer func() {
 		if perr.IsContextCancelledError(ctx.Err()) && !cancelledHandled {
-			_ = onCancelled(ctx, matchedTableDirs, failedTables)
+			_ = onCancelled(ctx, status)
 		}
 	}()
 
@@ -78,10 +160,10 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
 	// First-run: copy tailpipe.db into migrated immediately, then move data contents into migrating
 	if initialMigration {
-		if err := os.MkdirAll(migratedDefaultDir, 0755); err != nil {
+		if err := os.MkdirAll(config.GlobalWorkspaceProfile.GetMigratedDir(), 0755); err != nil {
 			return err
 		}
-		if err := utils.CopyFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(migratedDefaultDir, "tailpipe.db")); err != nil {
+		if err := utils.CopyFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(config.GlobalWorkspaceProfile.GetMigratedDir(), "tailpipe.db")); err != nil {
 			return fmt.Errorf("failed to copy legacy db to migrated: %w", err)
 		}
 		if err := utils.MoveDirContents(dataDefaultDir, migratingDefaultDir); err != nil {
@@ -109,27 +191,47 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		return ctx.Err()
 	}
 
+	// Initialize status with total tables to migrate
+	status.Total = len(matchedTableDirs)
+	status.update()
+
+	// Spinner for migration progress
+	sp := spinner.New(
+		spinner.CharSets[14],
+		100*time.Millisecond,
+		spinner.WithHiddenCursor(true),
+		spinner.WithWriter(os.Stdout),
+	)
+	sp.Suffix = fmt.Sprintf(" migrating tables (%d/%d, %0.1f%%)", status.Migrated, status.Total, status.ProgressPercent)
+	sp.Start()
+
+	updateStatus := func(st MigrationStatus) {
+		sp.Suffix = fmt.Sprintf(" migrating tables (%d/%d, %0.1f%%)", st.Migrated, st.Total, st.ProgressPercent)
+	}
+
 	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
 	// and perform INSERT within a transaction. On success, move leaf dir to migrated.
-	failedTables, err = doMigration(ctx, matchedTableDirs, schemas)
-	if perr.IsContextCancelledError(err) || perr.IsContextCancelledError(ctx.Err()) {
-		_ = onCancelled(ctx, matchedTableDirs, failedTables)
-		cancelledHandled = true
-		return err
-	}
-	if err != nil {
+	if err := doMigration(ctx, matchedTableDirs, schemas, status, updateStatus); err != nil {
+		sp.Stop()
+		if perr.IsContextCancelledError(err) || perr.IsContextCancelledError(ctx.Err()) {
+			_ = onCancelled(ctx, status)
+			cancelledHandled = true
+			return err
+		}
 		// Unexpected error — treat as failure outcome
-		_ = onFailed(ctx, matchedTableDirs, failedTables)
+		_ = onFailed(ctx, status)
 		return err
 	}
 
+	sp.Stop()
+
 	// Post-migration outcomes
-	if len(failedTables) > 0 {
-		if err := onFailed(ctx, matchedTableDirs, failedTables); err != nil {
+	if status.Failed > 0 {
+		if err := onFailed(ctx, status); err != nil {
 			return err
 		}
 	} else {
-		if err := onSuccessful(ctx, matchedTableDirs, failedTables); err != nil {
+		if err := onSuccessful(ctx, status); err != nil {
 			return err
 		}
 	}
@@ -280,8 +382,8 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		}
 		_ = os.Remove(dirPath)
 		slog.Info("Migrated leaf node", "table", tableName, "source", dirPath, "destination", destDir)
-		fmt.Printf("migrated %s, sleeping for 3 seconds\n", dirPath)
-		time.Sleep(3 * time.Second)
+		// fmt.Printf("migrated %s, sleeping for 2 seconds\n", dirPath)
+		// time.Sleep(2 * time.Second)
 	}
 
 	return firstErr
@@ -320,19 +422,17 @@ func getMatchedTableDirs(ctx context.Context, baseDir string, views []string) ([
 	return matchedTableDirs, nil
 }
 
-// doMigration performs the migration of the matched table directories
-// it returns a list of tables that failed to migrate
-func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema) ([]string, error) {
+// doMigration performs the migration of the matched table directories and updates status
+func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema, status *MigrationStatus, onUpdate func(MigrationStatus)) error {
 	ducklakeDb, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer ducklakeDb.Close()
 
-	var failedTables []string
 	for _, tableDir := range matchedTableDirs {
 		if perr.IsContextCancelledError(ctx.Err()) {
-			return failedTables, ctx.Err()
+			return ctx.Err()
 		}
 		tableName := strings.TrimPrefix(filepath.Base(tableDir), "tp_table=")
 		if tableName == "" {
@@ -341,11 +441,18 @@ func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[str
 		ts := schemas[tableName]
 		if err := migrateTableDirectory(ctx, ducklakeDb, tableName, tableDir, ts); err != nil {
 			slog.Warn("Migration failed for table; moving to migration/failed", "table", tableName, "error", err)
-			failedTables = append(failedTables, tableName)
+			status.OnTableFailed(tableName)
+			if onUpdate != nil {
+				onUpdate(*status)
+			}
 			continue
 		}
+		status.OnTableMigrated()
+		if onUpdate != nil {
+			onUpdate(*status)
+		}
 	}
-	return failedTables, nil
+	return nil
 }
 
 // moveTableDirToFailed moves a table directory from migrating to failed, preserving relative path.
@@ -363,27 +470,29 @@ func moveTableDirToFailed(dirPath string) {
 }
 
 // onSuccessful handles success outcome: cleans migrating db, prunes empty dirs, prints summary
-func onSuccessful(ctx context.Context, matchedTableDirs []string, failedTables []string) error {
+func onSuccessful(ctx context.Context, status *MigrationStatus) error {
 	// Remove any leftover db in migrating
 	_ = os.Remove(filepath.Join(config.GlobalWorkspaceProfile.GetMigratingDir(), "tailpipe.db"))
 	// Prune empty dirs in migrating
 	if err := filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir()); err != nil {
 		return fmt.Errorf("failed to prune empty directories in migrating: %w", err)
 	}
-	printSummary("SUCCESS", matchedTableDirs, failedTables)
+	status.Finish("SUCCESS")
+	status.StatusMessage()
 	return nil
 }
 
 // onCancelled handles cancellation outcome: keep migrating db, prune empties, print summary
-func onCancelled(ctx context.Context, matchedTableDirs []string, failedTables []string) error {
+func onCancelled(ctx context.Context, status *MigrationStatus) error {
 	// Do not move db; just prune empties so tree is clean
 	_ = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir())
-	printSummary("CANCELLED", matchedTableDirs, failedTables)
+	status.Finish("CANCELLED")
+	status.StatusMessage()
 	return nil
 }
 
 // onFailed handles failure outcome: move db to failed, prune empties, print summary
-func onFailed(ctx context.Context, matchedTableDirs []string, failedTables []string) error {
+func onFailed(ctx context.Context, status *MigrationStatus) error {
 	failedDefaultDir := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
 	if err := os.MkdirAll(failedDefaultDir, 0755); err != nil {
 		return err
@@ -395,13 +504,7 @@ func onFailed(ctx context.Context, matchedTableDirs []string, failedTables []str
 		}
 	}
 	_ = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir())
-	printSummary("INCOMPLETE", matchedTableDirs, failedTables)
+	status.Finish("INCOMPLETE")
+	status.StatusMessage()
 	return nil
-}
-
-func printSummary(status string, matchedTableDirs []string, failedTables []string) {
-	successCount := len(matchedTableDirs) - len(failedTables)
-	fmt.Fprintln(os.Stderr, "Migration status:", status)
-	fmt.Fprintf(os.Stderr, "Tables migrated successfully: %d\n", successCount)
-	fmt.Fprintf(os.Stderr, "Tables failed: %d\n", len(failedTables))
 }
