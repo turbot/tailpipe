@@ -83,10 +83,16 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// get a connection to the database, with DuckLake enabled
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	// build the filters from the to, from and index args
+	filters, err := getFilters()
 	if err != nil {
-		return
+		error_helpers.FailOnError(fmt.Errorf("error building filters: %w", err))
+	}
+
+	// now create a readonly connection to the database, passing in any filters
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly(filters...))
+	if err != nil {
+		error_helpers.FailOnError(err)
 	}
 	defer db.Close()
 

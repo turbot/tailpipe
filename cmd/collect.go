@@ -5,12 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
-	"github.com/danwakefield/fnmatch"
 	"github.com/hashicorp/hcl/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -25,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
@@ -72,7 +72,6 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				err = nil
 				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)
@@ -216,7 +215,7 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 			continue
 		}
 
-		partitionNames, err := getPartitionsForArg(maps.Keys(tailpipeConfig.Partitions), arg)
+		partitionNames, err := parquet.GetPartitionsForArg(tailpipeConfig.Partitions, arg)
 		if err != nil {
 			errorList = append(errorList, err)
 		} else if len(partitionNames) == 0 {
@@ -318,68 +317,6 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 
 	slog.Debug("Synthetic partition parsed successfully", "arg", arg, "columns", cols, "rows", rows, "chunkSize", chunk, "deliveryIntervalMs", interval)
 	return partition, true
-}
-
-func getPartitionsForArg(partitions []string, arg string) ([]string, error) {
-	tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
-	if err != nil {
-		return nil, err
-	}
-	// now match the partition
-	var res []string
-	for _, partition := range partitions {
-		pattern := tablePattern + "." + partitionPattern
-		if fnmatch.Match(pattern, partition, fnmatch.FNM_CASEFOLD) {
-			res = append(res, partition)
-		}
-	}
-	return res, nil
-}
-
-func getPartitionMatchPatternsForArg(partitions []string, arg string) (string, string, error) {
-	var tablePattern, partitionPattern string
-	parts := strings.Split(arg, ".")
-	switch len(parts) {
-	case 1:
-		var err error
-		tablePattern, partitionPattern, err = getPartitionMatchPatternsForSinglePartName(partitions, arg)
-		if err != nil {
-			return "", "", err
-		}
-	case 2:
-		// use the args as provided
-		tablePattern = parts[0]
-		partitionPattern = parts[1]
-	default:
-		return "", "", fmt.Errorf("invalid partition name: %s", arg)
-	}
-	return tablePattern, partitionPattern, nil
-}
-
-// getPartitionMatchPatternsForSinglePartName returns the table and partition patterns for a single part name
-// e.g. if the arg is "aws*"
-func getPartitionMatchPatternsForSinglePartName(partitions []string, arg string) (string, string, error) {
-	var tablePattern, partitionPattern string
-	// '*' is not valid for a single part arg
-	if arg == "*" {
-		return "", "", fmt.Errorf("invalid partition name: %s", arg)
-	}
-	// check whether there is table with this name
-	// partitions is a list of Unqualified names, i.e. <table>.<partition>
-	for _, partition := range partitions {
-		table := strings.Split(partition, ".")[0]
-
-		// if the arg matches a table name, set table pattern to the arg and partition pattern to *
-		if fnmatch.Match(arg, table, fnmatch.FNM_CASEFOLD) {
-			tablePattern = arg
-			partitionPattern = "*"
-			return tablePattern, partitionPattern, nil
-		}
-	}
-	// so there IS NOT a table with this name - set table pattern to * and user provided partition name
-	tablePattern = "*"
-	partitionPattern = arg
-	return tablePattern, partitionPattern, nil
 }
 
 func setExitCodeForCollectError(err error) {

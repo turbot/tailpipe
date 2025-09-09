@@ -76,7 +76,7 @@ func partitionListCmd() *cobra.Command {
 }
 
 func runPartitionListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionListCmd start")
@@ -94,7 +94,8 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	error_helpers.FailOnError(err)
 	defer db.Close()
 
@@ -136,7 +137,7 @@ func partitionShowCmd() *cobra.Command {
 }
 
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionShowCmd start")
@@ -154,7 +155,8 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	error_helpers.FailOnError(err)
 	defer db.Close()
 
@@ -268,7 +270,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 			return
 		}
 	}
-	db, err := database.NewDuckDb(database.WithDuckLakeEnabled(true))
+	db, err := database.NewDuckDb(database.WithDuckLake())
 	error_helpers.FailOnError(err)
 	defer db.Close()
 

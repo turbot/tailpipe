@@ -89,10 +89,10 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	c.sourcePath = sourcePath
 
 	// create the DuckDB connection
-	// load json and inet extension in addition to the DuckLake extension - the convertor will need them
+	// load inet extension in addition to the DuckLake extension
 	db, err := database.NewDuckDb(
 		database.WithDuckDbExtensions(pconstants.DuckDbExtensions),
-		database.WithDuckLakeEnabled(true),
+		database.WithDuckLake(),
 	)
 
 	if err != nil {
@@ -269,7 +269,10 @@ func (c *Collector) Compact(ctx context.Context) error {
 	}
 	partitionPattern := parquet.NewPartitionPattern(c.partition)
 
-	err := parquet.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, partitionPattern)
+	// NOTE: we DO NOT reindex when compacting after collection
+	reindex := false
+
+	err := parquet.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, reindex, &partitionPattern)
 
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)
