@@ -10,15 +10,21 @@ import (
 )
 
 type MigrationStatus struct {
-	Status          string        `json:"status"`
-	Total           int           `json:"total"`
-	Migrated        int           `json:"migrated"`
-	Failed          int           `json:"failed"`
-	Remaining       int           `json:"remaining"`
-	ProgressPercent float64       `json:"progress_percent"`
-	FailedTables    []string      `json:"failed_tables,omitempty"`
-	StartTime       time.Time     `json:"start_time"`
-	Duration        time.Duration `json:"duration"`
+	Status          string  `json:"status"`
+	Total           int     `json:"total"`
+	Migrated        int     `json:"migrated"`
+	Failed          int     `json:"failed"`
+	Remaining       int     `json:"remaining"`
+	ProgressPercent float64 `json:"progress_percent"`
+
+	TotalFiles     int `json:"total_files"`
+	MigratedFiles  int `json:"migrated_files"`
+	FailedFiles    int `json:"failed_files"`
+	RemainingFiles int `json:"remaining_files"`
+
+	FailedTables []string      `json:"failed_tables,omitempty"`
+	StartTime    time.Time     `json:"start_time"`
+	Duration     time.Duration `json:"duration"`
 }
 
 func NewMigrationStatus(total int) *MigrationStatus {
@@ -36,6 +42,22 @@ func (s *MigrationStatus) OnTableFailed(tableName string) {
 	s.update()
 }
 
+func (s *MigrationStatus) OnFilesMigrated(n int) {
+	if n <= 0 {
+		return
+	}
+	s.MigratedFiles += n
+	s.updateFiles()
+}
+
+func (s *MigrationStatus) OnFilesFailed(n int) {
+	if n <= 0 {
+		return
+	}
+	s.FailedFiles += n
+	s.updateFiles()
+}
+
 func (s *MigrationStatus) update() {
 	s.Remaining = s.Total - s.Migrated - s.Failed
 	if s.Total > 0 {
@@ -43,12 +65,16 @@ func (s *MigrationStatus) update() {
 	}
 }
 
+func (s *MigrationStatus) updateFiles() {
+	s.RemainingFiles = s.TotalFiles - s.MigratedFiles - s.FailedFiles
+}
+
 func (s *MigrationStatus) Finish(outcome string) {
 	s.Status = outcome
 	s.Duration = time.Since(s.StartTime)
 }
 
-// StatusMessage prints a user-facing status message (with stats) based on current status
+// StatusMessage prints a user-facing status message (with stats) based on current migration status
 func (s *MigrationStatus) StatusMessage() {
 	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
 	failedDir := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
@@ -58,21 +84,23 @@ func (s *MigrationStatus) StatusMessage() {
 	case "SUCCESS":
 		perr.ShowWarning(fmt.Sprintf(
 			"DuckLake migration complete.\n"+
-				"Tables migrated: %d of %d \n"+
-				"Failed: %d\n"+
-				"Remaining: %d\n"+
-				"Legacy data has been backed up to '%s'.\n",
-			s.Migrated, s.Total, s.Failed, s.Remaining, migratedDir,
+				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
+				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
+				"- Backup of migrated legacy data: '%s'\n",
+			s.Migrated, s.Total, s.Failed, s.Remaining,
+			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
+			migratedDir,
 		))
 	case "CANCELLED":
 		perr.ShowWarning(fmt.Sprintf(
 			"DuckLake migration cancelled.\n"+
-				"Tables migrated: %d of %d \n"+
-				"Failed: %d\n"+
-				"Remaining: %d\n"+
-				"Migration can be resumed on the next run of tailpipe.\n"+
-				"Legacy DB is preserved at '%s/tailpipe.db'.\n",
-			s.Migrated, s.Total, s.Failed, s.Remaining, migratingDir,
+				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
+				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
+				"- Legacy DB preserved: '%s/tailpipe.db'\n\n"+
+				"Re-run Tailpipe to resume migrating your data.\n",
+			s.Migrated, s.Total, s.Failed, s.Remaining,
+			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
+			migratingDir,
 		))
 	case "INCOMPLETE":
 		failedList := "(none)"
@@ -81,12 +109,16 @@ func (s *MigrationStatus) StatusMessage() {
 		}
 		perr.ShowWarning(fmt.Sprintf(
 			"DuckLake migration completed with issues.\n"+
-				"Tables migrated: %d of %d \n"+
-				"Failed (%d): %s\n"+
-				"Remaining: %d\n"+
-				"Failed table data and legacy DB have been moved to '%s'.\n"+
-				"Legacy data has been backed up to '%s'\n",
-			s.Migrated, s.Total, s.Failed, failedList, s.Remaining, failedDir, migratedDir,
+				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
+				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
+				"- Failed tables (%d): %s\n"+
+				"- Failed data and legacy DB: '%s'\n"+
+				"- Backup of migrated legacy data: '%s'\n",
+			s.Migrated, s.Total, s.Failed, s.Remaining,
+			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
+			len(s.FailedTables), failedList,
+			failedDir,
+			migratedDir,
 		))
 	}
 }

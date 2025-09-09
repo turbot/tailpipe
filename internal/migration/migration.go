@@ -3,6 +3,7 @@ package migration
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -112,6 +113,13 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	status.Total = len(matchedTableDirs)
 	status.update()
 
+	// Pre-compute total parquet files across matched directories
+	totalFiles, err := countParquetFiles(matchedTableDirs)
+	if err == nil {
+		status.TotalFiles = totalFiles
+		status.updateFiles()
+	}
+
 	// Spinner for migration progress
 	sp := spinner.New(
 		spinner.CharSets[14],
@@ -119,11 +127,11 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		spinner.WithHiddenCursor(true),
 		spinner.WithWriter(os.Stdout),
 	)
-	sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%)", status.Migrated, status.Total, status.ProgressPercent)
+	sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%) | parquet files (%d/%d)", status.Migrated, status.Total, status.ProgressPercent, status.MigratedFiles, status.TotalFiles)
 	sp.Start()
 
 	updateStatus := func(st MigrationStatus) {
-		sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%)", st.Migrated, st.Total, st.ProgressPercent)
+		sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%) | parquet files (%d/%d)", st.Migrated, st.Total, st.ProgressPercent, st.MigratedFiles, st.TotalFiles)
 	}
 
 	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
@@ -193,7 +201,7 @@ func discoverLegacyTablesAndSchemas(ctx context.Context, dbPath string) ([]strin
 // migrateTableDirectory recursively traverses a table directory, finds leaf nodes containing
 // parquet files, and for each leaf executes a placeholder INSERT within a transaction.
 // On success, it moves the leaf directory from migrating to migrated.
-func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName string, dirPath string, ts *schema.TableSchema) error {
+func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName string, dirPath string, ts *schema.TableSchema, status *MigrationStatus) error {
 	// create the table if not exists
 	err := database.EnsureDuckLakeTable(ts.Columns, db, tableName)
 	if err != nil {
@@ -215,7 +223,7 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		}
 		if entry.IsDir() {
 			subDir := filepath.Join(dirPath, entry.Name())
-			if err := migrateTableDirectory(ctx, db, tableName, subDir, ts); err != nil {
+			if err := migrateTableDirectory(ctx, db, tableName, subDir, ts, status); err != nil {
 				// record the first error but continue to process siblings
 				if firstErr == nil {
 					firstErr = err
@@ -231,13 +239,15 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 
 	// If this directory contains parquet files, treat it as a leaf node for migration
 	if len(parquetFiles) > 0 {
+		filesInLeaf := len(parquetFiles)
 		// Placeholder: validate schema (from 'ts') against parquet files if needed
-		slog.Info("Found leaf node with parquet files", "table", tableName, "dir", dirPath, "files", len(parquetFiles))
+		slog.Info("Found leaf node with parquet files", "table", tableName, "dir", dirPath, "files", filesInLeaf)
 
 		// Begin transaction
 		tx, err := db.BeginTx(ctx, nil)
 		if err != nil {
 			moveTableDirToFailed(dirPath)
+			status.OnFilesFailed(filesInLeaf)
 			return err
 		}
 
@@ -268,6 +278,7 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 			slog.Debug("Rollbacking transaction", "table", tableName, "error", err)
 			_ = tx.Rollback()
 			moveTableDirToFailed(dirPath)
+			status.OnFilesFailed(filesInLeaf)
 			return err
 		}
 		// Note: cancellation will be handled by outer logic; if needed, you can check and rollback here.
@@ -275,10 +286,11 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		if err := tx.Commit(); err != nil {
 			slog.Error("Committing transaction", "table", tableName, "error", err)
 			moveTableDirToFailed(dirPath)
+			status.OnFilesFailed(filesInLeaf)
 			return err
 		}
 
-		slog.Info(">> successfully committed", "table", tableName, "dir", dirPath, "files", len(parquetFiles))
+		slog.Info("Successfully committed transaction", "table", tableName, "dir", dirPath, "files", filesInLeaf)
 
 		// On success, move the entire leaf directory from migrating to migrated
 		migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
@@ -286,18 +298,22 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		rel, err := filepath.Rel(migratingRoot, dirPath)
 		if err != nil {
 			moveTableDirToFailed(dirPath)
+			status.OnFilesFailed(filesInLeaf)
 			return err
 		}
 		destDir := filepath.Join(migratedRoot, rel)
 		if err := os.MkdirAll(filepath.Dir(destDir), 0755); err != nil {
 			moveTableDirToFailed(dirPath)
+			status.OnFilesFailed(filesInLeaf)
 			return err
 		}
 		if err := utils.MoveDirContents(dirPath, destDir); err != nil {
 			moveTableDirToFailed(dirPath)
+			status.OnFilesFailed(filesInLeaf)
 			return err
 		}
 		_ = os.Remove(dirPath)
+		status.OnFilesMigrated(filesInLeaf)
 		slog.Info("Migrated leaf node", "table", tableName, "source", dirPath, "destination", destDir)
 		// fmt.Printf("migrated %s, sleeping for 2 seconds\n", dirPath)
 		// time.Sleep(2 * time.Second)
@@ -356,7 +372,7 @@ func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[str
 			continue
 		}
 		ts := schemas[tableName]
-		if err := migrateTableDirectory(ctx, ducklakeDb, tableName, tableDir, ts); err != nil {
+		if err := migrateTableDirectory(ctx, ducklakeDb, tableName, tableDir, ts, status); err != nil {
 			slog.Warn("Migration failed for table; moving to migration/failed", "table", tableName, "error", err)
 			status.OnTableFailed(tableName)
 			if onUpdate != nil {
@@ -384,6 +400,25 @@ func moveTableDirToFailed(dirPath string) {
 	_ = os.MkdirAll(filepath.Dir(destDir), 0755)
 	_ = utils.MoveDirContents(dirPath, destDir)
 	_ = os.Remove(dirPath)
+}
+
+// countParquetFiles walks all matched table directories and counts parquet files
+func countParquetFiles(dirs []string) (int, error) {
+	total := 0
+	for _, root := range dirs {
+		if err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".parquet") {
+				total++
+			}
+			return nil
+		}); err != nil {
+			return 0, err
+		}
+	}
+	return total, nil
 }
 
 // onSuccessful handles success outcome: cleans migrating db, prunes empty dirs, prints summary
