@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"context"
@@ -10,11 +10,10 @@ import (
 
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/tailpipe/internal/config"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // DeletePartition deletes data for the specified partition and date range from the given Ducklake connected database.
-func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time, db *database.DuckDb) (rowCount int, err error) {
+func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time, db *DuckDb) (rowCount int, err error) {
 	// TODO #DL https://github.com/turbot/tailpipe/issues/505
 	//  if we are using s3 do not delete for now as this does not work at present (need explicit S3 support I think)
 	//  remove before release https://github.com/turbot/tailpipe/issues/520
@@ -66,7 +65,7 @@ func DeletePartition(ctx context.Context, partition *config.Partition, from, to 
 }
 
 // DucklakeCleanup performs removes old snapshots deletes expired and unused parquet files from the DuckDB database.
-func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
+func DucklakeCleanup(ctx context.Context, db *DuckDb) error {
 	slog.Info("Cleaning up DuckLake snapshots and expired files")
 	// now clean old snapshots
 	if err := expirePrevSnapshots(ctx, db); err != nil {
@@ -84,7 +83,7 @@ func DucklakeCleanup(ctx context.Context, db *database.DuckDb) error {
 // However we do not need (currently) take advantage of this ducklake functionality, so we can remove all but the latest snapshot
 // To do this we get the date of the most recent snapshot and then expire all snapshots older than that date.
 // We then call ducklake_cleanup to remove the expired files.
-func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
+func expirePrevSnapshots(ctx context.Context, db *DuckDb) error {
 	slog.Info("Expiring old DuckLake snapshots")
 	defer slog.Info("DuckLake snapshot expiration complete")
 
@@ -127,7 +126,7 @@ func expirePrevSnapshots(ctx context.Context, db *database.DuckDb) error {
 }
 
 // cleanupExpiredFiles deletes and files marked as expired in the ducklake system.
-func cleanupExpiredFiles(ctx context.Context, db *database.DuckDb) error {
+func cleanupExpiredFiles(ctx context.Context, db *DuckDb) error {
 	slog.Info("Cleaning up expired files in DuckLake")
 	defer slog.Info("DuckLake expired files cleanup complete")
 

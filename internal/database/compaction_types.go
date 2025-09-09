@@ -1,19 +1,17 @@
-package parquet
+package database
 
 import (
 	"context"
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 // getTimeRangesToReorder analyzes file fragmentation and creates disorder metrics for a partition key.
 // It queries DuckLake metadata to get all files for the partition, their timestamp ranges, and row counts.
 // Then it identifies groups of files with overlapping time ranges that need compaction.
 // Returns metrics including total file count and overlapping file sets with their metadata.
-func getTimeRangesToReorder(ctx context.Context, db *database.DuckDb, pk *partitionKey, reindex bool) (*reorderMetadata, error) {
+func getTimeRangesToReorder(ctx context.Context, db *DuckDb, pk *partitionKey, reindex bool) (*reorderMetadata, error) {
 	// NOTE: if we are reindexing, we must rewrite the entire partition key
 	//  - return a single range for the entire partition key
 	if reindex {
@@ -62,7 +60,7 @@ func getTimeRangesToReorder(ctx context.Context, db *database.DuckDb, pk *partit
 }
 
 // query the metadata to get a list of files, their timestamp ranges and row counts for this partition key
-func getFileRangesForPartitionKey(ctx context.Context, db *database.DuckDb, pk *partitionKey) ([]fileTimeRange, error) {
+func getFileRangesForPartitionKey(ctx context.Context, db *DuckDb, pk *partitionKey) ([]fileTimeRange, error) {
 	query := `select 
 		df.path,
 		cast(fcs.min_value as timestamp) as min_timestamp,

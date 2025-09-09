@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"github.com/turbot/pipe-fittings/v2/modconfig"

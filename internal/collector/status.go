@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe-plugin-sdk/logging"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
-	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 const uiErrorsToDisplay = 15
@@ -28,7 +28,7 @@ type status struct {
 	complete         bool
 	partitionName    string
 	fromTime         *row_source.ResolvedFromTime
-	compactionStatus *parquet.CompactionStatus
+	compactionStatus *database.CompactionStatus
 	toTime           time.Time
 }
 

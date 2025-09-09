@@ -1,12 +1,11 @@
 package collector
 
 import (
+	"github.com/turbot/tailpipe/internal/database"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 type collectionModel struct {
@@ -64,7 +63,7 @@ func (c collectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return c, nil
 	case AwaitingCompactionMsg:
 		// this doesn't do anything useful except trigger a view update with file compaction placeholder
-		cs := parquet.CompactionStatus{}
+		cs := database.CompactionStatus{}
 		c.status.compactionStatus = &cs
 		return c, nil
 	case tickMsg:

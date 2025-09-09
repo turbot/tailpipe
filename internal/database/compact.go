@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/turbot/pipe-fittings/v2/backend"
 	"github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 const (
@@ -18,7 +17,7 @@ const (
 	maxCompactionRowsPerChunk = 5_000_000
 )
 
-func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), reindex bool, patterns ...*PartitionPattern) error {
+func CompactDataFiles(ctx context.Context, db *DuckDb, updateFunc func(CompactionStatus), reindex bool, patterns ...*PartitionPattern) error {
 	slog.Info("Compacting DuckLake data files")
 
 	t := time.Now()
@@ -95,7 +94,7 @@ func CompactDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(
 //   - analyze file fragmentation to identify overlapping time ranges
 //   - for each overlapping time range, reorder all data in that range
 //   - delete original unordered entries for that time range
-func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(CompactionStatus), partitionKeys []*partitionKey, reindex bool) (*CompactionStatus, error) {
+func orderDataFiles(ctx context.Context, db *DuckDb, updateFunc func(CompactionStatus), partitionKeys []*partitionKey, reindex bool) (*CompactionStatus, error) {
 	slog.Info("Ordering DuckLake data files")
 
 	status := NewCompactionStatus()
@@ -217,7 +216,7 @@ func orderDataFiles(ctx context.Context, db *database.DuckDb, updateFunc func(Co
 }
 
 // getColumns retrieves column information for a table, checking the map first and reading from metadata if not present
-func getColumns(ctx context.Context, db *database.DuckDb, table string, columns map[string][]string) ([]string, error) {
+func getColumns(ctx context.Context, db *DuckDb, table string, columns map[string][]string) ([]string, error) {
 	// Check if columns are already cached
 	if cachedColumns, exists := columns[table]; exists {
 		return cachedColumns, nil

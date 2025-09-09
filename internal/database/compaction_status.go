@@ -1,4 +1,4 @@
-package parquet
+package database
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/backend"
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/utils"
-	"github.com/turbot/tailpipe/internal/database"
 )
 
 type CompactionStatus struct {
@@ -111,7 +110,7 @@ func (s *CompactionStatus) UpdateProgress() {
 
 }
 
-func (s *CompactionStatus) getInitialCounts(ctx context.Context, db *database.DuckDb, partitionKeys []*partitionKey) error {
+func (s *CompactionStatus) getInitialCounts(ctx context.Context, db *DuckDb, partitionKeys []*partitionKey) error {
 	partitionNameMap := make(map[string]map[string]struct{})
 	for _, pk := range partitionKeys {
 		s.InitialFiles += pk.fileCount
@@ -158,7 +157,7 @@ func (s *CompactionStatus) getInitialCounts(ctx context.Context, db *database.Du
 	return nil
 }
 
-func (s *CompactionStatus) getFinalFileCounts(ctx context.Context, db *database.DuckDb, partitionKeys []*partitionKey) error {
+func (s *CompactionStatus) getFinalFileCounts(ctx context.Context, db *DuckDb, partitionKeys []*partitionKey) error {
 	// Get unique table names from partition keys
 	tableNames := make(map[string]struct{})
 	for _, pk := range partitionKeys {

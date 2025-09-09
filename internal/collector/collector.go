@@ -20,7 +20,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -39,7 +38,7 @@ type Collector struct {
 	// the execution is used to manage the state of the collection
 	execution *execution
 	// the parquet convertor is used to convert the JSONL files to parquet
-	parquetConvertor *parquet.Converter
+	parquetConvertor *database.Converter
 
 	// the current plugin status - used to update the spinner
 	status status
@@ -193,7 +192,7 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, ove
 	c.addTimeRangeFilters(resolvedFromTime, toTime)
 
 	// create a parquet writer
-	parquetConvertor, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount, c.db)
+	parquetConvertor, err := database.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount, c.db)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -261,18 +260,18 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	updateAppCompactionFunc := func(status parquet.CompactionStatus) {
+	updateAppCompactionFunc := func(status database.CompactionStatus) {
 		c.statusLock.Lock()
 		defer c.statusLock.Unlock()
 		c.status.compactionStatus = &status
 		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	}
-	partitionPattern := parquet.NewPartitionPattern(c.partition)
+	partitionPattern := database.NewPartitionPattern(c.partition)
 
 	// NOTE: we DO NOT reindex when compacting after collection
 	reindex := false
 
-	err := parquet.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, reindex, &partitionPattern)
+	err := database.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, reindex, &partitionPattern)
 
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)
@@ -296,7 +295,7 @@ func (c *Collector) Completed() {
 // deletePartitionData deletes all parquet files in the partition between the fromTime and toTime
 func (c *Collector) deletePartitionData(ctx context.Context, fromTime, toTime time.Time) error {
 	slog.Info("Deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
-	_, err := parquet.DeletePartition(ctx, c.partition, fromTime, toTime, c.db)
+	_, err := database.DeletePartition(ctx, c.partition, fromTime, toTime, c.db)
 	if err != nil {
 		slog.Warn("Failed to delete parquet files after the from time", "partition", c.partition.Name, "from", fromTime, "error", err)
 
