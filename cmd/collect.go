@@ -245,9 +245,9 @@ func formatErrorsWithCount(errs []error) error {
 	}
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d errors:\n", len(errs))
+	b.WriteString(fmt.Sprintf("%d errors:\n", len(errs)))
 	for i, e := range errs {
-		fmt.Fprintf(&b, "   %s", e.Error())
+		b.WriteString(fmt.Sprintf("   %s", e.Error()))
 		if i < len(errs)-1 {
 			b.WriteString("\n")
 		}
