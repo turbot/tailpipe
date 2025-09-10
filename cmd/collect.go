@@ -228,11 +228,31 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 	}
 
 	if len(errorList) > 0 {
-		// TODO #errors better formating/error message https://github.com/turbot/tailpipe/issues/497
-		return nil, errors.Join(errorList...)
+		// Return a well-formatted multi-error with a count and indented bullet list
+		return nil, formatErrorsWithCount(errorList)
 	}
 
 	return partitions, nil
+}
+
+// formatErrorsWithCount returns an error summarizing a list of errors with a count and indented lines
+func formatErrorsWithCount(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	if len(errs) == 1 {
+		return errs[0]
+	}
+
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf("%d errors:\n", len(errs)))
+	for i, e := range errs {
+		b.WriteString(fmt.Sprintf("   %s", e.Error()))
+		if i < len(errs)-1 {
+			b.WriteString("\n")
+		}
+	}
+	return errors.New(b.String())
 }
 
 // getSyntheticPartition parses a synthetic partition specification string and creates a test partition configuration.
