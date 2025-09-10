@@ -21,7 +21,6 @@ import (
 	"github.com/turbot/tailpipe/internal/database"
 	localfilepaths "github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
