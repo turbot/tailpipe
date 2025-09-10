@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/tailpipe/internal/database"
-
 	"github.com/hashicorp/hcl/v2"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
