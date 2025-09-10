@@ -270,7 +270,6 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	// NOTE: we DO NOT reindex when compacting after collection
 	reindex := false
-
 	err := database.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, reindex, &partitionPattern)
 
 	if err != nil {

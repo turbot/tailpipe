@@ -99,18 +99,28 @@ func expirePrevSnapshots(ctx context.Context, db *DuckDb) error {
 	// Parse the snapshot time
 	// NOTE: rather than cast as timestamp, we read as a string then remove any timezone component
 	// This is because of the dubious behaviour of ducklake_expire_snapshots described below
-	parsedTime, err := time.Parse("2006-01-02 15:04:05.999-07", latestTimestamp)
-	if err != nil {
-		if err != nil {
-			return fmt.Errorf("failed to parse snapshot time '%s': %w", latestTimestamp, err)
+	// try various formats
+	formats := []string{
+		"2006-01-02 15:04:05.999-07:00", // +05:30
+		"2006-01-02 15:04:05.999-07",    // +01
+		"2006-01-02 15:04:05.999",       // no timezone
+	}
+	var parsedTime time.Time
+	for _, format := range formats {
+		parsedTime, err = time.Parse(format, latestTimestamp)
+		if err == nil {
+			break
 		}
 	}
+	if err != nil {
+		return fmt.Errorf("failed to parse snapshot time '%s': %w", latestTimestamp, err)
+	}
+
 	// format the time
 	// TODO Note: ducklake_expire_snapshots expects a local time without timezone,
 	//  i.e if the time is '2025-08-26 13:25:10.365 +0100', we should pass '2025-08-26 13:25:10.365'
 	//  We need to raise a ducklake issue
 	formattedTime := parsedTime.Format("2006-01-02 15:04:05.000")
-
 	slog.Debug("Latest snapshot timestamp", "timestamp", latestTimestamp)
 
 	// 2) expire all snapshots older than the latest one
