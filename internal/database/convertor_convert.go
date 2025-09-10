@@ -3,7 +3,6 @@ package database
 import (
 	"errors"
 	"fmt"
-	"github.com/turbot/pipe-fittings/v2/utils"
 	"log"
 	"log/slog"
 	"os"
@@ -11,69 +10,68 @@ import (
 	"strings"
 	"time"
 
+	"github.com/turbot/pipe-fittings/v2/utils"
+
 	"github.com/marcboeker/go-duckdb/v2"
 	"github.com/turbot/tailpipe-plugin-sdk/table"
 )
 
-func (w *Converter) processChunks(chunksToProcess []int32) {
+// process all available chunks
+// this is called when a chunk is added but will continue processing any further chunks added while we were processing
+func (w *Converter) processAllChunks() {
 	// note we ALREADY HAVE THE PROCESS LOCK - be sure to release it when we are done
 	defer w.processLock.Unlock()
 
+	// so we have the process lock AND the schedule lock
+	// move the scheduled chunks to the chunks to process
+	// (scheduledChunks may be empty, in which case we will break out of the loop)
+	chunksToProcess := w.getChunksToProcess()
 	for len(chunksToProcess) > 0 {
-		// build a list of filenames to process
-		filenamesToProcess, err := w.chunkNumbersToFilenames(chunksToProcess)
+		err := w.processChunks(chunksToProcess)
 		if err != nil {
-			// failed to convert these files - decrement the wait group
-			w.wg.Add(len(filenamesToProcess) * -1)
-
-			// TODO #DL re-add error handling
-			//  https://github.com/turbot/tailpipe/issues/480
 			slog.Error("Error processing chunks", "error", err)
-			// store the failed conversion
-			//w.failedConversions = append(w.failedConversions, failedConversion{
-			//	filenames: filenamesToProcess,
-			//	error:     err,
-			//},
-			//)
-			// just carry on
+			// call add job errors and carry on
+			w.addJobErrors(err)
 		}
-
-		// execute conversion query for the chunks
-		err = w.insertBatchIntoDuckLake(filenamesToProcess)
-		if err != nil {
-			// TODO #DL re-add error handling
-			//  https://github.com/turbot/tailpipe/issues/480
-
-			// NOTE: the wait group will already have been decremented by insertBatchIntoDuckLake
-			// so we do not need to decrement it again here
-
-			slog.Error("Error processing chunk", "filenames", filenamesToProcess, "error", err)
-			// store the failed conversion
-			//w.failedConversions = append(w.failedConversions, failedConversion{
-			//	filenames: filenamesToProcess,
-			//	error:     err,
-			//},
-			//)
-			// just carry on
-		}
-		// delete the files after processing
-		for _, filename := range filenamesToProcess {
-			if err := os.Remove(filename); err != nil {
-				slog.Error("Failed to delete file after processing", "file", filename, "error", err)
-			}
-		}
-
-		// now determine if there are more chunks to process
-		w.scheduleLock.Lock()
-
-		// now get next chunks to process
+		//- get next batch of chunks
 		chunksToProcess = w.getChunksToProcess()
-
-		w.scheduleLock.Unlock()
 	}
 
 	// if we get here, we have processed all scheduled chunks (but more may come later
 	log.Print("BatchProcessor: all scheduled chunks processed for execution")
+}
+
+// process a batch of chunks
+// Note whether successful of not, this decrements w.wg by the chunk count on return
+func (w *Converter) processChunks(chunksToProcess []int32) error {
+	// decrement the wait group by the number of chunks processed
+	defer func() {
+		w.wg.Add(len(chunksToProcess) * -1)
+	}()
+
+	// build a list of filenames to process
+	filenamesToProcess, err := w.chunkNumbersToFilenames(chunksToProcess)
+	if err != nil {
+		slog.Error("chunkNumbersToFilenames failed")
+		// chunkNumbersToFilenames returns a conversionError
+		return err
+	}
+
+	// execute conversion query for the chunks
+	// (insertBatchIntoDuckLake will return a coinversionError)
+	err = w.insertBatchIntoDuckLake(filenamesToProcess)
+	// delete the files after processing (successful or otherwise) - we will just return err
+	for _, filename := range filenamesToProcess {
+		if deleteErr := os.Remove(filename); deleteErr != nil {
+			slog.Error("Failed to delete file after processing", "file", filename, "error", err)
+			// give conversion error precedence
+			if err == nil {
+				err = deleteErr
+			}
+		}
+	}
+	// return error (if any)
+	return err
 }
 
 func (w *Converter) chunkNumbersToFilenames(chunks []int32) ([]string, error) {
@@ -91,7 +89,11 @@ func (w *Converter) chunkNumbersToFilenames(chunks []int32) ([]string, error) {
 		filenames[i] = escapedPath
 	}
 	if len(missingFiles) > 0 {
-		return filenames, NewConversionError(fmt.Errorf("%s not found", utils.Pluralize("file", len(missingFiles))), 0, missingFiles...)
+		// raise conversion error for the missing files - we do now know the row count so pass zero
+		return filenames, NewConversionError(fmt.Errorf("%s not found",
+			utils.Pluralize("file", len(missingFiles))),
+			0,
+			missingFiles...)
 
 	}
 	return filenames, nil
@@ -99,8 +101,6 @@ func (w *Converter) chunkNumbersToFilenames(chunks []int32) ([]string, error) {
 
 func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 	t := time.Now()
-	// ensure we signal the converter when we are done
-	defer w.wg.Add(len(filenames) * -1)
 
 	// copy the data from the jsonl file to a temp table
 	if err := w.copyChunkToTempTable(filenames); err != nil {
@@ -111,11 +111,12 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 	tempTime := time.Now()
 
 	// now validate the data
-	if validateRowsError := w.validateRows(filenames); validateRowsError != nil {
+	validateRowsError := w.validateRows(filenames)
+	if validateRowsError != nil {
 		// if the error is NOT RowValidationError, just return it
+		// (if it is a validation error, we have special handling)
 		if !errors.Is(validateRowsError, &RowValidationError{}) {
-			// TODO KAI think about conversion error handling here - we actually just want to pass in rows affected
-			return handleConversionError(validateRowsError, filenames[0])
+			return validateRowsError
 		}
 
 		// so it IS a row validation error - the invalid rows will have been removed from the temp table
@@ -125,10 +126,11 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 			if err == nil {
 				err = validateRowsError
 			} else {
+				// so we have an error (aside from the any  validation error)
+				// convert the validation error to a conversion error (which will be wrapping the validation error
 				var conversionError *ConversionError
+				// we expect this will always pass
 				if errors.As(validateRowsError, &conversionError) {
-					// we have a conversion error - we need to set the row count to 0
-					// so we can report the error
 					conversionError.Merge(err)
 				}
 				err = conversionError
@@ -160,10 +162,14 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 func (w *Converter) copyChunkToTempTable(jsonlFilePaths []string) error {
 	var queryBuilder strings.Builder
 
+	// Check for empty file paths
+	if len(jsonlFilePaths) == 0 {
+		return fmt.Errorf("no file paths provided")
+	}
+
 	// Create SQL array of file paths
 	var fileSQL string
 	if len(jsonlFilePaths) == 1 {
-
 		fileSQL = fmt.Sprintf("'%s'", jsonlFilePaths[0])
 	} else {
 		// For multiple files, create a properly quoted array
@@ -190,12 +196,14 @@ create temp table temp_data as
 `, selectQuery))
 
 	_, err := w.db.Exec(queryBuilder.String())
-	if err != nil {
-		// if the error is a schema change error, determine whether the schema of these chunk is
-		// different to the inferred schema (pass the first json file)
-		return w.handleSchemaChangeError(err, jsonlFilePaths[0])
-	}
-	return nil
+	// TODO KAI think about schema change
+	//if err != nil {
+	//	// if the error is a schema change error, determine whether the schema of these chunk is
+	//	// different to the inferred schema (pass the first json file)
+	//	return w.handleSchemaChangeError(err, jsonlFilePaths...)
+	//}
+
+	return err
 }
 
 // insertIntoDucklakeForBatch writes a batch of rows from the temp_data table to the specified target DuckDB table.
@@ -236,22 +244,23 @@ func (w *Converter) insertIntoDucklake(targetTable string) (int64, error) {
 	return insertedRowCount, nil
 }
 
-// handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
-// infer the schema of this chunk and compare - if they are different, return that in an error
-func (w *Converter) handleSchemaChangeError(err error, jsonlFilePath string) error {
-	schemaChangeErr := w.detectSchemaChange(jsonlFilePath)
-	if schemaChangeErr != nil {
-		// if the error returned from detectSchemaChange is a SchemaChangeError, return that instead of the original error
-		var e = &SchemaChangeError{}
-		if errors.As(schemaChangeErr, &e) {
-			// update err and fall through to handleConversionError - this wraps the error with additional row count info
-			err = e
-		}
-	}
-
-	// just return the original error, wrapped with the row count
-	return handleConversionError(err, jsonlFilePath)
-}
+// TODO kai think about ducklake schema change detection
+//
+//// handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
+//// infer the schema of this chunk and compare - if they are different, return that in an error
+//func (w *Converter) handleSchemaChangeError(err error, jsonlFilePath ...string) error {
+//	schemaChangeErr := w.detectSchemaChange(jsonlFilePath)
+//	if schemaChangeErr != nil {
+//		// if the error returned from detectSchemaChange is a SchemaChangeError, return that instead of the original error
+//		var e = &SchemaChangeError{}
+//		if errors.As(schemaChangeErr, &e) {
+//			// update err and fall through to handleConversionError - this wraps the error with additional row count info
+//			err = e
+//		}
+//	}
+//
+//	// just return the original error, wrapped with the row count
+//}
 
 // conversionRanOutOfMemory checks if the error is an out-of-memory error from DuckDB
 func conversionRanOutOfMemory(err error) bool {

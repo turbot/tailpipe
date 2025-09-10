@@ -123,26 +123,19 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 
 	// lock the schedule lock to ensure that we can safely add to the scheduled scheduledChunks
 	w.scheduleLock.Lock()
-	defer w.scheduleLock.Unlock()
-
 	// add to scheduled scheduledChunks
 	w.scheduledChunks = append(w.scheduledChunks, chunk)
+	w.scheduleLock.Unlock()
+
 	// increment the wait group to track the scheduled chunk
 	w.wg.Add(1)
 
 	// ok try to lock the process lock - that will fail if another process is running
 	if w.processLock.TryLock() {
-		// so we have the process lock AND the schedule lock
-		// store the chunk to process
-
-		// move the scheduled chunks to the chunks to process
-		// (scheduledChunks may be empty, in which case we will break out of the loop)
-		chunksToProcess := w.getChunksToProcess()
-
 		// and process = we now have the process lock
 		// NOTE: process chunks will keep processing as long as there are scheduledChunks to process, including
 		// scheduledChunks that were scheduled while we were processing
-		go w.processChunks(chunksToProcess)
+		go w.processAllChunks()
 	}
 
 	return nil
@@ -151,6 +144,10 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 // getChunksToProcess returns the chunks to process, up to a maximum of maxChunksToProcess
 // it also trims the scheduledChunks to remove the processed chunks
 func (w *Converter) getChunksToProcess() []int32 {
+	// now determine if there are more chunks to process
+	w.scheduleLock.Lock()
+	defer w.scheduleLock.Unlock()
+
 	// TODO #DL do we even need this https://github.com/turbot/tailpipe/issues/523
 	const maxChunksToProcess = 2000
 	var chunksToProcess []int32
@@ -209,7 +206,7 @@ func (w *Converter) WaitForConversions(ctx context.Context) error {
 	}
 }
 
-//nolint:unused // we will use this once we re-add conversion error handling
+// addJobErrors calls the status func with any job errors, first summing the failed rows in any conversion errors
 func (w *Converter) addJobErrors(errorList ...error) {
 	var failedRowCount int64
 
@@ -231,34 +228,3 @@ func (w *Converter) updateRowCount(count int64) {
 	// call the status function with the new row count
 	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount))
 }
-
-// updateCompletionCount atomically increments the completion count
-//func (w *Converter) updateCompletionCount(fileCount, conversionCount int32) {
-//	atomic.AddInt32(&w.fileCount, fileCount)
-//	atomic.AddInt32(&w.conversionCount, conversionCount)
-//}
-//
-//func (w *Converter) GetCompletionCount() int32 {
-//	return atomic.LoadInt32(&w.fileCount)
-//}
-
-// TODO #DL think about memory
-//  https://github.com/turbot/tailpipe/issues/478
-
-//func (w *conversionWorker) forceMemoryRelease() error {
-//	// we need to flush the memory to release it - do this by setting a low memory limit then the full one
-//	// NOTE: do not set the memory to zero as we have temp table data
-//	const minMemoryMb = 64
-//
-//	// Set to minimum memory - note the use of ? parameter
-//	if _, err := w.db.Exec("set max_memory = ? || 'MB';", minMemoryMb); err != nil {
-//		return fmt.Errorf("memory flush failed: %w", err)
-//	}
-//
-//	// Reset to configured memory limit
-//	if _, err := w.db.Exec("set max_memory = ? || 'MB';", w.maxMemoryMb); err != nil {
-//		return fmt.Errorf("memory reset failed: %w", err)
-//	}
-//	return nil
-//
-//}

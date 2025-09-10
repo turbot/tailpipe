@@ -29,7 +29,7 @@ import (
 func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compact [table|table.partition] [flags]",
-		Args:  cobra.ArbitraryArgs,
+		Args:  cobra.MaximumNArgs(1),
 		Run:   runCompactCmd,
 		Short: "Compact multiple parquet files per day to one per day",
 		Long:  `Compact multiple parquet files per day to one per day.`,

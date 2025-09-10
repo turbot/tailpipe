@@ -27,7 +27,8 @@ func (w *Converter) validateRows(jsonlFilePaths []string) error {
 
 	err := row.Scan(&failedRowCount, &columnsWithNullsInterface)
 	if err != nil {
-		return w.handleSchemaChangeError(err, jsonlFilePaths[0])
+		// todo kai think about schema change
+		return handleConversionError("row validation query failed", err, jsonlFilePaths...)
 	}
 
 	if failedRowCount == 0 {
@@ -38,7 +39,7 @@ func (w *Converter) validateRows(jsonlFilePaths []string) error {
 	// delete invalid rows from the temp table
 	if err := w.deleteInvalidRows(requiredColumns); err != nil {
 		// failed to delete invalid rows - return an error
-		err := handleConversionError(err, jsonlFilePaths...)
+		err := handleConversionError("failed to delete invalid rows from temp table", err, jsonlFilePaths...)
 		return err
 	}
 
@@ -51,14 +52,13 @@ func (w *Converter) validateRows(jsonlFilePaths []string) error {
 	}
 
 	// we have a failure - return an error with details about which columns had nulls
+	// wrap a row validation error inside a conversion error
 	return NewConversionError(NewRowValidationError(failedRowCount, columnsWithNulls), failedRowCount, jsonlFilePaths...)
 }
 
 // buildValidationQuery builds a query to copy the data from the select query to a temp table
 // it then validates that the required columns are not null, removing invalid rows and returning
 // the count of invalid rows and the columns with nulls
-//
-//nolint:unused // TODO re-add validation https://github.com/turbot/tailpipe/issues/479
 func (w *Converter) buildValidationQuery(requiredColumns []string) string {
 	var queryBuilder strings.Builder
 
