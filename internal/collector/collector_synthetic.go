@@ -23,32 +23,59 @@ import (
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
+// doCollectSynthetic initiates synthetic data collection for testing and performance benchmarking.
+// This function simulates the data collection process by generating dummy data instead of collecting from real sources.
+//
+// The function:
+// 1. Creates an execution context to track the synthetic collection process
+// 2. Builds a synthetic schema based on the number of columns specified in the partition metadata
+// 3. Starts a background goroutine to generate and write synthetic data in chunks
+// 4. Returns a CollectResponse that mimics what a real plugin would return
+//
+// This enables testing of the entire data collection pipeline without requiring actual data sources,
+// making it useful for performance testing, load testing, and development/debugging scenarios.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - fromTime: Start time for the synthetic data (timestamps will be distributed across this range)
+//   - toTime: End time for the synthetic data
+//   - overwrite: Whether to overwrite existing data (not used in synthetic collection)
+//
+// Returns:
+//   - *plugin.CollectResponse: Response containing execution ID and schema information
+//   - error: Any error that occurred during initialization
 func (c *Collector) doCollectSynthetic(ctx context.Context, fromTime time.Time, toTime time.Time, overwrite bool) (*plugin.CollectResponse, error) {
-	// create the execution
-	// NOTE: create _before_ calling the plugin to ensure it is ready to receive the started event
+	// Create the execution context to track the synthetic collection process
+	// This must be created before starting the collection goroutine to ensure proper event handling
 	c.execution = &execution{
-		id:             "synthetic",
-		partition:      c.partition.UnqualifiedName,
-		table:          c.partition.TableName,
-		plugin:         "synthetic",
-		state:          ExecutionState_PENDING,
-		completionChan: make(chan error, 1),
+		id:             "synthetic",                 // Use "synthetic" as the execution ID
+		partition:      c.partition.UnqualifiedName, // Full partition name for identification
+		table:          c.partition.TableName,       // Table name (always "synthetic" for synthetic partitions)
+		plugin:         "synthetic",                 // Plugin name for logging and identification
+		state:          ExecutionState_PENDING,      // Initial state before collection starts
+		completionChan: make(chan error, 1),         // Channel to signal completion or errors
 	}
 
+	// Build the synthetic schema based on the number of columns specified in the partition metadata
+	// This creates a table schema with the specified number of columns of various types
 	schema := buildsyntheticchema(c.partition.SyntheticMetadata.Columns)
-	// start a thread to fake the collection process
+
+	// Start a background goroutine to perform the actual synthetic data generation
+	// This simulates the asynchronous nature of real data collection
 	go c.collectSynthetic(ctx, schema, fromTime, toTime)
 
-	// build a collect response
+	// Build a collect response that mimics what a real plugin would return
+	// This allows the synthetic collection to integrate seamlessly with the existing collection pipeline
 	collectResponse := &plugin.CollectResponse{
-		ExecutionId: c.execution.id,
-		Schema:      schema,
+		ExecutionId: c.execution.id, // Use the execution ID for tracking
+		Schema:      schema,         // The generated synthetic schema
 		FromTime: &row_source.ResolvedFromTime{
-			Time:   fromTime,
-			Source: "synthetic",
+			Time:   fromTime,    // Start time for the data collection
+			Source: "synthetic", // Source identifier for synthetic data
 		},
 	}
-	// _now_ set the execution id
+
+	// Update the execution ID to match the response (in case it was modified)
 	c.execution.id = collectResponse.ExecutionId
 	return collectResponse, nil
 }
@@ -416,32 +443,58 @@ func buildsyntheticchema(columns int) *schema.TableSchema {
 	return s
 }
 
+// collectSynthetic generates synthetic data in chunks and writes it to JSONL files.
+// This function runs in a background goroutine and simulates the data collection process
+// by generating dummy data according to the synthetic partition specifications.
+//
+// The function:
+// 1. Notifies that collection has started
+// 2. Calculates timestamp intervals to distribute timestamps across the time range
+// 3. Generates data in chunks according to the specified chunk size
+// 4. Writes each chunk to a JSONL file using optimized concurrent writing
+// 5. Respects the delivery interval to simulate real-time data flow
+// 6. Sends progress events (chunk and status) to maintain the collection UI
+// 7. Handles cancellation and error conditions gracefully
+// 8. Notifies completion when all data has been generated
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - tableSchema: The schema defining the structure of the synthetic data
+//   - fromTime: Start time for timestamp generation
+//   - toTime: End time for timestamp generation
 func (c *Collector) collectSynthetic(ctx context.Context, tableSchema *schema.TableSchema, fromTime time.Time, toTime time.Time) {
 	metadata := c.partition.SyntheticMetadata
 
-	// set the execution state to started
+	// Set the execution state to started to indicate collection is in progress
 	c.execution.state = ExecutionState_STARTED
 
+	// Notify that collection has started - this triggers the collection UI to show progress
 	if err := c.Notify(ctx, &events.Started{ExecutionId: c.execution.id}); err != nil {
 		slog.Error("failed to notify started event", "error", err)
 		c.execution.completionChan <- fmt.Errorf("failed to notify started event: %w", err)
 		return
 	}
 
-	var chunkIdx int32 = 0
-	var totalRowsProcessed int64 = 0
+	var chunkIdx int32 = 0           // Track the current chunk number
+	var totalRowsProcessed int64 = 0 // Track total rows processed for progress reporting
 
-	// Calculate timestamp interval based on fromTime, toTime, and total rows
+	// Calculate timestamp interval to distribute timestamps evenly across the time range
+	// This ensures synthetic data has realistic timestamp progression
 	var timestampInterval time.Duration
 	if metadata.Rows > 1 {
+		// Distribute timestamps evenly between fromTime and toTime
 		timestampInterval = toTime.Sub(fromTime) / time.Duration(metadata.Rows-1)
 	} else {
+		// Single row case - no interval needed
 		timestampInterval = 0
 	}
 
+	// Generate data in chunks according to the specified chunk size
+	// This allows for memory-efficient processing of large datasets
 	for rowCount := 0; rowCount < metadata.Rows; rowCount += metadata.ChunkSize {
-		t := time.Now()
-		// Check if context is cancelled
+		t := time.Now() // Track chunk processing time for delivery interval calculation
+
+		// Check if context is cancelled - allows for graceful shutdown
 		select {
 		case <-ctx.Done():
 			c.execution.completionChan <- ctx.Err()
@@ -449,30 +502,38 @@ func (c *Collector) collectSynthetic(ctx context.Context, tableSchema *schema.Ta
 		default:
 		}
 
+		// Calculate the number of rows for this chunk (may be less than chunk size for the last chunk)
 		rows := int(math.Min(float64(metadata.Rows-rowCount), float64(metadata.ChunkSize)))
 
-		// write optimized chunk to JSONL file
+		// Generate filename for this chunk's JSONL file
 		filename := table.ExecutionIdToJsonlFileName(c.execution.id, chunkIdx)
 		filepath := filepath.Join(c.sourcePath, filename)
 
-		// write the chunk to JSONL file using optimized approach
+		// Write the chunk to JSONL file using optimized concurrent approach
+		// This generates synthetic data and writes it efficiently to disk
 		if err := writeOptimizedChunkToJSONLConcurrent(filepath, tableSchema, rows, rowCount, c.partition, fromTime, timestampInterval); err != nil {
 			c.execution.completionChan <- fmt.Errorf("error writing chunk to JSONL file: %w", err)
 			return
 		}
 
-		dur := time.Since(t)
-		// if this is less that deliver interval, wait for the remaining time
+		dur := time.Since(t) // Calculate how long this chunk took to process
+
+		// Respect the delivery interval to simulate real-time data flow
+		// If processing was faster than the interval, wait for the remaining time
 		if metadata.DeliveryIntervalMs > 0 && dur < time.Duration(metadata.DeliveryIntervalMs)*time.Millisecond {
 			slog.Debug("Waiting for delivery interval", "duration", dur, "expected", time.Duration(metadata.DeliveryIntervalMs)*time.Millisecond)
 			select {
 			case <-time.After(time.Duration(metadata.DeliveryIntervalMs)*time.Millisecond - dur):
+				// Wait for the remaining time
 			case <-ctx.Done():
+				// Context was cancelled during wait
 				c.execution.completionChan <- ctx.Err()
 				return
 			}
 		}
-		// send chunk event to the plugin
+
+		// Send chunk event to notify that a chunk has been completed
+		// This updates the collection UI and allows other components to process the chunk
 		chunkEvent := &events.Chunk{ExecutionId: c.execution.id, ChunkNumber: chunkIdx}
 		if err := c.Notify(ctx, chunkEvent); err != nil {
 			slog.Error("failed to notify chunk event", "error", err)
@@ -480,6 +541,8 @@ func (c *Collector) collectSynthetic(ctx context.Context, tableSchema *schema.Ta
 			return
 		}
 
+		// Update total rows processed and send status event
+		// This provides progress information to the collection UI
 		totalRowsProcessed += int64(rows)
 		statusEvent := &events.Status{ExecutionId: c.execution.id, RowsReceived: totalRowsProcessed, RowsEnriched: totalRowsProcessed}
 		if err := c.Notify(ctx, statusEvent); err != nil {
@@ -488,17 +551,19 @@ func (c *Collector) collectSynthetic(ctx context.Context, tableSchema *schema.Ta
 			return
 		}
 
-		chunkIdx++
+		chunkIdx++ // Move to next chunk
 	}
 
-	// Send completion event
+	// Send completion event to indicate all data has been generated
+	// This triggers final processing and updates the collection UI
 	if err := c.Notify(ctx, events.NewCompletedEvent(c.execution.id, int64(metadata.Rows), chunkIdx, nil)); err != nil {
 		slog.Error("failed to notify completed event", "error", err)
 		c.execution.completionChan <- fmt.Errorf("failed to notify completed event: %w", err)
 		return
 	}
 
-	// Signal completion
+	// Signal completion by sending nil to the completion channel
+	// This allows the main collection process to know that synthetic data generation is complete
 	c.execution.completionChan <- nil
 }
 

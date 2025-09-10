@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/turbot/pipe-fittings/v2/constants"
@@ -14,18 +12,6 @@ import (
 
 // DeletePartition deletes data for the specified partition and date range from the given Ducklake connected database.
 func DeletePartition(ctx context.Context, partition *config.Partition, from, to time.Time, db *DuckDb) (rowCount int, err error) {
-	// TODO #DL https://github.com/turbot/tailpipe/issues/505
-	//  if we are using s3 do not delete for now as this does not work at present (need explicit S3 support I think)
-	//  remove before release https://github.com/turbot/tailpipe/issues/520
-	if envDir := os.Getenv("TAILPIPE_DATA_DIR"); strings.HasPrefix(envDir, "s3") {
-		slog.Warn("Skipping partition deletion for S3 data source",
-			"partition", partition.TableName,
-			"from", from,
-			"to", to,
-		)
-		return 0, nil // return 0 rows affected, not an error
-	}
-
 	// First check if the table exists using DuckLake metadata
 	tableExistsQuery := fmt.Sprintf(`select exists (select 1 from %s.ducklake_table where table_name = ?)`, constants.DuckLakeMetadataCatalog)
 	var tableExists bool
@@ -99,18 +85,28 @@ func expirePrevSnapshots(ctx context.Context, db *DuckDb) error {
 	// Parse the snapshot time
 	// NOTE: rather than cast as timestamp, we read as a string then remove any timezone component
 	// This is because of the dubious behaviour of ducklake_expire_snapshots described below
-	parsedTime, err := time.Parse("2006-01-02 15:04:05.999-07", latestTimestamp)
-	if err != nil {
-		if err != nil {
-			return fmt.Errorf("failed to parse snapshot time '%s': %w", latestTimestamp, err)
+	// try various formats
+	formats := []string{
+		"2006-01-02 15:04:05.999-07:00", // +05:30
+		"2006-01-02 15:04:05.999-07",    // +01
+		"2006-01-02 15:04:05.999",       // no timezone
+	}
+	var parsedTime time.Time
+	for _, format := range formats {
+		parsedTime, err = time.Parse(format, latestTimestamp)
+		if err == nil {
+			break
 		}
 	}
+	if err != nil {
+		return fmt.Errorf("failed to parse snapshot time '%s': %w", latestTimestamp, err)
+	}
+
 	// format the time
 	// TODO Note: ducklake_expire_snapshots expects a local time without timezone,
 	//  i.e if the time is '2025-08-26 13:25:10.365 +0100', we should pass '2025-08-26 13:25:10.365'
 	//  We need to raise a ducklake issue
 	formattedTime := parsedTime.Format("2006-01-02 15:04:05.000")
-
 	slog.Debug("Latest snapshot timestamp", "timestamp", latestTimestamp)
 
 	// 2) expire all snapshots older than the latest one
