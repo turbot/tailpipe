@@ -27,7 +27,6 @@ func (w *Converter) validateRows(jsonlFilePaths []string) error {
 
 	err := row.Scan(&failedRowCount, &columnsWithNullsInterface)
 	if err != nil {
-		// todo kai think about schema change
 		return handleConversionError("row validation query failed", err, jsonlFilePaths...)
 	}
 
