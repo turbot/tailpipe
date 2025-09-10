@@ -3,12 +3,9 @@ package display
 import (
 	"context"
 	"fmt"
-	"strings"
-
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
 // PartitionResource represents a partition resource and is used for list/show commands
@@ -17,6 +14,18 @@ type PartitionResource struct {
 	Description *string            `json:"description,omitempty"`
 	Plugin      string             `json:"plugin"`
 	Local       TableResourceFiles `json:"local,omitempty"`
+	table       string
+	partition   string
+}
+
+func NewPartitionResource(p *config.Partition) *PartitionResource {
+	return &PartitionResource{
+		Name:        p.UnqualifiedName,
+		Description: p.Description,
+		Plugin:      p.Plugin.Alias,
+		table:       p.TableName,
+		partition:   p.ShortName,
+	}
 }
 
 // GetShowData implements the printers.Showable interface
@@ -43,10 +52,11 @@ func (r *PartitionResource) GetListData() *printers.RowData {
 	return res
 }
 
-func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
+func ListPartitionResources(ctx context.Context, db *database.DuckDb) ([]*PartitionResource, error) {
 	var res []*PartitionResource
 
-	// TODO Add in unconfigured partitions to list output
+	// TODO Add in unconfigured partitions which exist in database but not configt to list output
+	//  https://github.com/turbot/tailpipe/issues/254
 	// load all partition names from the data
 	//partitionNames, err := database.ListPartitions(ctx)
 	//if err != nil {
@@ -56,14 +66,10 @@ func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 
 	partitions := config.GlobalConfig.Partitions
 	for _, p := range partitions {
-		name := fmt.Sprintf("%s.%s", p.TableName, p.ShortName)
-		partition := &PartitionResource{
-			Name:        name,
-			Description: p.Description,
-			Plugin:      p.Plugin.Alias,
-		}
+		partition := NewPartitionResource(p)
 
-		err := partition.setFileInformation()
+		// populate the partition resource with local file information
+		err := partition.setFileInformation(ctx, db)
 		if err != nil {
 			return nil, fmt.Errorf("error setting file information: %w", err)
 		}
@@ -74,18 +80,10 @@ func ListPartitionResources(ctx context.Context) ([]*PartitionResource, error) {
 	return res, nil
 }
 
-func GetPartitionResource(partitionName string) (*PartitionResource, error) {
-	p, ok := config.GlobalConfig.Partitions[partitionName]
-	if !ok {
-		return nil, fmt.Errorf("no partitions found")
-	}
-	partition := &PartitionResource{
-		Name:        partitionName,
-		Description: p.Description,
-		Plugin:      p.Plugin.Alias,
-	}
+func GetPartitionResource(ctx context.Context, p *config.Partition, db *database.DuckDb) (*PartitionResource, error) {
+	partition := NewPartitionResource(p)
 
-	err := partition.setFileInformation()
+	err := partition.setFileInformation(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("error setting file information: %w", err)
 	}
@@ -93,27 +91,17 @@ func GetPartitionResource(partitionName string) (*PartitionResource, error) {
 	return partition, nil
 }
 
-func (r *PartitionResource) setFileInformation() error {
-	dataDir := config.GlobalWorkspaceProfile.GetDataDir()
+func (r *PartitionResource) setFileInformation(ctx context.Context, db *database.DuckDb) error {
 
-	nameParts := strings.Split(r.Name, ".")
-
-	partitionDir := filepaths.GetParquetPartitionPath(dataDir, nameParts[0], nameParts[1])
-	metadata, err := getFileMetadata(partitionDir)
+	// Get file metadata using shared function
+	metadata, err := database.GetPartitionFileMetadata(ctx, r.table, r.partition, db)
 	if err != nil {
-		return err
+		return fmt.Errorf("unable to obtain file metadata: %w", err)
 	}
 
-	r.Local.FileMetadata = metadata
-
-	if metadata.FileCount > 0 {
-		var rc int64
-		rc, err = database.GetRowCount(context.Background(), nameParts[0], &nameParts[1])
-		if err != nil {
-			return fmt.Errorf("unable to obtain row count: %w", err)
-		}
-		r.Local.RowCount = rc
-	}
+	r.Local.FileSize = metadata.FileSize
+	r.Local.FileCount = metadata.FileCount
+	r.Local.RowCount = metadata.RowCount
 
 	return nil
 }

@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,6 +12,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/interactive"
@@ -76,11 +77,22 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// get a connection to the database
-	var db *database.DuckDb
-	db, err = openDatabaseConnection(ctx)
-	if err != nil {
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
 		return
+	}
+
+	// build the filters from the to, from and index args
+	filters, err := getFilters()
+	if err != nil {
+		error_helpers.FailOnError(fmt.Errorf("error building filters: %w", err))
+	}
+
+	// now create a readonly connection to the database, passing in any filters
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly(filters...))
+	if err != nil {
+		error_helpers.FailOnError(err)
 	}
 	defer db.Close()
 
@@ -99,17 +111,6 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		// if there were any errors, they would have been shown already from `RunBatchSession` - just set the exit code
 		exitCode = pconstants.ExitCodeQueryExecutionFailed
 	}
-
-}
-
-// generate a db file - this will respect any time/index filters specified in the command args
-func openDatabaseConnection(ctx context.Context) (*database.DuckDb, error) {
-	dbFilePath, err := generateDbFile(ctx)
-	if err != nil {
-		return nil, err
-	}
-	// Open a DuckDB connection
-	return database.NewDuckDb(database.WithDbFile(dbFilePath))
 }
 
 func setExitCodeForQueryError(err error) {
@@ -118,6 +119,6 @@ func setExitCodeForQueryError(err error) {
 		return
 	}
 
-	// TODO #errors - assign exit codes  https://github.com/turbot/tailpipe/issues/106
+	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/496
 	exitCode = 1
 }

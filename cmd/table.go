@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -14,7 +15,9 @@ import (
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
 )
 
@@ -65,7 +68,7 @@ func tableListCmd() *cobra.Command {
 }
 
 func runTableListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runSourceListCmd start")
@@ -77,8 +80,19 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resources, err := display.ListTableResources(ctx)
+	resources, err := display.ListTableResources(ctx, db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
@@ -115,7 +129,7 @@ func tableShowCmd() *cobra.Command {
 }
 
 func runTableShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runTableShowCmd start")
@@ -127,8 +141,19 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resource, err := display.GetTableResource(ctx, args[0])
+	resource, err := display.GetTableResource(ctx, args[0], db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 

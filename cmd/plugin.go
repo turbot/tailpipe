@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
@@ -250,6 +252,12 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	// Clean up plugin temporary directories from previous crashes/interrupted installations
 	filepaths.CleanupPluginTempDirs()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
 	// args to 'plugin install' -- one or more plugins to install
 	// plugin names can be simple names for "standard" plugins, constraint suffixed names
 	// or full refs to the OCI image
@@ -379,6 +387,12 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 
 	// Clean up plugin temporary directories from previous crashes/interrupted installations
 	filepaths.CleanupPluginTempDirs()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// args to 'plugin update' -- one or more plugins to update
 	// These can be simple names for "standard" plugins, constraint suffixed names
@@ -633,6 +647,12 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 	// Clean up plugin temporary directories from previous crashes/interrupted installations
 	filepaths.CleanupPluginTempDirs()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
 	if len(args) == 0 {
 		fmt.Println() //nolint:forbidigo // ui output
 		error_helpers.ShowError(ctx, fmt.Errorf("you need to provide at least one plugin to uninstall"))
@@ -699,6 +719,12 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
 	// Get Resource(s)
 	resources, err := display.ListPlugins(ctx)
 	error_helpers.FailOnError(err)
@@ -744,6 +770,12 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 			exitCode = pconstants.ExitCodeUnknownErrorPanic
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// Get Resource(s)
 	resource, err := display.GetPluginResource(ctx, args[0])

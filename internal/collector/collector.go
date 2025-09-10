@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	sdkfilepaths "github.com/turbot/tailpipe-plugin-sdk/filepaths"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
@@ -39,7 +40,7 @@ type Collector struct {
 	// the execution is used to manage the state of the collection
 	execution *execution
 	// the parquet convertor is used to convert the JSONL files to parquet
-	parquetConvertor *parquet.Converter
+	parquetConvertor *database.Converter
 
 	// the current plugin status - used to update the spinner
 	status status
@@ -51,6 +52,9 @@ type Collector struct {
 	collectionTempDir string
 	// the path to the JSONL files - the plugin will write to this path
 	sourcePath string
+
+	// database connection
+	db *database.DuckDb
 
 	// bubble tea app
 	app    *tea.Program
@@ -88,6 +92,18 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	}
 	c.sourcePath = sourcePath
 
+	// create the DuckDB connection
+	// load inet extension in addition to the DuckLake extension
+	db, err := database.NewDuckDb(
+		database.WithDuckDbExtensions(pconstants.DuckDbExtensions),
+		database.WithDuckLake(),
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create DuckDB connection: %w", err)
+	}
+	c.db = db
+
 	return c, nil
 }
 
@@ -99,15 +115,16 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 func (c *Collector) Close() {
 	close(c.Events)
 
-	if c.parquetConvertor != nil {
-		c.parquetConvertor.Close()
-	}
-
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
 
 	// delete the collection temp dir
 	_ = os.RemoveAll(c.collectionTempDir)
+
+	// close the tea app
+	if c.app != nil {
+		c.app.Quit()
+	}
 }
 
 // Collect asynchronously starts the collection process
@@ -117,7 +134,7 @@ func (c *Collector) Close() {
 // - starts the collection UI
 // - creates a parquet writer, which will process the JSONL files as they are written
 // - starts listening to plugin events
-func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, recollect bool) (err error) {
+func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, overwrite bool) (err error) {
 	if c.execution != nil {
 		return errors.New("collection already in progress")
 	}
@@ -131,22 +148,20 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 		}
 	}()
 
-	// create the execution
-	// NOTE: create _before_ calling the plugin to ensure it is ready to receive the started event
-	c.execution = newExecution(c.partition)
-
-	// tell plugin to start collecting
-	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, toTime, recollect, c.collectionTempDir)
-	if err != nil {
-		return err
+	var collectResponse *plugin.CollectResponse
+	// is this is a synthetic partition?
+	if c.partition.SyntheticMetadata != nil {
+		if collectResponse, err = c.doCollectSynthetic(ctx, fromTime, toTime, overwrite); err != nil {
+			return err
+		}
+	} else {
+		if collectResponse, err = c.doCollect(ctx, fromTime, toTime, overwrite); err != nil {
+			return err
+		}
 	}
 
-	// _now_ set the execution id
-	c.execution.id = collectResponse.ExecutionId
-
 	// validate the schema returned by the plugin
-	err = collectResponse.Schema.Validate()
-	if err != nil {
+	if err = collectResponse.Schema.Validate(); err != nil {
 		err := fmt.Errorf("table '%s' returned invalid schema: %w", c.partition.TableName, err)
 		// set execution to error
 		c.execution.done(err)
@@ -156,20 +171,33 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	// determine the time to start collecting from
 	resolvedFromTime := collectResponse.FromTime
 
+	// if we are overwriting, we need to delete any existing data in the partition
+	if overwrite {
+		// show spinner while deleting the partition
+		spinner := statushooks.NewStatusSpinnerHook()
+		spinner.SetStatus(fmt.Sprintf("Deleting partition %s", c.partition.TableName))
+		spinner.Show()
+		err := c.deletePartitionData(ctx, resolvedFromTime.Time, toTime)
+		spinner.Hide()
+		if err != nil {
+			// set execution to error
+			c.execution.done(err)
+			// and return error
+			return fmt.Errorf("failed to delete partition data: %w", err)
+		}
+	}
+
 	// display the progress UI
 	err = c.showCollectionStatus(resolvedFromTime, toTime)
 	if err != nil {
 		return err
 	}
 
-	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
-	if !resolvedFromTime.Time.IsZero() {
-		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
-		c.partition.AddFilter(fmt.Sprintf("(tp_timestamp is null or tp_timestamp >= '%s')", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
-	}
+	// if we have a from or to time, add filters to the partition
+	c.addTimeRangeFilters(resolvedFromTime, toTime)
 
 	// create a parquet writer
-	parquetConvertor, err := parquet.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount)
+	parquetConvertor, err := database.NewParquetConverter(ctx, cancel, c.execution.id, c.partition, c.sourcePath, collectResponse.Schema, c.updateRowCount, c.db)
 	if err != nil {
 		return fmt.Errorf("failed to create parquet writer: %w", err)
 	}
@@ -179,6 +207,36 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, rec
 	go c.listenToEvents(ctx)
 
 	return nil
+}
+
+func (c *Collector) doCollect(ctx context.Context, fromTime time.Time, toTime time.Time, overwrite bool) (*plugin.CollectResponse, error) {
+	// create the execution
+	// NOTE: create _before_ calling the plugin to ensure it is ready to receive the started event
+	c.execution = newExecution(c.partition)
+
+	// tell plugin to start collecting
+	collectResponse, err := c.pluginManager.Collect(ctx, c.partition, fromTime, toTime, overwrite, c.collectionTempDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// _now_ set the execution id
+	c.execution.id = collectResponse.ExecutionId
+	return collectResponse, nil
+}
+
+// addTimeRangeFilters adds filters to the partition based on the from and to time
+func (c *Collector) addTimeRangeFilters(resolvedFromTime *row_source.ResolvedFromTime, toTime time.Time) {
+	// if there is a from time, add a filter to the partition - this will be used by the parquet writer
+	if !resolvedFromTime.Time.IsZero() {
+		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
+		c.partition.AddFilter(fmt.Sprintf("(tp_timestamp is null or tp_timestamp >= '%s')", resolvedFromTime.Time.Format("2006-01-02T15:04:05")))
+	}
+	// if to time was set as arg, add that filter as well
+	if viper.IsSet(pconstants.ArgTo) {
+		// NOTE: handle null timestamp so we get a validation error for null timestamps, rather than excluding the row
+		c.partition.AddFilter(fmt.Sprintf("(tp_timestamp is null or tp_timestamp < '%s')", toTime.Format("2006-01-02T15:04:05")))
+	}
 }
 
 // Notify implements observer.Observer
@@ -207,14 +265,18 @@ func (c *Collector) Compact(ctx context.Context) error {
 
 	c.updateApp(AwaitingCompactionMsg{})
 
-	updateAppCompactionFunc := func(compactionStatus parquet.CompactionStatus) {
+	updateAppCompactionFunc := func(status database.CompactionStatus) {
 		c.statusLock.Lock()
 		defer c.statusLock.Unlock()
-		c.status.UpdateCompactionStatus(&compactionStatus)
+		c.status.compactionStatus = &status
 		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
 	}
-	partitionPattern := parquet.NewPartitionPattern(c.partition)
-	err := parquet.CompactDataFiles(ctx, updateAppCompactionFunc, partitionPattern)
+	partitionPattern := database.NewPartitionPattern(c.partition)
+
+	// NOTE: we DO NOT reindex when compacting after collection
+	reindex := false
+	err := database.CompactDataFiles(ctx, c.db, updateAppCompactionFunc, reindex, &partitionPattern)
+
 	if err != nil {
 		return fmt.Errorf("failed to compact data files: %w", err)
 	}
@@ -234,6 +296,10 @@ func (c *Collector) Completed() {
 	}
 }
 
+// deletePartitionData deletes all parquet files in the partition between the fromTime and toTime
+func (c *Collector) deletePartitionData(ctx context.Context, fromTime, toTime time.Time) error {
+	slog.Info("Deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
+	_, err := database.DeletePartition(ctx, c.partition, fromTime, toTime, c.db)
 // handlePluginEvent handles an event from a plugin
 func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
 	// handlePluginEvent the event
@@ -304,15 +370,11 @@ func (c *Collector) createTableView(ctx context.Context) error {
 	// Open a DuckDB connection
 	db, err := database.NewDuckDb(database.WithDbFile(localfilepaths.TailpipeDbFilePath()))
 	if err != nil {
-		return err
-	}
-	defer db.Close()
+		slog.Warn("Failed to delete parquet files after the from time", "partition", c.partition.Name, "from", fromTime, "error", err)
 
-	err = database.AddTableView(ctx, c.execution.table, db)
-	if err != nil {
-		return err
 	}
-	return nil
+	slog.Info("Completed deleting parquet files after the from time", "partition", c.partition.Name, "from", fromTime)
+	return err
 }
 
 func (c *Collector) showCollectionStatus(resolvedFromTime *row_source.ResolvedFromTime, toTime time.Time) error {
@@ -397,17 +459,7 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *events.Complete)
 	}
 
 	// wait for the conversions to complete
-	c.parquetConvertor.WaitForConversions(ctx)
-
-	// create or update the table view for ths table being collected
-	if err := c.createTableView(ctx); err != nil {
-		slog.Error("error creating table view", "error", err)
-		return err
-	}
-
-	slog.Info("handlePluginEvent - conversions all complete")
-
-	return nil
+	return c.parquetConvertor.WaitForConversions(ctx)
 }
 
 // listenToEvents listens to the events channel and handles events
@@ -416,9 +468,65 @@ func (c *Collector) listenToEvents(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case event := <-c.Events:
-			c.handlePluginEvent(ctx, event)
+		case e := <-c.Events:
+			c.handlePluginEvent(ctx, e)
 		}
+	}
+}
+
+// handlePluginEvent handles an event from a plugin
+func (c *Collector) handlePluginEvent(ctx context.Context, e events.Event) {
+	// handlePluginEvent the event
+	// switch based on the struct of the event
+	switch ev := e.(type) {
+	case *events.Started:
+		slog.Info("Started event", "execution", ev.ExecutionId)
+		c.execution.state = ExecutionState_STARTED
+	case *events.Status:
+		c.statusLock.Lock()
+		defer c.statusLock.Unlock()
+		c.status.UpdateWithPluginStatus(ev)
+		c.updateApp(CollectionStatusUpdateMsg{status: c.status})
+	case *events.Chunk:
+
+		executionId := ev.ExecutionId
+		chunkNumber := ev.ChunkNumber
+
+		// log every 100 chunks
+		if ev.ChunkNumber%100 == 0 {
+			slog.Debug("Chunk event", "execution", ev.ExecutionId, "chunk", ev.ChunkNumber)
+		}
+
+		err := c.parquetConvertor.AddChunk(executionId, chunkNumber)
+		if err != nil {
+			slog.Error("failed to add chunk to parquet writer", "error", err)
+			c.execution.done(err)
+		}
+	case *events.Complete:
+		slog.Info("Complete event", "execution", ev.ExecutionId)
+
+		// was there an error?
+		if ev.Err != nil {
+			slog.Error("execution error", "execution", ev.ExecutionId, "error", ev.Err)
+			// update the execution
+			c.execution.done(ev.Err)
+			return
+		}
+		// this event means all JSON files have been written - we need to wait for all to be converted to parquet
+		// we then combine the parquet files into a single file
+
+		// start thread waiting for conversion to complete
+		// - this will wait for all parquet files to be written, and will then combine these into a single parquet file
+		slog.Info("handlePluginEvent - waiting for conversions to complete")
+		go func() {
+			err := c.waitForConversions(ctx, ev)
+			if err != nil {
+				slog.Error("error waiting for execution to complete", "error", err)
+				c.execution.done(err)
+			} else {
+				slog.Info("all conversions complete")
+			}
+		}()
 	}
 }
 

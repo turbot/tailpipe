@@ -71,11 +71,6 @@ func isFirstWord(text string) bool {
 	return strings.LastIndex(text, " ") == -1
 }
 
-// split the string by spaces and return the last segment
-func lastWord(text string) string {
-	return text[strings.LastIndex(text, " "):]
-}
-
 // isDuckDbMetaQuery returns true if the input string equals 'describe', 'show', or 'summarize'
 func isDuckDbMetaQuery(s string) bool {
 	ts := strings.ToLower(strings.TrimSpace(s))

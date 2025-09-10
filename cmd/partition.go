@@ -17,12 +17,14 @@ import (
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -73,7 +75,7 @@ func partitionListCmd() *cobra.Command {
 }
 
 func runPartitionListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionListCmd start")
@@ -85,8 +87,19 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resources, err := display.ListPartitionResources(ctx)
+	resources, err := display.ListPartitionResources(ctx, db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
@@ -105,7 +118,7 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 // Show Partition
 func partitionShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   "show",
+		Use:   "show <partition-name>",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionShowCmd,
 		Short: "Show details for a specific partition",
@@ -123,7 +136,7 @@ func partitionShowCmd() *cobra.Command {
 }
 
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionShowCmd start")
@@ -135,9 +148,31 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	partitionName := args[0]
-	resource, err := display.GetPartitionResource(partitionName)
+
+	partitions, err := getPartitions(args)
+	error_helpers.FailOnError(err)
+	// if no partitions are found, return an error
+	if len(partitions) == 0 {
+		error_helpers.FailOnError(fmt.Errorf("no partitions found matching %s", args[0]))
+	}
+	// if more than one partition is found, return an error
+	if len(partitions) > 1 {
+		error_helpers.FailOnError(fmt.Errorf("multiple partitions found matching %s, please specify a more specific partition name", args[0]))
+	}
+
+	resource, err := display.GetPartitionResource(cmd.Context(), partitions[0], db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 
@@ -155,7 +190,7 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 
 func partitionDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete ",
+		Use:   "delete <partition-name>",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionDeleteCmd,
 		Short: "Delete a partition for the specified period",
@@ -171,6 +206,7 @@ func partitionDeleteCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
+		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
 		AddBoolFlag(pconstants.ArgForce, false, "Force delete without confirmation")
 
 	return cmd
@@ -186,17 +222,40 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
-	// arg `fromTime` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
-	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+	// args `fromTime` and `ToTime` accepts:
+	// - ISO 8601 date(2024-01-01)
+	// - ISO 8601 datetime(2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms(2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00)
+	// - relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 	var fromTime time.Time
-	var fromStr string
+	// toTime defaults to now, but can be set to a specific time
+	toTime := time.Now()
+	// confirm deletion
+	var fromStr, toStr string
+
 	if viper.IsSet(pconstants.ArgFrom) {
 		var err error
 		fromTime, err = parseFromToTime(viper.GetString(pconstants.ArgFrom))
-		error_helpers.FailOnError(err)
+		error_helpers.FailOnErrorWithMessage(err, "invalid from time")
 		fromStr = fmt.Sprintf(" from %s", fromTime.Format(time.DateOnly))
 	}
+	if viper.IsSet(pconstants.ArgTo) {
+		var err error
+		toTime, err = parseFromToTime(viper.GetString(pconstants.ArgTo))
+		error_helpers.FailOnErrorWithMessage(err, "invalid to time")
+	}
+	toStr = fmt.Sprintf(" to %s", toTime.Format(time.DateOnly))
+	if toTime.Before(fromTime) {
+		error_helpers.FailOnError(fmt.Errorf("to time %s cannot be before from time %s", toTime.Format(time.RFC3339), fromTime.Format(time.RFC3339)))
+	}
 
+	// retrieve the partition
 	partitionName := args[0]
 	partition, ok := config.GlobalConfig.Partitions[partitionName]
 	if !ok {
@@ -204,15 +263,22 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if !viper.GetBool(pconstants.ArgForce) {
-		// confirm deletion
-		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s?", partitionName, fromStr)
+		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s%s?", partitionName, fromStr, toStr)
 		if !utils.UserConfirmationWithDefault(msg, true) {
 			fmt.Println("Deletion cancelled") //nolint:forbidigo//expected output
 			return
 		}
 	}
+	db, err := database.NewDuckDb(database.WithDuckLake())
+	error_helpers.FailOnError(err)
+	defer db.Close()
 
-	filesDeleted, err := parquet.DeleteParquetFiles(partition, fromTime)
+	// show spinner while deleting the partition
+	spinner := statushooks.NewStatusSpinnerHook()
+	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
+	spinner.Show()
+	rowsDeleted, err := database.DeletePartition(ctx, partition, fromTime, toTime, db)
+	spinner.Hide()
 	error_helpers.FailOnError(err)
 
 	// build the collection state path
@@ -236,17 +302,17 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	// now prune the collection folders
 	err = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetCollectionDir())
 	if err != nil {
-		slog.Warn("DeleteParquetFiles failed to prune empty collection folders", "error", err)
+		slog.Warn("DeletePartition failed to prune empty collection folders", "error", err)
 	}
 
-	msg := buildStatusMessage(filesDeleted, partitionName, fromStr)
+	msg := buildStatusMessage(rowsDeleted, partitionName, fromStr)
 	fmt.Println(msg) //nolint:forbidigo//expected output
 }
 
-func buildStatusMessage(filesDeleted int, partition string, fromStr string) interface{} {
-	var deletedStr = " (no parquet files deleted)"
-	if filesDeleted > 0 {
-		deletedStr = fmt.Sprintf(" (deleted %d parquet %s)", filesDeleted, utils.Pluralize("file", filesDeleted))
+func buildStatusMessage(rowsDeleted int, partition string, fromStr string) interface{} {
+	var deletedStr = " (nothing deleted)"
+	if rowsDeleted > 0 {
+		deletedStr = fmt.Sprintf(" (deleted %d %s)", rowsDeleted, utils.Pluralize("rows", rowsDeleted))
 	}
 
 	return fmt.Sprintf("\nDeleted partition '%s'%s%s.\n", partition, fromStr, deletedStr)
