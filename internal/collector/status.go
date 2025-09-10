@@ -2,6 +2,7 @@ package collector
 
 import (
 	"fmt"
+	"github.com/turbot/tailpipe/internal/database"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,7 +12,6 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/events"
 	"github.com/turbot/tailpipe-plugin-sdk/logging"
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
-	"github.com/turbot/tailpipe/internal/parquet"
 )
 
 const uiErrorsToDisplay = 15
@@ -28,7 +28,7 @@ type status struct {
 	complete         bool
 	partitionName    string
 	fromTime         *row_source.ResolvedFromTime
-	compactionStatus *parquet.CompactionStatus
+	compactionStatus *database.CompactionStatus
 	toTime           time.Time
 }
 
@@ -54,19 +54,6 @@ func (s *status) UpdateConversionStatus(rowsConverted, failedRows int64, errors 
 			s.conversionErrors = append(s.conversionErrors, err.Error())
 		}
 	}
-}
-
-// UpdateCompactionStatus updates the status with the values from the compaction status event
-func (s *status) UpdateCompactionStatus(compactionStatus *parquet.CompactionStatus) {
-	if compactionStatus == nil {
-		return
-	}
-
-	if s.compactionStatus == nil {
-		s.compactionStatus = parquet.NewCompactionStatus()
-	}
-
-	s.compactionStatus.Update(*compactionStatus)
 }
 
 // CollectionHeader returns a string to display at the top of the collection status for app or alone for non-progress display
@@ -220,14 +207,11 @@ func (s *status) displayFilesSection() string {
 
 	var out strings.Builder
 	out.WriteString("Files:\n")
-	if s.compactionStatus.Source == 0 && s.compactionStatus.Uncompacted == 0 {
+	if s.compactionStatus.InitialFiles == 0 {
 		// no counts available, display status text
 		out.WriteString(fmt.Sprintf("  %s\n", statusText))
 	} else {
-		// display counts source => dest
-		l := int64(s.compactionStatus.Source + s.compactionStatus.Uncompacted)
-		r := int64(s.compactionStatus.Dest + s.compactionStatus.Uncompacted)
-		out.WriteString(fmt.Sprintf("  Compacted: %s => %s\n", humanize.Comma(l), humanize.Comma(r)))
+		out.WriteString(fmt.Sprintf("  %s\n", s.compactionStatus.String()))
 	}
 
 	out.WriteString("\n")
@@ -287,14 +271,22 @@ func (s *status) displayErrorsSection() string {
 // displayTimingSection returns a string representation of the timing section of the status (time elapsed since start of collection)
 func (s *status) displayTimingSection() string {
 	duration := time.Since(s.started)
-	timeLabel := "Time:"
 
 	// if we're complete, change the time label to show this
 	if s.complete {
-		timeLabel = "Completed:"
+		if s.compactionStatus != nil && s.compactionStatus.Duration > 0 {
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("Collection: %s\n", utils.HumanizeDuration(duration)))
+			sb.WriteString(fmt.Sprintf("Compaction: %s\n", utils.HumanizeDuration(s.compactionStatus.Duration)))
+			sb.WriteString(fmt.Sprintf("Total: %s\n", utils.HumanizeDuration(duration+s.compactionStatus.Duration)))
+			return sb.String()
+		}
+		return fmt.Sprintf("Completed: %s\n", utils.HumanizeDuration(duration))
+	} else {
+		// if not complete, show elapsed time
+		return fmt.Sprintf("Time: %s\n", utils.HumanizeDuration(duration))
 	}
 
-	return fmt.Sprintf("%s %s\n", timeLabel, utils.HumanizeDuration(duration))
 }
 
 // writeCountLine returns a formatted string for a count line in the status display, used for alignment and readability

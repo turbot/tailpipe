@@ -2,6 +2,7 @@ package query
 
 import (
 	"fmt"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,8 @@ import (
 )
 
 func TestGetColumnDefsForQuery(t *testing.T) {
+	filepaths.PipesInstallDir = "."
+
 	// Create a temporary DuckDB instance for testing
 	db, err := database.NewDuckDb(database.WithTempDir(t.TempDir()))
 	require.NoError(t, err)

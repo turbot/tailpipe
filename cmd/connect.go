@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
+	"golang.org/x/exp/maps"
 	"log"
 	"os"
 	"path/filepath"
@@ -25,9 +25,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
-	"golang.org/x/exp/maps"
 )
 
 // variable used to assign the output mode flag
@@ -38,8 +35,41 @@ func connectCmd() *cobra.Command {
 		Use:   "connect [flags]",
 		Args:  cobra.ArbitraryArgs,
 		Run:   runConnectCmd,
-		Short: "Return a connection string for a database, with a schema determined by the provided parameters",
-		Long:  `Return a connection string for a database, with a schema determined by the provided parameters.`,
+		Short: "Return the path of SQL script to initialise DuckDB to use the tailpipe database",
+		Long: `Return the path of SQL script to initialise DuckDB to use the tailpipe database.
+
+The generated SQL script contains:
+- DuckDB extension installations (sqlite, ducklake)
+- Database attachment configuration
+- View definitions with optional filters
+
+Examples:
+  # Basic usage - generate init script
+  tailpipe connect
+
+  # Filter by time range
+  tailpipe connect --from "2024-01-01" --to "2024-01-31"
+
+  # Filter by specific partitions
+  tailpipe connect --partition "aws_cloudtrail_log.recent"
+
+  # Filter by indexes with wildcards
+  tailpipe connect --index "prod-*" --index "staging"
+
+  # Combine multiple filters
+  tailpipe connect --from "T-7d" --partition "aws.*" --index "prod-*"
+
+  # Output as JSON
+  tailpipe connect --output json
+
+Time formats supported:
+  - ISO 8601 date: 2024-01-01
+  - ISO 8601 datetime: 2024-01-01T15:04:05
+  - RFC 3339 with timezone: 2024-01-01T15:04:05Z
+  - Relative time: T-7d, T-2Y, T-10m, T-180d
+
+The generated script can be used with DuckDB:
+  duckdb -init /path/to/generated/script.sql`,
 	}
 
 	// args `from` and `to` accept:
@@ -63,7 +93,7 @@ func connectCmd() *cobra.Command {
 
 func runConnectCmd(cmd *cobra.Command, _ []string) {
 	var err error
-	var databaseFilePath string
+	var initFilePath string
 	ctx := cmd.Context()
 
 	defer func() {
@@ -71,7 +101,7 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 			err = helpers.ToError(r)
 		}
 		setExitCodeForConnectError(err)
-		displayOutput(ctx, databaseFilePath, err)
+		displayOutput(ctx, initFilePath, err)
 	}()
 
 	// if diagnostic mode is set, print out config and return
@@ -80,56 +110,128 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		return
 	}
 
-	databaseFilePath, err = generateDbFile(ctx)
+	initFilePath, err = generateInitFile(ctx)
 
 	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
+
 }
 
-func generateDbFile(ctx context.Context) (string, error) {
-	databaseFilePath := generateTempDBFilename(config.GlobalWorkspaceProfile.GetDataDir())
-
+func generateInitFile(ctx context.Context) (string, error) {
 	// cleanup the old db files if not in use
-	err := cleanupOldDbFiles()
+	err := cleanupOldInitFiles()
 	if err != nil {
 		return "", err
 	}
 
-	// first build the filters
+	// generate a filename to write the init sql to, inside the data dir
+	initFilePath := generateInitFilename(config.GlobalWorkspaceProfile.GetDataDir())
+
+	// get the sql to attach readonly to the database
+	commands := database.GetDucklakeInitCommands(true)
+
+	// build the filters from the to, from and index args
+	// these will be used in the view definitions
 	filters, err := getFilters()
 	if err != nil {
 		return "", fmt.Errorf("error building filters: %w", err)
 	}
 
-	// if there are no filters, just copy the db file
-	if len(filters) == 0 {
-		err = copyDBFile(filepaths.TailpipeDbFilePath(), databaseFilePath)
-		return databaseFilePath, err
-	}
-
-	// Open a DuckDB connection (creates the file if it doesn't exist)
-	db, err := database.NewDuckDb(database.WithDbFile(databaseFilePath))
-
+	// create a temporary duckdb instance pass to get the view definitions
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	if err != nil {
-		return "", fmt.Errorf("failed to open DuckDB connection: %w", err)
+		return "", fmt.Errorf("failed to create duckdb: %w", err)
 	}
 	defer db.Close()
 
-	err = database.AddTableViews(ctx, db, filters...)
-	return databaseFilePath, err
+	// get the view creation SQL, with filters applied
+	viewCommands, err := database.GetCreateViewsSql(ctx, db, filters...)
+	if err != nil {
+		return "", err
+	}
+	commands = append(commands, viewCommands...)
+
+	// now build a string
+	var str strings.Builder
+	for _, cmd := range commands {
+		str.WriteString(fmt.Sprintf("-- %s\n%s;\n\n", cmd.Description, cmd.Command))
+	}
+	// write out the init file
+	err = os.WriteFile(initFilePath, []byte(str.String()), 0644) //nolint:gosec // we want the init file to be readable
+	if err != nil {
+		return "", fmt.Errorf("failed to write init file: %w", err)
+	}
+	return initFilePath, err
 }
 
-func displayOutput(ctx context.Context, databaseFilePath string, err error) {
+// cleanupOldInitFiles deletes old db init files (older than a day)
+func cleanupOldInitFiles() error {
+	baseDir := pfilepaths.GetDataDir()
+	log.Printf("[INFO] Cleaning up old init files in %s\n", baseDir)
+	cutoffTime := time.Now().Add(-constants.InitFileMaxAge) // Files older than 1 day
+
+	// The baseDir ("$TAILPIPE_INSTALL_DIR/data") is expected to have subdirectories for different workspace
+	// profiles(default, work etc). Each subdirectory may contain multiple .db files.
+	// Example structure:
+	// data/
+	// ├── default/
+	// │   ├── tailpipe_init_20250115182129.sql
+	// │   ├── tailpipe_init_20250115193816.sql
+	// │   └── ...
+	// ├── work/
+	// │   ├── tailpipe_init_20250115182129.sql
+	// │   ├── tailpipe_init_20250115193816.sql
+	// │   └── ...
+	// So we traverse all these subdirectories for each workspace and process the relevant files.
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return fmt.Errorf("error accessing path %s: %v", path, err)
+		}
+
+		// skip directories and non-`.sql` files
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".sql") {
+			return nil
+		}
+
+		// only process `tailpipe_init_*.sql` files
+		if !strings.HasPrefix(info.Name(), "tailpipe_init_") {
+			return nil
+		}
+
+		// check if the file is older than the cutoff time
+		if info.ModTime().After(cutoffTime) {
+			log.Printf("[DEBUG] Skipping deleting file %s(%s) as it is not older than %s\n", path, info.ModTime().String(), cutoffTime)
+			return nil
+		}
+
+		err = os.Remove(path)
+		if err != nil {
+			log.Printf("[INFO] Failed to delete db file %s: %v", path, err)
+		} else {
+			log.Printf("[DEBUG] Cleaned up old unused db file: %s\n", path)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+func displayOutput(ctx context.Context, initFilePath string, err error) {
 	switch viper.GetString(pconstants.ArgOutput) {
 	case pconstants.OutputFormatText:
 		if err == nil {
 			// output the filepath
-			fmt.Println(databaseFilePath) //nolint:forbidigo // ui output
+			fmt.Println(initFilePath) //nolint:forbidigo // ui output
 		} else {
 			error_helpers.ShowError(ctx, err)
 		}
 	case pconstants.OutputFormatJSON:
 		res := connection.TailpipeConnectResponse{
-			DatabaseFilepath: databaseFilePath,
+			InitScriptPath: initFilePath,
 		}
 		if err != nil {
 			res.Error = err.Error()
@@ -147,6 +249,8 @@ func displayOutput(ctx context.Context, databaseFilePath string, err error) {
 	}
 }
 
+// getFilters builds a set of SQL filters based on the provided command line args
+// supported args are `from`, `to`, `partition` and `index`
 func getFilters() ([]string, error) {
 	var result []string
 	if viper.IsSet(pconstants.ArgFrom) {
@@ -159,9 +263,8 @@ func getFilters() ([]string, error) {
 			return nil, fmt.Errorf("invalid date format for 'from': %s", from)
 		}
 		// format as SQL timestamp
-		fromDate := t.Format(time.DateOnly)
 		fromTimestamp := t.Format(time.DateTime)
-		result = append(result, fmt.Sprintf("tp_date >= date '%s' and tp_timestamp >= timestamp '%s'", fromDate, fromTimestamp))
+		result = append(result, fmt.Sprintf("tp_timestamp >= timestamp '%s'", fromTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgTo) {
 		to := viper.GetString(pconstants.ArgTo)
@@ -173,9 +276,8 @@ func getFilters() ([]string, error) {
 			return nil, fmt.Errorf("invalid date format for 'to': %s", to)
 		}
 		// format as SQL timestamp
-		toDate := t.Format(time.DateOnly)
 		toTimestamp := t.Format(time.DateTime)
-		result = append(result, fmt.Sprintf("tp_date <= date '%s' and tp_timestamp <= timestamp '%s'", toDate, toTimestamp))
+		result = append(result, fmt.Sprintf("tp_timestamp <= timestamp '%s'", toTimestamp))
 	}
 	if viper.IsSet(pconstants.ArgPartition) {
 		// we have loaded tailpipe config by this time
@@ -200,115 +302,10 @@ func getFilters() ([]string, error) {
 	return result, nil
 }
 
-// generateTempDBFilename generates a temporary filename with a timestamp
-func generateTempDBFilename(dataDir string) string {
-	timestamp := time.Now().Format("20060102150405") // e.g., 20241031103000
-	return filepath.Join(dataDir, fmt.Sprintf("tailpipe_%s.db", timestamp))
-}
-
-func setExitCodeForConnectError(err error) {
-	// if exit code already set, leave as is
-	// NOTE: DO NOT set exit code if the output format is JSON
-	if exitCode != 0 || err == nil || viper.GetString(pconstants.ArgOutput) == pconstants.OutputFormatJSON {
-		return
-	}
-
-	exitCode = pconstants.ExitCodeConnectFailed
-}
-
-// copyDBFile copies the source database file to the destination
-func copyDBFile(src, dst string) error {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer sourceFile.Close()
-
-	destFile, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	defer destFile.Close()
-
-	_, err = io.Copy(destFile, sourceFile)
-	return err
-}
-
-// cleanupOldDbFiles deletes old db files(older than a day) that are not in use
-func cleanupOldDbFiles() error {
-	baseDir := pfilepaths.GetDataDir()
-	log.Printf("[INFO] Cleaning up old db files in %s\n", baseDir)
-	cutoffTime := time.Now().Add(-constants.DbFileMaxAge) // Files older than 1 day
-
-	// The baseDir ("$TAILPIPE_INSTALL_DIR/data") is expected to have subdirectories for different workspace
-	// profiles(default, work etc). Each subdirectory may contain multiple .db files.
-	// Example structure:
-	// data/
-	// ├── default/
-	// │   ├── tailpipe_20250115182129.db
-	// │   ├── tailpipe_20250115193816.db
-	// │   ├── tailpipe.db
-	// │   └── ...
-	// ├── work/
-	// │   ├── tailpipe_20250115182129.db
-	// │   ├── tailpipe_20250115193816.db
-	// │   ├── tailpipe.db
-	// │   └── ...
-	// So we traverse all these subdirectories for each workspace and process the relevant files.
-	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return fmt.Errorf("error accessing path %s: %v", path, err)
-		}
-
-		// skip directories and non-`.db` files
-		if info.IsDir() || !strings.HasSuffix(info.Name(), ".db") {
-			return nil
-		}
-
-		// skip `tailpipe.db` file
-		if info.Name() == "tailpipe.db" {
-			return nil
-		}
-
-		// only process `tailpipe_*.db` files
-		if !strings.HasPrefix(info.Name(), "tailpipe_") {
-			return nil
-		}
-
-		// check if the file is older than the cutoff time
-		if info.ModTime().After(cutoffTime) {
-			log.Printf("[DEBUG] Skipping deleting file %s(%s) as it is not older than %s\n", path, info.ModTime().String(), cutoffTime)
-			return nil
-		}
-
-		// check for a lock on the file
-		db, err := database.NewDuckDb(database.WithDbFile(path))
-		if err != nil {
-			log.Printf("[INFO] Skipping deletion of file %s due to error: %v\n", path, err)
-			return nil
-		}
-		defer db.Close()
-
-		// if no lock, delete the file
-		err = os.Remove(path)
-		if err != nil {
-			log.Printf("[INFO] Failed to delete db file %s: %v", path, err)
-		} else {
-			log.Printf("[DEBUG] Cleaned up old unused db file: %s\n", path)
-		}
-
-		return nil
-	})
-
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
+// getPartitionSqlFilters builds SQL filters for the provided partition args
 func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string) (string, error) {
-	// Get table and partition patterns using getPartitionPatterns
-	patterns, err := getPartitionPatterns(partitionArgs, availablePartitions)
+	// Get table and partition patterns using GetPartitionPatternsForArgs
+	patterns, err := database.GetPartitionPatternsForArgs(availablePartitions, partitionArgs...)
 	if err != nil {
 		return "", fmt.Errorf("error processing partition args: %w", err)
 	}
@@ -364,6 +361,7 @@ func getPartitionSqlFilters(partitionArgs []string, availablePartitions []string
 	return sqlFilters, nil
 }
 
+// getIndexSqlFilters builds SQL filters for the provided index args
 func getIndexSqlFilters(indexArgs []string) (string, error) {
 	// Return empty if no indexes provided
 	if len(indexArgs) == 0 {
@@ -392,30 +390,31 @@ func getIndexSqlFilters(indexArgs []string) (string, error) {
 	return sqlFilter, nil
 }
 
-// getPartitionPatterns returns the table and partition patterns for the given partition args
-func getPartitionPatterns(partitionArgs []string, partitions []string) ([]parquet.PartitionPattern, error) {
-	var res []parquet.PartitionPattern
-	for _, arg := range partitionArgs {
-		tablePattern, partitionPattern, err := getPartitionMatchPatternsForArg(partitions, arg)
-		if err != nil {
-			return nil, fmt.Errorf("error processing partition arg '%s': %w", arg, err)
-		}
-
-		res = append(res, parquet.PartitionPattern{Table: tablePattern, Partition: partitionPattern})
-	}
-
-	return res, nil
-}
-
 // convert partition patterns with '*' wildcards to SQL '%' wildcards
-func replaceWildcards(patterns []parquet.PartitionPattern) []parquet.PartitionPattern {
-	updatedPatterns := make([]parquet.PartitionPattern, len(patterns))
+func replaceWildcards(patterns []*database.PartitionPattern) []*database.PartitionPattern {
+	updatedPatterns := make([]*database.PartitionPattern, len(patterns))
 
 	for i, p := range patterns {
-		updatedPatterns[i] = parquet.PartitionPattern{
+		updatedPatterns[i] = &database.PartitionPattern{
 			Table:     strings.ReplaceAll(p.Table, "*", "%"),
 			Partition: strings.ReplaceAll(p.Partition, "*", "%")}
 	}
 	return updatedPatterns
 
+}
+
+func setExitCodeForConnectError(err error) {
+	// if exit code already set, leave as is
+	// NOTE: DO NOT set exit code if the output format is JSON
+	if exitCode != 0 || err == nil || viper.GetString(pconstants.ArgOutput) == pconstants.OutputFormatJSON {
+		return
+	}
+
+	exitCode = 1
+}
+
+// generateInitFilename generates a temporary filename with a timestamp
+func generateInitFilename(dataDir string) string {
+	timestamp := time.Now().Format("20060102150405") // e.g., 20241031103000
+	return filepath.Join(dataDir, fmt.Sprintf("tailpipe_init_%s.sql", timestamp))
 }

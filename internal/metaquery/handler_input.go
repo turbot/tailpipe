@@ -14,20 +14,21 @@ type HandlerInput struct {
 	ClosePrompt func()
 	Query       string
 
-	views *[]string
+	tables *[]string
+	Db     *database.DuckDb
 }
 
 func (h *HandlerInput) args() []string {
 	return getArguments(h.Query)
 }
 
-func (h *HandlerInput) GetViews() ([]string, error) {
-	if h.views == nil {
-		views, err := database.GetTableViews(context.Background())
+func (h *HandlerInput) GetTables(ctx context.Context) ([]string, error) {
+	if h.tables == nil {
+		tables, err := database.GetTables(ctx, h.Db)
 		if err != nil {
 			return nil, err
 		}
-		h.views = &views
+		h.tables = &tables
 	}
-	return *h.views, nil
+	return *h.tables, nil
 }

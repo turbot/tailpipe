@@ -55,6 +55,7 @@ EOF
 }
 
 @test "verify invalid filter syntax" {
+  skip "TODO - re-enable this test, when the error handling is fixed in ducklake - https://github.com/turbot/tailpipe/issues/544"
   # Create a test partition configuration with invalid filter
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/invalid_filter_test.tpc
 partition "chaos_all_columns" "invalid_filter_test_1" {
