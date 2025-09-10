@@ -132,39 +132,40 @@ func (w *Converter) inferSchemaForJSONLFileWithDescribe(db *DuckDb, filePath str
 	return res, nil
 }
 
-func (w *Converter) detectSchemaChange(filePath string) error {
-	inferredChunksSchema, err := w.InferSchemaForJSONLFile(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to infer schema from JSON file: %w", err)
-	}
-	// the conversion schema is the full schema for the table that we have alreadf inferred
-	conversionSchemaMap := w.conversionSchema.AsMap()
-	// the table schema is the (possibly partial) schema which was defined in config - we use this to exclude columns
-	// which have a type specified
-	tableSchemaMap := w.tableSchema.AsMap()
-	// Compare the inferred schema with the existing conversionSchema
-	var changedColumns []ColumnSchemaChange
-	for _, col := range inferredChunksSchema.Columns {
-		// if the table schema definition specifies a type for this column, ignore the columns (as we will use the defined type)
-		// we are only interested in a type change if the column is not defined in the table schema
-		if columnDef, ok := tableSchemaMap[col.ColumnName]; ok {
-			if columnDef.Type != "" {
-				// if the column is defined in the table schema, ignore it
-				continue
-			}
-		}
-
-		existingCol, exists := conversionSchemaMap[col.SourceName]
-		if exists && col.Type != existingCol.Type {
-			changedColumns = append(changedColumns, ColumnSchemaChange{
-				Name:    col.SourceName,
-				OldType: existingCol.Type,
-				NewType: col.Type,
-			})
-		}
-	}
-	if len(changedColumns) > 0 {
-		return &SchemaChangeError{ChangedColumns: changedColumns}
-	}
-	return nil
-}
+// todo KAI think about schema change
+//func (w *Converter) detectSchemaChange(filePath string) error {
+//	inferredChunksSchema, err := w.InferSchemaForJSONLFile(filePath)
+//	if err != nil {
+//		return fmt.Errorf("failed to infer schema from JSON file: %w", err)
+//	}
+//	// the conversion schema is the full schema for the table that we have alreadf inferred
+//	conversionSchemaMap := w.conversionSchema.AsMap()
+//	// the table schema is the (possibly partial) schema which was defined in config - we use this to exclude columns
+//	// which have a type specified
+//	tableSchemaMap := w.tableSchema.AsMap()
+//	// Compare the inferred schema with the existing conversionSchema
+//	var changedColumns []ColumnSchemaChange
+//	for _, col := range inferredChunksSchema.Columns {
+//		// if the table schema definition specifies a type for this column, ignore the columns (as we will use the defined type)
+//		// we are only interested in a type change if the column is not defined in the table schema
+//		if columnDef, ok := tableSchemaMap[col.ColumnName]; ok {
+//			if columnDef.Type != "" {
+//				// if the column is defined in the table schema, ignore it
+//				continue
+//			}
+//		}
+//
+//		existingCol, exists := conversionSchemaMap[col.SourceName]
+//		if exists && col.Type != existingCol.Type {
+//			changedColumns = append(changedColumns, ColumnSchemaChange{
+//				Name:    col.SourceName,
+//				OldType: existingCol.Type,
+//				NewType: col.Type,
+//			})
+//		}
+//	}
+//	if len(changedColumns) > 0 {
+//		return &SchemaChangeError{ChangedColumns: changedColumns}
+//	}
+//	return nil
+//}
