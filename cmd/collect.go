@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/database"
 	"log/slog"
 	"os"
 	"strconv"
@@ -25,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/collector"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
@@ -235,30 +235,45 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 	return partitions, nil
 }
 
+// getSyntheticPartition parses a synthetic partition specification string and creates a test partition configuration.
+// This function enables testing and performance benchmarking by generating dummy data instead of collecting from real sources.
+//
+// Synthetic partition format: synthetic_<cols>cols_<rows>rows_<chunk>chunk_<interval>ms
+// Example: "synthetic_50cols_2000000rows_10000chunk_100ms"
+//   - 50cols: Number of columns to generate in the synthetic table
+//   - 2000000rows: Total number of rows to generate
+//   - 10000chunk: Number of rows per chunk (affects memory usage and processing)
+//   - 100ms: Delivery interval between chunks (simulates real-time data collection)
+//
+// The function validates the format and numeric values, returning a properly configured Partition
+// with SyntheticMetadata that will be used by the collector to generate test data.
+//
+// Returns:
+//   - *config.Partition: The configured synthetic partition if parsing succeeds
+//   - bool: true if the argument was a valid synthetic partition, false otherwise
 func getSyntheticPartition(arg string) (*config.Partition, bool) {
-	// synthetic partitions are of form synthetic_50cols_2000000rows_10000chunk_100ms
-	// determine if this partition is synthetic and if so try to parse the params
-
-	// Check if this is a synthetic partition
+	// Check if this is a synthetic partition by looking for the "synthetic_" prefix
 	if !strings.HasPrefix(arg, "synthetic_") {
 		return nil, false
 	}
 
-	// Parse the synthetic partition parameters
-	// Format: synthetic_<cols>cols_<rows>rows_<chunk>chunk_<interval>ms
+	// Parse the synthetic partition parameters by splitting on underscores
+	// Expected format: synthetic_<cols>cols_<rows>rows_<chunk>chunk_<interval>ms
 	parts := strings.Split(arg, "_")
 	if len(parts) != 5 {
-		// Invalid format, not a synthetic partition
+		// Invalid format - synthetic partitions must have exactly 5 parts
 		slog.Debug("Synthetic partition parsing failed: invalid format", "arg", arg, "parts", len(parts), "expected", 5)
 		return nil, false
 	}
 
-	// Extract and parse the numeric values
+	// Extract and parse the numeric values from each part
+	// Remove the suffix to get just the numeric value
 	colsStr := strings.TrimSuffix(parts[1], "cols")
 	rowsStr := strings.TrimSuffix(parts[2], "rows")
 	chunkStr := strings.TrimSuffix(parts[3], "chunk")
 	intervalStr := strings.TrimSuffix(parts[4], "ms")
 
+	// Parse columns count - determines how many columns the synthetic table will have
 	cols, err := strconv.Atoi(colsStr)
 	if err != nil {
 		// Invalid columns value, not a synthetic partition
@@ -266,6 +281,7 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 		return nil, false
 	}
 
+	// Parse rows count - total number of rows to generate
 	rows, err := strconv.Atoi(rowsStr)
 	if err != nil {
 		// Invalid rows value, not a synthetic partition
@@ -273,6 +289,7 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 		return nil, false
 	}
 
+	// Parse chunk size - number of rows per chunk (affects memory usage and processing efficiency)
 	chunk, err := strconv.Atoi(chunkStr)
 	if err != nil {
 		// Invalid chunk value, not a synthetic partition
@@ -280,6 +297,7 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 		return nil, false
 	}
 
+	// Parse delivery interval - milliseconds between chunk deliveries (simulates real-time data flow)
 	interval, err := strconv.Atoi(intervalStr)
 	if err != nil {
 		// Invalid interval value, not a synthetic partition
@@ -287,7 +305,7 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 		return nil, false
 	}
 
-	// Validate the parsed values
+	// Validate the parsed values - all must be positive integers
 	if cols <= 0 || rows <= 0 || chunk <= 0 || interval <= 0 {
 		// Invalid values, not a synthetic partition
 		slog.Debug("Synthetic partition parsing failed: invalid values", "arg", arg, "cols", cols, "rows", rows, "chunk", chunk, "interval", interval)
@@ -295,24 +313,26 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 	}
 
 	// Create a synthetic partition with proper HCL block structure
+	// This mimics the structure that would be created from a real HCL configuration file
 	block := &hcl.Block{
 		Type:   "partition",
 		Labels: []string{"synthetic", arg},
 	}
 
+	// Create the partition configuration with synthetic metadata
 	partition := &config.Partition{
 		HclResourceImpl: modconfig.NewHclResourceImpl(block, fmt.Sprintf("partition.synthetic.%s", arg)),
-		TableName:       "synthetic",
-		TpIndexColumn:   "'default'",
+		TableName:       "synthetic", // All synthetic partitions use the "synthetic" table name
+		TpIndexColumn:   "'default'", // Use a default index column for synthetic data
 		SyntheticMetadata: &config.SyntheticMetadata{
-			Columns:            cols,
-			Rows:               rows,
-			ChunkSize:          chunk,
-			DeliveryIntervalMs: interval,
+			Columns:            cols,     // Number of columns to generate
+			Rows:               rows,     // Total number of rows to generate
+			ChunkSize:          chunk,    // Rows per chunk
+			DeliveryIntervalMs: interval, // Milliseconds between chunk deliveries
 		},
 	}
 
-	// Set the unqualified name
+	// Set the unqualified name for the partition (used in logging and identification)
 	partition.UnqualifiedName = fmt.Sprintf("%s.%s", partition.TableName, partition.ShortName)
 
 	slog.Debug("Synthetic partition parsed successfully", "arg", arg, "columns", cols, "rows", rows, "chunkSize", chunk, "deliveryIntervalMs", interval)
