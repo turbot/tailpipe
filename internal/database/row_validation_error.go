@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/turbot/pipe-fittings/v2/utils"
 )
@@ -19,7 +20,7 @@ func NewRowValidationError(failedRows int64, nullColumns []string) *RowValidatio
 }
 
 func (e *RowValidationError) Error() string {
-	return fmt.Sprintf("%d %s failed validation - found null values in %d %s: %s", e.failedRows, utils.Pluralize("row", int(e.failedRows)), len(e.nullColumns), utils.Pluralize("column", len(e.nullColumns)), e.nullColumns)
+	return fmt.Sprintf("%d %s failed validation - found null values in %d %s: %s", e.failedRows, utils.Pluralize("row", int(e.failedRows)), len(e.nullColumns), utils.Pluralize("column", len(e.nullColumns)), strings.Join(e.nullColumns, ", "))
 }
 
 // Is implements the errors.Is interface to support error comparison

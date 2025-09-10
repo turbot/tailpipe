@@ -79,8 +79,10 @@ func getFileRangesForPartitionKey(ctx context.Context, db *DuckDb, pk *partition
 	  on df.table_id = t.table_id
 	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_column_statistics fcs
 	  on df.data_file_id = fcs.data_file_id
+	  and df.table_id = fcs.table_id
 	join __ducklake_metadata_tailpipe_ducklake.ducklake_column c
 	  on fcs.column_id = c.column_id
+	  and fcs.table_id = c.table_id
 	where t.table_name = ?
 	  and fpv1.partition_value = ?
 	  and fpv2.partition_value = ?

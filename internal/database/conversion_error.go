@@ -10,10 +10,9 @@ import (
 	"strings"
 )
 
-// handleConversionError attempts to handle conversion errors by counting the number of lines in the file.
+// handleConversionError attempts to handle conversion errors by counting the number of lines in the files.
 // if we fail, just return the raw error.
-// TODO we need to pass an error prefix into here so we know the context https://github.com/turbot/tailpipe/issues/477
-func handleConversionError(err error, paths ...string) error {
+func handleConversionError(message string, err error, paths ...string) error {
 	logArgs := []any{
 		"error",
 		err,
@@ -34,7 +33,7 @@ func handleConversionError(err error, paths ...string) error {
 	}
 
 	// return wrapped error
-	return NewConversionError(err, rows, paths...)
+	return NewConversionError(fmt.Errorf("%s: %w", message, err), rows, paths...)
 }
 func countLinesForFiles(filenames ...string) (int64, error) {
 	total := 0
