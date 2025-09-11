@@ -3,13 +3,15 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"golang.org/x/exp/maps"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/exp/maps"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -409,8 +411,11 @@ func setExitCodeForConnectError(err error) {
 	if exitCode != 0 || err == nil || viper.GetString(pconstants.ArgOutput) == pconstants.OutputFormatJSON {
 		return
 	}
-
-	exitCode = 1
+	if errors.Is(err, context.Canceled) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	exitCode = pconstants.ExitCodeConnectFailed
 }
 
 // generateInitFilename generates a temporary filename with a timestamp

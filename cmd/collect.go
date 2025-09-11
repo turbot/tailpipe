@@ -347,7 +347,6 @@ func setExitCodeForCollectError(err error) {
 	// set exit code for cancellation
 	if errors.Is(err, context.Canceled) {
 		exitCode = pconstants.ExitCodeOperationCancelled
-		err = nil
 		return
 	}
 

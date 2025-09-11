@@ -129,5 +129,11 @@ func setExitCodeForCompactError(err error) {
 	if exitCode != 0 || err == nil {
 		return
 	}
+	// set exit code for cancellation
+	if errors.Is(err, context.Canceled) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+
 	exitCode = pconstants.ExitCodeCompactFailed
 }
