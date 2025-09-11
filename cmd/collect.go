@@ -76,7 +76,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForCollectError(&err)
+			setExitCodeForCollectError(err)
 		}
 	}()
 
@@ -339,16 +339,15 @@ func getSyntheticPartition(arg string) (*config.Partition, bool) {
 	return partition, true
 }
 
-func setExitCodeForCollectError(err *error) {
+func setExitCodeForCollectError(err error) {
 	// if exit code already set, leave as is
-	if exitCode != 0 || err == nil || *err == nil {
+	if exitCode != 0 || err == nil {
 		return
 	}
 	// set exit code for cancellation
-	if errors.Is(*err, context.Canceled) {
+	if errors.Is(err, context.Canceled) {
 		exitCode = pconstants.ExitCodeOperationCancelled
-		// clear the caller's error so we don't surface it as a failure
-		*err = nil
+		err = nil
 		return
 	}
 
