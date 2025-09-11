@@ -12,10 +12,6 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
-// TODO #DL
-//  - think about max memory https://github.com/turbot/tailpipe/issues/478
-//  - validation https://github.com/turbot/tailpipe/issues/479
-
 const chunkBufferLength = 1000
 
 // Converter struct executes all the conversions for a single collection
@@ -148,7 +144,8 @@ func (w *Converter) getChunksToProcess() []int32 {
 	w.scheduleLock.Lock()
 	defer w.scheduleLock.Unlock()
 
-	// TODO #DL do we even need this https://github.com/turbot/tailpipe/issues/523
+	// provide a mechanism to limit the max chunks we process at once
+	// a high value for this seems fine (it's possible we do not actually need a limit at all)
 	const maxChunksToProcess = 2000
 	var chunksToProcess []int32
 	if len(w.scheduledChunks) > maxChunksToProcess {

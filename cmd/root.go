@@ -32,7 +32,6 @@ func rootCommand() *cobra.Command {
 
 	rootCmd.SetVersionTemplate("Tailpipe v{{.Version}}\n")
 
-	// TODO #config this will not reflect changes to install-dir - do we need to default in a different way https://github.com/turbot/tailpipe/issues/112
 	defaultConfigPath := filepaths.EnsureConfigDir()
 
 	cmdconfig.

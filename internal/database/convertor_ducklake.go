@@ -1,9 +1,11 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 	"strings"
 
+	"github.com/turbot/pipe-fittings/v2/backend"
 	"github.com/turbot/tailpipe-plugin-sdk/constants"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
@@ -106,62 +108,69 @@ func (w *Converter) buildStructDefinition(column *schema.ColumnSchema) string {
 	return fmt.Sprintf("struct(%s)", strings.Join(fieldDefinitions, ", "))
 }
 
-// TODO #DL is this code needed - look at schema change detection
-//  https://github.com/turbot/tailpipe/issues/481
-//func (w *Converter) CheckTableSchema(db *sql.DB, tableName string, conversionSchema schema.ConversionSchema) (TableSchemaStatus, error) {
-//	// Check if table exists
-//	exists, err := w.tableExists(db, tableName)
-//	if err != nil {
-//		return TableSchemaStatus{}, err
-//	}
-//
-//	if !exists {
-//		return TableSchemaStatus{}, nil
-//	}
-//
-//	// Get existing schema
-//	existingSchema, err := w.getTableSchema(db, tableName)
-//	if err != nil {
-//		return TableSchemaStatus{}, fmt.Errorf("failed to retrieve schema: %w", err)
-//	}
-//
-//	// Use constructor to create status from comparison
-//	diff := NewTableSchemaStatusFromComparison(existingSchema, conversionSchema)
-//	return diff, nil
-//}
-//
-//func (w *Converter) tableExists(db *sql.DB, tableName string) (bool, error) {
-//	query := fmt.Sprintf("select exists (select 1 from information_schema.tables where table_name = '%s')", tableName)
-//	var exists int
-//	if err := db.QueryRow(query).Scan(&exists); err != nil {
-//		return false, err
-//	}
-//	return exists == 1, nil
-//}
+// CheckTableSchema checks if the specified table exists in the DuckDB database and compares its schema with the
+// provided schema.
+// it returns a TableSchemaStatus indicating whether the table exists, whether the schema matches, and any differences.
+// THis is not used at present but will be used when we implement ducklake schema evolution handling
+func (w *Converter) CheckTableSchema(db *sql.DB, tableName string, conversionSchema schema.ConversionSchema) (TableSchemaStatus, error) {
+	// Check if table exists
+	exists, err := w.tableExists(db, tableName)
+	if err != nil {
+		return TableSchemaStatus{}, err
+	}
 
-//func (w *Converter) getTableSchema(db *sql.DB, tableName string) (map[string]schema.ColumnSchema, error) {
-//	query := fmt.Sprintf("pragma table_info(%s);", tableName)
-//	rows, err := db.Query(query)
-//	if err != nil {
-//		return nil, err
-//	}
-//	defer rows.Close()
-//
-//	schemaMap := make(map[string]schema.ColumnSchema)
-//	for rows.Next() {
-//		var name, dataType string
-//		var notNull, pk int
-//		var dfltValue sql.NullString
-//
-//		if err := rows.Scan(&name, &dataType, &notNull, &dfltValue, &pk); err != nil {
-//			return nil, err
-//		}
-//
-//		schemaMap[name] = schema.ColumnSchema{
-//			ColumnName: name,
-//			Type:       dataType,
-//		}
-//	}
-//
-//	return schemaMap, nil
-//}
+	if !exists {
+		return TableSchemaStatus{}, nil
+	}
+
+	// Get existing schema
+	existingSchema, err := w.getTableSchema(db, tableName)
+	if err != nil {
+		return TableSchemaStatus{}, fmt.Errorf("failed to retrieve schema: %w", err)
+	}
+
+	// Use constructor to create status from comparison
+	diff := NewTableSchemaStatusFromComparison(existingSchema, conversionSchema)
+	return diff, nil
+}
+
+func (w *Converter) tableExists(db *sql.DB, tableName string) (bool, error) {
+	sanitizedTableName, err := backend.SanitizeDuckDBIdentifier(tableName)
+	if err != nil {
+		return false, fmt.Errorf("invalid table name %s: %w", tableName, err)
+	}
+	//nolint:gosec // table name is sanitized
+	query := fmt.Sprintf("select exists (select 1 from information_schema.tables where table_name = '%s')", sanitizedTableName)
+	var exists int
+	if err := db.QueryRow(query).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists == 1, nil
+}
+
+func (w *Converter) getTableSchema(db *sql.DB, tableName string) (map[string]schema.ColumnSchema, error) {
+	query := fmt.Sprintf("pragma table_info(%s);", tableName)
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	schemaMap := make(map[string]schema.ColumnSchema)
+	for rows.Next() {
+		var name, dataType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+
+		if err := rows.Scan(&name, &dataType, &notNull, &dfltValue, &pk); err != nil {
+			return nil, err
+		}
+
+		schemaMap[name] = schema.ColumnSchema{
+			ColumnName: name,
+			Type:       dataType,
+		}
+	}
+
+	return schemaMap, nil
+}

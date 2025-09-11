@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// TableSchemaStatus represents the status of a table schema comparison
+// this is not used at present but will be used when we implement ducklake schema evolution handling
+// It indicates whether the table exists, whether the schema matches, whether it can be migrated by ducklake
 type TableSchemaStatus struct {
 	TableExists   bool
 	SchemaMatches bool
@@ -13,8 +16,8 @@ type TableSchemaStatus struct {
 	SchemaDiff    string
 }
 
-// TODO #DL  check if we need this https://github.com/turbot/tailpipe/issues/481
-
+// NewTableSchemaStatusFromComparison compares an existing schema with a conversion schema
+// and returns a TableSchemaStatus indicating whether they match, can be migrated, and the differences
 func NewTableSchemaStatusFromComparison(existingSchema map[string]schema.ColumnSchema, conversionSchema schema.ConversionSchema) TableSchemaStatus {
 	var diffParts []string
 	canMigrate := true

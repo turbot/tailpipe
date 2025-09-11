@@ -103,9 +103,8 @@ func expirePrevSnapshots(ctx context.Context, db *DuckDb) error {
 	}
 
 	// format the time
-	// TODO Note: ducklake_expire_snapshots expects a local time without timezone,
+	// Note: ducklake_expire_snapshots expects a local time without timezone,
 	//  i.e if the time is '2025-08-26 13:25:10.365 +0100', we should pass '2025-08-26 13:25:10.365'
-	//  We need to raise a ducklake issue
 	formattedTime := parsedTime.Format("2006-01-02 15:04:05.000")
 	slog.Debug("Latest snapshot timestamp", "timestamp", latestTimestamp)
 
