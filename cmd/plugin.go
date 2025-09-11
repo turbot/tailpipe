@@ -772,6 +772,6 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodePluginListFailure
+		exitCode = pconstants.ExitCodePluginShowFailure
 	}
 }

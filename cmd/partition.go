@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -110,8 +111,12 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
 	}
 }
 
@@ -183,8 +188,12 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
 	}
 }
 
@@ -279,7 +288,14 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	spinner.Show()
 	rowsDeleted, err := database.DeletePartition(ctx, partition, fromTime, toTime, db)
 	spinner.Hide()
-	error_helpers.FailOnError(err)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
+		error_helpers.FailOnError(err)
+	}
 
 	// build the collection state path
 	collectionStatePath := partition.CollectionStatePath(config.GlobalWorkspaceProfile.GetCollectionDir())
@@ -288,6 +304,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	if fromTime.IsZero() {
 		err := os.Remove(collectionStatePath)
 		if err != nil && !os.IsNotExist(err) {
+			exitCode = 1
 			error_helpers.FailOnError(fmt.Errorf("failed to delete collection state file: %s", err.Error()))
 		}
 	} else {
@@ -296,7 +313,14 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		pluginManager := plugin.NewPluginManager()
 		defer pluginManager.Close()
 		err = pluginManager.UpdateCollectionState(ctx, partition, fromTime, collectionStatePath)
-		error_helpers.FailOnError(err)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
+			error_helpers.FailOnError(err)
+		}
 	}
 
 	// now prune the collection folders
