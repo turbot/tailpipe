@@ -1,8 +1,8 @@
 <a href="https://tailpipe.io"><img width="67%" src="https://tailpipe.io/images/pipeling-wordmarks/tailpipe_wordmark_white_outline.svg" /></a>
 
-[![plugins](https://img.shields.io/badge/plugins-5-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
-[![plugins](https://img.shields.io/badge/mods-14-blue)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
-[![slack](https://img.shields.io/badge/slack-2695-blue)](https://turbot.com/community/join?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme) &nbsp;
+[![plugins](https://img.shields.io/endpoint?url=https://turbot.com/api/badge-stats?stat=tp_plugins)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
+[![mods](https://img.shields.io/endpoint?url=https://turbot.com/api/badge-stats?stat=tp_mods)](https://hub.tailpipe-io.vercel.app/) &nbsp; 
+[![slack](https://img.shields.io/endpoint?url=https://turbot.com/api/badge-stats?stat=slack)](https://turbot.com/community/join?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme) &nbsp;
 [![maintained by](https://img.shields.io/badge/maintained%20by-Turbot-blue)](https://turbot.com?utm_id=gspreadme&utm_source=github&utm_medium=repo&utm_campaign=github&utm_content=readme)
 
 # select * from logs;
