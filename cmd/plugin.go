@@ -238,13 +238,19 @@ var pluginInstallSteps = []string{
 }
 
 func runPluginInstallCmd(cmd *cobra.Command, args []string) {
-	ctx := cmd.Context()
+	//setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPluginInstallCmd install")
 	defer func() {
 		utils.LogTime("runPluginInstallCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -371,13 +377,19 @@ func doPluginInstall(ctx context.Context, bar *uiprogress.Bar, pluginName string
 }
 
 func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
-	ctx := cmd.Context()
+	//setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPluginUpdateCmd start")
 	defer func() {
 		utils.LogTime("runPluginUpdateCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -633,7 +645,11 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		utils.LogTime("runPluginUninstallCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -660,6 +676,8 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		if report, err := plugin.Remove(ctx, p); err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				exitCode = pconstants.ExitCodePluginNotFound
+			} else if error_helpers.IsCancelledError(err) {
+				exitCode = pconstants.ExitCodeOperationCancelled
 			}
 			error_helpers.ShowErrorWithMessage(ctx, err, fmt.Sprintf("Failed to uninstall plugin '%s'", p))
 		} else {
@@ -701,7 +719,11 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 		utils.LogTime("runPluginListCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -728,7 +750,11 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodePluginListFailure
+		if error_helpers.IsCancelledError(err) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = pconstants.ExitCodePluginListFailure
+		}
 	}
 }
 
@@ -749,7 +775,11 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 		utils.LogTime("runPluginShowCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -772,6 +802,10 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodePluginShowFailure
+		if error_helpers.IsCancelledError(err) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = pconstants.ExitCodePluginShowFailure
+		}
 	}
 }

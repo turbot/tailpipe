@@ -83,8 +83,13 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	defer func() {
 		utils.LogTime("runPartitionListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err := helpers.ToError(r)
+			error_helpers.ShowError(ctx, err)
+			if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -111,7 +116,7 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
 			exitCode = pconstants.ExitCodeOperationCancelled
 		} else {
 			exitCode = 1
@@ -148,8 +153,13 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	defer func() {
 		utils.LogTime("runPartitionShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err := helpers.ToError(r)
+			error_helpers.ShowError(ctx, err)
+			if error_helpers.IsCancelledError(err) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -188,12 +198,15 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		error_helpers.ShowError(ctx, err)
+
+		if strings.Contains(err.Error(), "not found") {
+			exitCode = 1
+		} else if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
 			exitCode = pconstants.ExitCodeOperationCancelled
 		} else {
 			exitCode = 1
 		}
-		error_helpers.ShowError(ctx, err)
 	}
 }
 
@@ -223,11 +236,20 @@ func partitionDeleteCmd() *cobra.Command {
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	ctx := cmd.Context()
-
+  // setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
 	defer func() {
 		if r := recover(); r != nil {
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
-			error_helpers.FailOnError(helpers.ToError(r))
+			err := helpers.ToError(r)
+			error_helpers.ShowError(ctx, err)
+			if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else if strings.Contains(err.Error(), "not found") {
+				exitCode = 1
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 

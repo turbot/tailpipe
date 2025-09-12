@@ -74,7 +74,11 @@ func runSourceListCmd(cmd *cobra.Command, args []string) {
 		utils.LogTime("runSourceListCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -97,7 +101,11 @@ func runSourceListCmd(cmd *cobra.Command, args []string) {
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		if error_helpers.IsCancelledError(err) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
 	}
 }
 
@@ -129,7 +137,11 @@ func runSourceShowCmd(cmd *cobra.Command, args []string) {
 		utils.LogTime("runSourceShowCmd end")
 		if r := recover(); r != nil {
 			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			if error_helpers.IsCancelledError(helpers.ToError(r)) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
 		}
 	}()
 
@@ -153,6 +165,10 @@ func runSourceShowCmd(cmd *cobra.Command, args []string) {
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
 		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		if error_helpers.IsCancelledError(err) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
 	}
 }
