@@ -196,14 +196,14 @@ create temp table temp_data as
 `, selectQuery))
 
 	_, err := w.db.Exec(queryBuilder.String())
-	// TODO KAI think about schema change
-	//if err != nil {
-	//	// if the error is a schema change error, determine whether the schema of these chunk is
-	//	// different to the inferred schema (pass the first json file)
-	//	return w.handleSchemaChangeError(err, jsonlFilePaths...)
-	//}
+	if err != nil {
+		// if the error is a schema change error, determine whether the schema of these chunks is
+		// different to the inferred schema
+		// w.handleSchemaChangeError either returns a schema change error or the original error
+		return w.handleSchemaChangeError(err, jsonlFilePaths...)
+	}
 
-	return err
+	return nil
 }
 
 // insertIntoDucklakeForBatch writes a batch of rows from the temp_data table to the specified target DuckDB table.
@@ -244,23 +244,26 @@ func (w *Converter) insertIntoDucklake(targetTable string) (int64, error) {
 	return insertedRowCount, nil
 }
 
-// TODO kai think about ducklake schema change detection
-//
-//// handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
-//// infer the schema of this chunk and compare - if they are different, return that in an error
-//func (w *Converter) handleSchemaChangeError(err error, jsonlFilePath ...string) error {
-//	schemaChangeErr := w.detectSchemaChange(jsonlFilePath)
-//	if schemaChangeErr != nil {
-//		// if the error returned from detectSchemaChange is a SchemaChangeError, return that instead of the original error
-//		var e = &SchemaChangeError{}
-//		if errors.As(schemaChangeErr, &e) {
-//			// update err and fall through to handleConversionError - this wraps the error with additional row count info
-//			err = e
-//		}
-//	}
-//
-//	// just return the original error, wrapped with the row count
-//}
+// handleSchemaChangeError determines if the error is because the schema of this chunk is different to the inferred schema
+// infer the schema of this chunk and compare - if they are different, return that in an error
+func (w *Converter) handleSchemaChangeError(origError error, jsonlFilePaths ...string) error {
+	// check all files for a schema change error
+	for _, jsonlFilePath := range jsonlFilePaths {
+		err := w.detectSchemaChange(jsonlFilePath)
+		if err != nil {
+			// if the error returned from detectSchemaChange is a SchemaChangeError, return that instead of the original error
+			// (ignore any other error - we will fall through to return original error)
+			var schemaChangeError = &SchemaChangeError{}
+			if errors.As(err, &schemaChangeError) {
+				// update err and fall through to handleConversionError - this wraps the error with additional row count info
+				return schemaChangeError
+			}
+		}
+	}
+
+	// just return the original error
+	return origError
+}
 
 // conversionRanOutOfMemory checks if the error is an out-of-memory error from DuckDB
 func conversionRanOutOfMemory(err error) bool {

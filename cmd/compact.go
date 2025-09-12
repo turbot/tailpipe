@@ -22,9 +22,6 @@ import (
 	"golang.org/x/exp/maps"
 )
 
-// TODO #DL update docs - no longer support compacting single partition
-//
-//	https://github.com/turbot/tailpipe/issues/474
 func compactCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "compact [table|table.partition] [flags]",
