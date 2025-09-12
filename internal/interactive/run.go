@@ -3,8 +3,8 @@ package interactive
 import (
 	"context"
 
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_display"
 )
 
 // RunInteractivePrompt starts the interactive query prompt

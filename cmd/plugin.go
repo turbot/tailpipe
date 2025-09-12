@@ -16,7 +16,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
@@ -28,6 +27,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_display"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -242,15 +242,20 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPluginInstallCmd install")
+	var err error
 	defer func() {
 		utils.LogTime("runPluginInstallCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Plugin cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPluginError(err, 1)
 		}
 	}()
 
@@ -381,15 +386,20 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPluginUpdateCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPluginUpdateCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Plugin cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPluginError(err, 1)
 		}
 	}()
 
@@ -640,16 +650,20 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginUninstallCmd uninstall")
-
+	var err error
 	defer func() {
 		utils.LogTime("runPluginUninstallCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Plugin cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPluginError(err, 1)
 		}
 	}()
 
@@ -715,15 +729,20 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginListCmd list")
+	var err error
 	defer func() {
 		utils.LogTime("runPluginListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Plugin cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPluginError(err, pconstants.ExitCodePluginListFailure)
 		}
 	}()
 
@@ -749,12 +768,8 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		if error_helpers.IsCancelledError(err) {
-			exitCode = pconstants.ExitCodeOperationCancelled
-		} else {
-			exitCode = pconstants.ExitCodePluginListFailure
-		}
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -771,15 +786,20 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPluginShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Plugin cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPluginError(err, pconstants.ExitCodePluginShowFailure)
 		}
 	}()
 
@@ -801,11 +821,18 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		if error_helpers.IsCancelledError(err) {
-			exitCode = pconstants.ExitCodeOperationCancelled
-		} else {
-			exitCode = pconstants.ExitCodePluginShowFailure
-		}
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
+}
+
+func setExitCodeForPluginError(err error, nonCancelCode int) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	exitCode = nonCancelCode
 }

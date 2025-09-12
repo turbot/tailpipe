@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/query"
 	"github.com/turbot/pipe-fittings/v2/querydisplay"
 	"github.com/turbot/pipe-fittings/v2/queryresult"
@@ -17,6 +16,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_display"
 )
 
 func RunBatchSession(ctx context.Context, args []string, db *database.DuckDb) (int, []error) {

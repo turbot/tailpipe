@@ -16,7 +16,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
@@ -25,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_display"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -80,16 +80,20 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPartitionListCmd end")
 		if r := recover(); r != nil {
-			err := helpers.ToError(r)
-			error_helpers.ShowError(ctx, err)
-			if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Partition cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
@@ -116,12 +120,8 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
-			exitCode = pconstants.ExitCodeOperationCancelled
-		} else {
-			exitCode = 1
-		}
-		error_helpers.ShowError(ctx, err)
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -150,16 +150,20 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPartitionShowCmd end")
 		if r := recover(); r != nil {
-			err := helpers.ToError(r)
-			error_helpers.ShowError(ctx, err)
+			err = helpers.ToError(r)
+		}
+		if err != nil {
 			if error_helpers.IsCancelledError(err) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+				//nolint:forbidigo // ui output
+				fmt.Println("Partition cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
@@ -198,15 +202,8 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-
-		if strings.Contains(err.Error(), "not found") {
-			exitCode = 1
-		} else if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
-			exitCode = pconstants.ExitCodeOperationCancelled
-		} else {
-			exitCode = 1
-		}
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -236,20 +233,22 @@ func partitionDeleteCmd() *cobra.Command {
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	ctx := cmd.Context()
-  // setup a cancel context and start cancel handler
+	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
+	var err error
 	defer func() {
 		if r := recover(); r != nil {
-			err := helpers.ToError(r)
-			error_helpers.ShowError(ctx, err)
-			if error_helpers.IsCancelledError(err) || err.Error() == "execution cancelled" {
-				exitCode = pconstants.ExitCodeOperationCancelled
-			} else if strings.Contains(err.Error(), "not found") {
-				exitCode = 1
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Partition cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
@@ -362,4 +361,16 @@ func buildStatusMessage(rowsDeleted int, partition string, fromStr string) inter
 	}
 
 	return fmt.Sprintf("\nDeleted partition '%s'%s%s.\n", partition, fromStr, deletedStr)
+}
+
+func setExitCodeForPartitionError(err error) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	// no dedicated partition exit code; use generic nonzero failure
+	exitCode = 1
 }

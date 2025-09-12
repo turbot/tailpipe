@@ -72,15 +72,20 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runSourceListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runSourceListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Table cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForTableError(err)
 		}
 	}()
 
@@ -107,12 +112,8 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		if error_helpers.IsCancelledError(err) {
-			exitCode = pconstants.ExitCodeOperationCancelled
-		} else {
-			exitCode = 1
-		}
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -141,15 +142,20 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runTableShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runTableShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			if error_helpers.IsCancelledError(helpers.ToError(r)) {
-				exitCode = pconstants.ExitCodeOperationCancelled
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Table cancelled.")
 			} else {
-				exitCode = 1
+				error_helpers.ShowError(ctx, err)
 			}
+			setExitCodeForTableError(err)
 		}
 	}()
 
@@ -176,11 +182,18 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		if error_helpers.IsCancelledError(err) {
-			exitCode = pconstants.ExitCodeOperationCancelled
-		} else {
-			exitCode = 1
-		}
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
+}
+
+func setExitCodeForTableError(err error) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	exitCode = 1
 }

@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,13 +19,14 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/connection"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/error_display"
 )
 
 // variable used to assign the output mode flag
@@ -96,13 +96,21 @@ The generated script can be used with DuckDB:
 func runConnectCmd(cmd *cobra.Command, _ []string) {
 	var err error
 	var initFilePath string
-	ctx := cmd.Context()
+	ctx, cancel := context.WithCancel(cmd.Context())
+	contexthelpers.StartCancelHandler(cancel)
 
 	defer func() {
 		if r := recover(); r != nil {
 			err = helpers.ToError(r)
 		}
-		setExitCodeForConnectError(err)
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForConnectError(err)
+		}
 		displayOutput(ctx, initFilePath, err)
 	}()
 
@@ -411,7 +419,7 @@ func setExitCodeForConnectError(err error) {
 	if exitCode != 0 || err == nil || viper.GetString(pconstants.ArgOutput) == pconstants.OutputFormatJSON {
 		return
 	}
-	if errors.Is(err, context.Canceled) {
+	if error_helpers.IsCancelledError(err) {
 		exitCode = pconstants.ExitCodeOperationCancelled
 		return
 	}

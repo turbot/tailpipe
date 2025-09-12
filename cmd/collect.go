@@ -17,7 +17,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/tailpipe/internal/error_display"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
@@ -71,7 +71,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 		}
 
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
+			if error_helpers.IsCancelledError(err) {
 				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)
@@ -345,7 +345,7 @@ func setExitCodeForCollectError(err error) {
 		return
 	}
 	// set exit code for cancellation
-	if errors.Is(err, context.Canceled) {
+	if error_helpers.IsCancelledError(err) {
 		exitCode = pconstants.ExitCodeOperationCancelled
 		return
 	}
