@@ -232,7 +232,6 @@ func partitionDeleteCmd() *cobra.Command {
 }
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
-	ctx := cmd.Context()
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
