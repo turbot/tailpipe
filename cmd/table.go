@@ -81,7 +81,7 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Table cancelled.")
+				fmt.Println("tailpipe table list command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -151,7 +151,7 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Table cancelled.")
+				fmt.Println("tailpipe table show command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
