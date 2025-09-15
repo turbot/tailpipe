@@ -268,6 +268,7 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 			}
 			fileSQL = "[" + strings.Join(quoted, ", ") + "]"
 		}
+		//nolint:gosec // file paths are sanitized
 		insertQuery := fmt.Sprintf(`
 			insert into "%s" (%s)
 			select %s from read_parquet(%s)

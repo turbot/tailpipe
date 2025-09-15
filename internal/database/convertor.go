@@ -174,7 +174,7 @@ func (w *Converter) onFirstChunk(executionId string, chunk int32) error {
 		// err will be returned by the parent function
 		return err
 	}
-	slog.Error("schema: %v", w.tableSchema)
+	slog.Error("schema: %v", w.tableSchema) //nolint:govet // log schema
 	// create the DuckDB table for this partition if it does not already exist
 	if err := EnsureDuckLakeTable(w.conversionSchema.Columns, w.db, w.Partition.TableName); err != nil {
 		return fmt.Errorf("failed to create DuckDB table: %w", err)
