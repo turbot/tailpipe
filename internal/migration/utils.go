@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/turbot/tailpipe/internal/config"
 )
 
 // findMatchingTableDirs lists subdirectories of baseDir whose names start with
@@ -39,24 +37,6 @@ func findMatchingTableDirs(baseDir string, tables []string) ([]string, []string,
 		}
 	}
 	return matches, unmatched, nil
-}
-
-// moveLegacyDbFile moves tailpipe.db from the migrating/default folder to migrated/default if it exists.
-func moveLegacyDbFile(migratingDefaultDir string) error {
-	src := filepath.Join(migratingDefaultDir, "tailpipe.db")
-	if _, err := os.Stat(src); err != nil {
-		// if not present, nothing to do
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	migratedDefaultDir := config.GlobalWorkspaceProfile.GetMigratedDir()
-	if err := os.MkdirAll(migratedDefaultDir, 0755); err != nil {
-		return err
-	}
-	dest := filepath.Join(migratedDefaultDir, "tailpipe.db")
-	return os.Rename(src, dest)
 }
 
 // hasTailpipeDb checks if a tailpipe.db file exists in the provided directory.
