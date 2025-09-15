@@ -1,0 +1,40 @@
+# Use Ubuntu 24.04 as base to get GCC 13+
+FROM ubuntu:noble
+
+# Install essential packages and cross-compilation tools
+RUN apt-get update && apt-get install -y \
+    wget curl git build-essential \
+    gcc-13 g++-13 \
+    gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+    gcc-x86-64-linux-gnu g++-x86-64-linux-gnu \
+    gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go 1.24.5
+RUN wget https://go.dev/dl/go1.24.5.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.24.5.linux-amd64.tar.gz && \
+    rm go1.24.5.linux-amd64.tar.gz
+
+# Install goreleaser 2.11.2
+RUN wget https://github.com/goreleaser/goreleaser/releases/download/v2.11.2/goreleaser_Linux_x86_64.tar.gz && \
+    tar -xzf goreleaser_Linux_x86_64.tar.gz && \
+    mv goreleaser /usr/local/bin/ && \
+    rm goreleaser_Linux_x86_64.tar.gz
+
+# Set up environment
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOROOT="/usr/local/go"
+ENV GOPATH="/go"
+ENV CGO_ENABLED=1
+
+# Set default cross-compilation environment variables for Linux AMD64
+ENV CC_linux_amd64=x86_64-linux-gnu-gcc-13
+ENV CXX_linux_amd64=x86_64-linux-gnu-g++-13
+ENV CGO_CXXFLAGS_linux_amd64="-std=c++17"
+ENV CGO_LDFLAGS_linux_amd64="-lstdc++ -static-libstdc++"
+
+# Create working directory
+WORKDIR /go/src
+
+# Set entrypoint to goreleaser
+ENTRYPOINT ["goreleaser"]

@@ -1,0 +1,4 @@
+partition my_csv_log {
+  # missing 2nd label
+  source file_system { paths = ["/tmp"] }
+}

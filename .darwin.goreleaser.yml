@@ -1,0 +1,58 @@
+# Darwin-only goreleaser configuration
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  # Darwin AMD64 build with clang
+  - id: tailpipe-darwin-amd64
+    binary: tailpipe
+    goos:
+      - darwin
+    goarch:
+      - amd64
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
+
+  # Darwin ARM64 build with clang
+  - id: tailpipe-darwin-arm64
+    binary: tailpipe
+    goos:
+      - darwin
+    goarch:
+      - arm64
+    env:
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+    flags:
+      - -buildvcs=false
+
+archives:
+  - id: darwin
+    format: tar.gz
+    name_template: "{{ .ProjectName }}.{{ .Os }}.{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  disable: true
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

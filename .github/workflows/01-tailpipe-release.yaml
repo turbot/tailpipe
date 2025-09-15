@@ -143,6 +143,8 @@ jobs:
       - name: Release publish
         run: |-
           cd tailpipe
+          git config --global user.name "Tailpipe GitHub Actions Bot"
+          git config --global user.email noreply@github.com
           make release
 
   create_pr_in_homebrew:

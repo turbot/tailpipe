@@ -116,7 +116,8 @@ func List(ctx context.Context, pluginVersions map[string]*versionfile.InstalledV
 // detectLocalPlugin returns true if the modTime of the `pluginBinary` is after the installation date as recorded in the installation data
 // this may happen when a plugin is installed from the registry, but is then compiled from source
 func detectLocalPlugin(installation *versionfile.InstalledVersion, pluginBinary string) bool {
-	// TODO this should no longer be necessary as we now have a "local" version number in the versions file?
+	// Guard: newly developed local plugins may not have a versions entry yet,
+	// so installation can be nil. Keep this check to prevent a nil-pointer dereference.
 	if installation == nil {
 		return true
 	}
