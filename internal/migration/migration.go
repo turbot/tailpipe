@@ -316,8 +316,6 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		_ = os.Remove(dirPath)
 		status.OnFilesMigrated(filesInLeaf)
 		slog.Info("Migrated leaf node", "table", tableName, "source", dirPath, "destination", destDir)
-		// fmt.Printf("migrated %s, sleeping for 2 seconds\n", dirPath)
-		// time.Sleep(2 * time.Second)
 	}
 
 	return firstErr
