@@ -66,6 +66,7 @@ order by c.column_name;`, constants.DuckLakeMetadataCatalog, constants.DuckLakeM
 	return schema, nil
 }
 
+// GetLegacyTableViews retrieves the names of all table views in the legacy database(tailpipe.db) file
 func GetLegacyTableViews(ctx context.Context, db *DuckDb) ([]string, error) {
 	query := "select table_name from information_schema.tables where table_type='VIEW';"
 	rows, err := db.QueryContext(ctx, query)
@@ -86,6 +87,7 @@ func GetLegacyTableViews(ctx context.Context, db *DuckDb) ([]string, error) {
 	return tableViews, nil
 }
 
+// GetLegacyTableViewSchema retrieves the schema of a table view in the legacy database(tailpipe.db) file
 func GetLegacyTableViewSchema(ctx context.Context, viewName string, db *DuckDb) (*schema.TableSchema, error) {
 	query := `
 		select column_name, data_type 

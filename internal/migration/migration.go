@@ -2,6 +2,7 @@ package migration
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -19,6 +20,8 @@ import (
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
+// MigrateDataToDucklake performs migration of views from tailpipe.db and associated parquet files
+// into the new DuckLake metadata catalog
 func MigrateDataToDucklake(ctx context.Context) error {
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
@@ -38,6 +41,11 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	// if the ~/.tailpipe/migration/migrating directory has a .db file, it means that this is a resume migration
 	initialMigration := hasTailpipeDb(dataDefaultDir)
 	continueMigration := hasTailpipeDb(migratingDefaultDir)
+
+	// validate: both should not be true - return that last migration left things in a bad state
+	if initialMigration && continueMigration {
+		return fmt.Errorf("Bad state - migration cannot proceed because both data and migrating directories contain tailpipe.db files.")
+	}
 
 	// STEP 1: Check if migration is needed
 	// We need to migrate if it is the first time we are migrating or if we are resuming a migration
@@ -251,31 +259,8 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 			return err
 		}
 
-		// Build explicit column list and insert from read_parquet
-		var colList []string
-		for _, c := range ts.Columns {
-			colList = append(colList, fmt.Sprintf(`"%s"`, c.ColumnName))
-		}
-		cols := strings.Join(colList, ", ")
-		escape := func(p string) string { return strings.ReplaceAll(p, "'", "''") }
-		var fileSQL string
-		if len(parquetFiles) == 1 {
-			fileSQL = fmt.Sprintf("'%s'", escape(parquetFiles[0]))
-		} else {
-			var quoted []string
-			for _, f := range parquetFiles {
-				quoted = append(quoted, fmt.Sprintf("'%s'", escape(f)))
-			}
-			fileSQL = "[" + strings.Join(quoted, ", ") + "]"
-		}
-		//nolint:gosec // file paths are sanitized
-		insertQuery := fmt.Sprintf(`
-			insert into "%s" (%s)
-			select %s from read_parquet(%s)
-		`, tableName, cols, cols, fileSQL)
-		_, err = tx.ExecContext(ctx, insertQuery)
-
-		if err != nil {
+		// Build and execute the parquet insert
+		if err := insertParquetLeaf(ctx, tx, tableName, ts.Columns, parquetFiles); err != nil {
 			slog.Debug("Rollbacking transaction", "table", tableName, "error", err)
 			_ = tx.Rollback()
 			moveTableDirToFailed(dirPath)
@@ -418,6 +403,33 @@ func countParquetFiles(dirs []string) (int, error) {
 		}
 	}
 	return total, nil
+}
+
+// insertParquetLeaf builds and executes an INSERT … SELECT read_parquet(...) for a set of parquet files
+func insertParquetLeaf(ctx context.Context, tx *sql.Tx, tableName string, columns []*schema.ColumnSchema, parquetFiles []string) error {
+	var colList []string
+	for _, c := range columns {
+		colList = append(colList, fmt.Sprintf(`"%s"`, c.ColumnName))
+	}
+	cols := strings.Join(colList, ", ")
+	escape := func(p string) string { return strings.ReplaceAll(p, "'", "''") }
+	var fileSQL string
+	if len(parquetFiles) == 1 {
+		fileSQL = fmt.Sprintf("'%s'", escape(parquetFiles[0]))
+	} else {
+		var quoted []string
+		for _, f := range parquetFiles {
+			quoted = append(quoted, fmt.Sprintf("'%s'", escape(f)))
+		}
+		fileSQL = "[" + strings.Join(quoted, ", ") + "]"
+	}
+	//nolint:gosec // file paths are sanitized
+	query := fmt.Sprintf(`
+		insert into "%s" (%s)
+		select %s from read_parquet(%s)
+	`, tableName, cols, cols, fileSQL)
+	_, err := tx.ExecContext(ctx, query)
+	return err
 }
 
 // onSuccessful handles success outcome: cleans migrating db, prunes empty dirs, prints summary
