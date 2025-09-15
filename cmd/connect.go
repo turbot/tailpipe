@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/exp/maps"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
@@ -27,6 +25,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
+	"golang.org/x/exp/maps"
 )
 
 // variable used to assign the output mode flag

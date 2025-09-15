@@ -99,7 +99,10 @@ Examples:
   tailpipe plugin install turbot/azure@0.1.0
 
   # Hide progress bars during installation
-  tailpipe plugin install --progress=false aws`,
+  tailpipe plugin install --progress=false aws
+
+  # Skip creation of default plugin config file
+  tailpipe plugin install --skip-config aws`,
 	}
 
 	cmdconfig.

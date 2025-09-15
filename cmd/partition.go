@@ -103,8 +103,6 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// migration now runs globally via root PersistentPreRunE
-
 	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
 	error_helpers.FailOnError(err)
 	defer db.Close()
