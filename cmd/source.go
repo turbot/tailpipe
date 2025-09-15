@@ -51,7 +51,7 @@ func sourceListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "list",
 		Args:  cobra.NoArgs,
-		Run:   withMigration(runSourceListCmd),
+		Run:   runSourceListCmd,
 		Short: "List all sources.",
 		Long:  `List all sources.`,
 	}
@@ -115,7 +115,7 @@ func sourceShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "show [source]",
 		Args:  cobra.ExactArgs(1),
-		Run:   withMigration(runSourceShowCmd),
+		Run:   runSourceShowCmd,
 		Short: "Show details for a specific source",
 		Long:  `Show details for a specific source.`,
 	}

@@ -60,7 +60,7 @@ func partitionListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "list",
 		Args:  cobra.NoArgs,
-		Run:   withMigration(runPartitionListCmd),
+		Run:   runPartitionListCmd,
 		Short: "List all partitions.",
 		Long:  `List all partitions.`,
 	}
@@ -131,7 +131,7 @@ func partitionShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "show <partition-name>",
 		Args:  cobra.ExactArgs(1),
-		Run:   withMigration(runPartitionShowCmd),
+		Run:   runPartitionShowCmd,
 		Short: "Show details for a specific partition",
 		Long:  `Show details for a specific partition.`,
 	}
@@ -213,7 +213,7 @@ func partitionDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <partition-name>",
 		Args:  cobra.ExactArgs(1),
-		Run:   withMigration(runPartitionDeleteCmd),
+		Run:   runPartitionDeleteCmd,
 		Short: "Delete a partition for the specified period",
 		Long:  `Delete a partition for the specified period`,
 	}

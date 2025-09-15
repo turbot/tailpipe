@@ -78,7 +78,7 @@ func pluginInstallCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "install [flags] [registry/org/]name[@version]",
 		Args:  cobra.ArbitraryArgs,
-		Run:   withMigration(runPluginInstallCmd),
+		Run:   runPluginInstallCmd,
 		Short: "Install one or more plugins",
 		Long: `Install one or more plugins.
 
@@ -114,7 +114,7 @@ func pluginUpdateCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "update [flags] [registry/org/]name[@version]",
 		Args:  cobra.ArbitraryArgs,
-		Run:   withMigration(runPluginUpdateCmd),
+		Run:   runPluginUpdateCmd,
 		Short: "Update one or more plugins",
 		Long: `Update plugins.
 
@@ -152,7 +152,7 @@ func pluginListCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "list",
 		Args:  cobra.NoArgs,
-		Run:   withMigration(runPluginListCmd),
+		Run:   runPluginListCmd,
 		Short: "List currently installed plugins",
 		Long: `List currently installed plugins.
 
@@ -184,7 +184,7 @@ func pluginShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:  "show <plugin>",
 		Args: cobra.ExactArgs(1),
-		Run:  withMigration(runPluginShowCmd),
+		Run:  runPluginShowCmd,
 		// TODO improve descriptions https://github.com/turbot/tailpipe/issues/111
 		Short: "Show details of a plugin",
 		Long:  `Show the tables and sources provided by plugin`,
@@ -204,7 +204,7 @@ func pluginUninstallCmd() *cobra.Command {
 	var cmd = &cobra.Command{
 		Use:   "uninstall [flags] [registry/org/]name",
 		Args:  cobra.ArbitraryArgs,
-		Run:   withMigration(runPluginUninstallCmd),
+		Run:   runPluginUninstallCmd,
 		Short: "Uninstall a plugin",
 		Long: `Uninstall a plugin.
 

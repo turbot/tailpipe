@@ -86,14 +86,8 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
 	// First-run: copy tailpipe.db into migrated immediately, then move data contents into migrating
 	if initialMigration {
-		if err := os.MkdirAll(config.GlobalWorkspaceProfile.GetMigratedDir(), 0755); err != nil {
+		if err := moveDirContents(dataDefaultDir, migratingDefaultDir); err != nil {
 			return err
-		}
-		if err := utils.CopyFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(config.GlobalWorkspaceProfile.GetMigratedDir(), "tailpipe.db")); err != nil {
-			return fmt.Errorf("failed to copy legacy db to migrated: %w", err)
-		}
-		if err := utils.MoveDirContents(dataDefaultDir, migratingDefaultDir); err != nil {
-			return fmt.Errorf("failed to move data dir contents to migrating: %w", err)
 		}
 	}
 	if perr.IsContextCancelledError(ctx.Err()) {
@@ -169,6 +163,33 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// moveDirContents handles the initial migration move: copy data dir into migrating and move the legacy DB
+// into migrated. If any step fails, it removes the migrating directory and shows a support warning.
+func moveDirContents(dataDefaultDir, migratingDefaultDir string) (err error) {
+	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(migratingDefaultDir)
+			perr.ShowWarning(fmt.Sprintf("Migration initialisation failed. Cleaned up '%s'. Please contact Turbot support.", migratingDefaultDir))
+		}
+	}()
+
+	if err = os.MkdirAll(migratedDir, 0755); err != nil {
+		return err
+	}
+	if err = utils.CopyDir(dataDefaultDir, migratingDefaultDir); err != nil {
+		return err
+	}
+	if err = utils.MoveFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(migratedDir, "tailpipe.db")); err != nil {
+		return err
+	}
+	// emulate a move by clearing original data directory after successful copy+db move
+	if err = utils.EmptyDir(dataDefaultDir); err != nil {
+		return err
+	}
 	return nil
 }
 

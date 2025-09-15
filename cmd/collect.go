@@ -37,7 +37,7 @@ func collectCmd() *cobra.Command {
 		Use:              "collect [table|table.partition] [flags]",
 		Args:             cobra.ArbitraryArgs,
 		TraverseChildren: true,
-		Run:              withMigration(runCollectCmd),
+		Run:              runCollectCmd,
 		Short:            "Run a collection",
 		Long: `The tailpipe collect command runs a plugin that reads from a source and writes to the hive. 
 		
