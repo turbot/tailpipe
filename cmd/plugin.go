@@ -290,7 +290,6 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		var resolved pplugin.ResolvedPluginVersion
 		if ref.IsFromTurbotHub() {
 			rpv, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint)
-			exitCode = pconstants.ExitCodePluginNotFound
 			if err != nil || rpv == nil {
 				report := &pplugin.PluginInstallReport{
 					Plugin:         pluginName,
@@ -459,8 +458,6 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 				org, name, constraint := ref.GetOrgNameAndStream()
 				if ref.IsFromTurbotHub() {
 					if _, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); err != nil {
-						// Not found in hub
-						exitCode = pconstants.ExitCodePluginNotFound
 						updateResults = append(updateResults, &pplugin.PluginInstallReport{
 							Skipped:        true,
 							Plugin:         p,
