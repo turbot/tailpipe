@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/turbot/tailpipe/internal/database"
-	error_helpers "github.com/turbot/tailpipe/internal/error_display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 // RunInteractivePrompt starts the interactive query prompt

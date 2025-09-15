@@ -20,7 +20,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/database"
-	error_helpers "github.com/turbot/tailpipe/internal/error_display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/metaquery"
 	"github.com/turbot/tailpipe/internal/query"
 )

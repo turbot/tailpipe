@@ -38,7 +38,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	error_helpers "github.com/turbot/tailpipe/internal/error_display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/helpers"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"google.golang.org/protobuf/types/known/timestamppb"

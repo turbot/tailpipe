@@ -11,7 +11,7 @@ import (
 	"github.com/turbot/tailpipe/cmd"
 	"github.com/turbot/tailpipe/internal/cmdconfig"
 	localconstants "github.com/turbot/tailpipe/internal/constants"
-	error_helpers "github.com/turbot/tailpipe/internal/error_display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 var exitCode int

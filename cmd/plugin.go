@@ -27,7 +27,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
-	error_helpers "github.com/turbot/tailpipe/internal/error_display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
 )

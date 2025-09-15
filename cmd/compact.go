@@ -14,11 +14,11 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	error_helpers "github.com/turbot/tailpipe/internal/error_display"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"golang.org/x/exp/maps"
 )
 
