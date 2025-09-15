@@ -105,7 +105,7 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 		}
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
-				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
+				fmt.Println("tailpipe connect command cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}

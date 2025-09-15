@@ -72,7 +72,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
-				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
+				fmt.Println("tailpipe collect command cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}

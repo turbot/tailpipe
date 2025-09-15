@@ -50,7 +50,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui
-				fmt.Println("Compact cancelled")
+				fmt.Println("tailpipe compact command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
