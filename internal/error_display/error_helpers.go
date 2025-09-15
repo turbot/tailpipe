@@ -8,11 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
 	"github.com/fatih/color"
 	"github.com/shiena/ansicolor"
+	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 )
@@ -38,7 +40,8 @@ func ShowError(ctx context.Context, err error) {
 		return
 	}
 	statushooks.Done(ctx)
-	fmt.Fprintf(color.Error, "%s: %v\n", constants.ColoredErr, TransformErrorToTailpipe(err))
+	opStream := GetWarningOutputStream()
+	fmt.Fprintf(opStream, "%s: %v\n", constants.ColoredErr, TransformErrorToTailpipe(err))
 }
 
 // ShowErrorWithMessage displays the given error nicely with the given message
@@ -47,7 +50,8 @@ func ShowErrorWithMessage(ctx context.Context, err error, message string) {
 		return
 	}
 	statushooks.Done(ctx)
-	fmt.Fprintf(color.Error, "%s: %s - %v\n", constants.ColoredErr, message, TransformErrorToTailpipe(err))
+	opStream := GetWarningOutputStream()
+	fmt.Fprintf(opStream, "%s: %s - %v\n", constants.ColoredErr, message, TransformErrorToTailpipe(err))
 }
 
 // TransformErrorToTailpipe removes the pq: and rpc error prefixes along
@@ -85,9 +89,25 @@ func ShowWarning(warning string) {
 	if len(warning) == 0 {
 		return
 	}
-	fmt.Fprintf(color.Error, "%s: %v\n", constants.ColoredWarn, warning)
+	opStream := GetWarningOutputStream()
+	fmt.Fprintf(opStream, "%s: %v\n", constants.ColoredWarn, warning)
 }
 
 func PrefixError(err error, prefix string) error {
 	return fmt.Errorf("%s: %s\n", prefix, TransformErrorToTailpipe(err).Error())
+}
+
+// isMachineReadableOutput checks if the current output format is machine readable (CSV or JSON)
+func isMachineReadableOutput() bool {
+	outputFormat := viper.GetString(constants.ArgOutput)
+	return outputFormat == constants.OutputFormatCSV || outputFormat == constants.OutputFormatJSON
+}
+
+func GetWarningOutputStream() io.Writer {
+	if isMachineReadableOutput() {
+		// For machine-readable formats, output warnings and errors to stderr
+		return os.Stderr
+	}
+	// For all other formats, use stdout
+	return os.Stdout
 }
