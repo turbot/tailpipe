@@ -21,7 +21,7 @@ type Table struct {
 	// required to allow partial decoding
 	Remain hcl.Body `hcl:",remain" json:"-"`
 
-	// the default format for this table (todo make a map keyed by source name?)
+	// the default format for this table
 	DefaultSourceFormat *Format `hcl:"format" cty:"format"`
 
 	Columns []Column `hcl:"column,block" cty:"columns"`
