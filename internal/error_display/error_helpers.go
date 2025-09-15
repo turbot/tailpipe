@@ -38,7 +38,7 @@ func ShowError(ctx context.Context, err error) {
 		return
 	}
 	statushooks.Done(ctx)
-	fmt.Fprintf(color.Error, "%s: %v\n", constants.ColoredErr, TransformErrorToSteampipe(err))
+	fmt.Fprintf(color.Error, "%s: %v\n", constants.ColoredErr, TransformErrorToTailpipe(err))
 }
 
 // ShowErrorWithMessage displays the given error nicely with the given message
@@ -47,13 +47,13 @@ func ShowErrorWithMessage(ctx context.Context, err error, message string) {
 		return
 	}
 	statushooks.Done(ctx)
-	fmt.Fprintf(color.Error, "%s: %s - %v\n", constants.ColoredErr, message, TransformErrorToSteampipe(err))
+	fmt.Fprintf(color.Error, "%s: %s - %v\n", constants.ColoredErr, message, TransformErrorToTailpipe(err))
 }
 
-// TransformErrorToSteampipe removes the pq: and rpc error prefixes along
+// TransformErrorToTailpipe removes the pq: and rpc error prefixes along
 // with all the unnecessary information that comes from the
 // drivers and libraries
-func TransformErrorToSteampipe(err error) error {
+func TransformErrorToTailpipe(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -89,5 +89,5 @@ func ShowWarning(warning string) {
 }
 
 func PrefixError(err error, prefix string) error {
-	return fmt.Errorf("%s: %s\n", prefix, TransformErrorToSteampipe(err).Error())
+	return fmt.Errorf("%s: %s\n", prefix, TransformErrorToTailpipe(err).Error())
 }
