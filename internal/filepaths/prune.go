@@ -1,9 +1,9 @@
 package filepaths
 
 import (
-	"io"
 	"os"
 	"path/filepath"
+	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 )
 
 // PruneTree recursively deletes empty directories in the given folder.
@@ -12,7 +12,7 @@ func PruneTree(folder string) error {
 	if _, err := os.Stat(folder); os.IsNotExist(err) {
 		return nil
 	}
-	isEmpty, err := isDirEmpty(folder)
+	isEmpty, err := pfilepaths.IsDirEmpty(folder)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func PruneTree(folder string) error {
 	}
 
 	// Check again if the folder is empty after pruning subdirectories
-	isEmpty, err = isDirEmpty(folder)
+	isEmpty, err = pfilepaths.IsDirEmpty(folder)
 	if err != nil {
 		return err
 	}
@@ -46,19 +46,4 @@ func PruneTree(folder string) error {
 	}
 
 	return nil
-}
-
-// isDirEmpty checks if a directory is empty.
-func isDirEmpty(dir string) (bool, error) {
-	f, err := os.Open(dir)
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-
-	_, err = f.Readdir(1)
-	if err == io.EOF {
-		return true, nil
-	}
-	return false, err
 }

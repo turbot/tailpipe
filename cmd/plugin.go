@@ -17,6 +17,7 @@ import (
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
@@ -247,6 +248,9 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
 		localcmdconfig.DisplayConfig()
@@ -379,6 +383,9 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 			exitCode = pconstants.ExitCodeUnknownErrorPanic
 		}
 	}()
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
 
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
@@ -650,6 +657,9 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
 		localcmdconfig.DisplayConfig()
@@ -728,6 +738,10 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginListCmd list")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	defer func() {
 		utils.LogTime("runPluginListCmd end")
 		if r := recover(); r != nil {
@@ -776,6 +790,10 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginShowCmd start")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	defer func() {
 		utils.LogTime("runPluginShowCmd end")
 		if r := recover(); r != nil {

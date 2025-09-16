@@ -19,7 +19,8 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/row_source"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
-	"github.com/turbot/tailpipe/internal/filepaths"
+	localfilepaths "github.com/turbot/tailpipe/internal/filepaths"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -64,9 +65,12 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 	// get the temp data dir for this collection
 	// - this is located  in ~/.turbot/internal/collection/<profile_name>/<pid>
 	// first clear out any old collection temp dirs
-	filepaths.CleanupCollectionTempDirs()
+	// get the collection directory for this workspace
+	collectionDir := config.GlobalWorkspaceProfile.GetCollectionDir()
+
+	filepaths.CleanupPidTempDirs(collectionDir)
 	// then create a new collection temp dir
-	collectionTempDir := filepaths.EnsureCollectionTempDir()
+	collectionTempDir := localfilepaths.EnsureCollectionTempDir()
 
 	// create the collector
 	c := &Collector{
