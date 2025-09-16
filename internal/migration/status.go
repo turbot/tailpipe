@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -74,15 +73,15 @@ func (s *MigrationStatus) Finish(outcome string) {
 	s.Duration = time.Since(s.StartTime)
 }
 
-// StatusMessage prints a user-facing status message (with stats) based on current migration status
-func (s *MigrationStatus) StatusMessage() {
+// StatusMessage returns a user-facing status message (with stats) based on current migration status
+func (s *MigrationStatus) StatusMessage() string {
 	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
 	failedDir := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
 	migratingDir := config.GlobalWorkspaceProfile.GetMigratingDir()
 
 	switch s.Status {
 	case "SUCCESS":
-		perr.ShowWarning(fmt.Sprintf(
+		return fmt.Sprintf(
 			"DuckLake migration complete.\n"+
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
@@ -90,9 +89,9 @@ func (s *MigrationStatus) StatusMessage() {
 			s.Migrated, s.Total, s.Failed, s.Remaining,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
 			migratedDir,
-		))
+		)
 	case "CANCELLED":
-		perr.ShowWarning(fmt.Sprintf(
+		return fmt.Sprintf(
 			"DuckLake migration cancelled.\n"+
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
@@ -101,13 +100,13 @@ func (s *MigrationStatus) StatusMessage() {
 			s.Migrated, s.Total, s.Failed, s.Remaining,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
 			migratingDir,
-		))
+		)
 	case "INCOMPLETE":
 		failedList := "(none)"
 		if len(s.FailedTables) > 0 {
 			failedList = strings.Join(s.FailedTables, ", ")
 		}
-		perr.ShowWarning(fmt.Sprintf(
+		return fmt.Sprintf(
 			"DuckLake migration completed with issues.\n"+
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
@@ -119,6 +118,8 @@ func (s *MigrationStatus) StatusMessage() {
 			len(s.FailedTables), failedList,
 			failedDir,
 			migratedDir,
-		))
+		)
+	default:
+		return "DuckLake migration status unknown"
 	}
 }

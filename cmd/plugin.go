@@ -185,10 +185,9 @@ Examples:
 // Show plugin
 func pluginShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:  "show <plugin>",
-		Args: cobra.ExactArgs(1),
-		Run:  runPluginShowCmd,
-		// TODO improve descriptions https://github.com/turbot/tailpipe/issues/111
+		Use:   "show <plugin>",
+		Args:  cobra.ExactArgs(1),
+		Run:   runPluginShowCmd,
 		Short: "Show details of a plugin",
 		Long:  `Show the tables and sources provided by plugin`,
 	}

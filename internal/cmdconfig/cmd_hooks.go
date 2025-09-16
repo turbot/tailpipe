@@ -60,27 +60,22 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// set the max memory if specified
 	setMemoryLimit()
 
+	// create cancel context and set back on command
+	baseCtx := cmd.Context()
+	ctx, cancel := context.WithCancel(baseCtx)
+
+	// start the cancel handler to call cancel on interrupt signals
+	contexthelpers.StartCancelHandler(cancel)
+	cmd.SetContext(ctx)
+
 	// migrate legacy data to DuckLake:
 	// Prior to Tailpipe v0.7.0 we stored data as native Parquet files alongside a tailpipe.db
 	// (DuckDB) that defined SQL views. From v0.7.0 onward Tailpipe uses DuckLake, which
 	// introduces a metadata database (metadata.sqlite). We run a one-time migration here to
 	// move existing user data into DuckLake’s layout so it can be queried and managed via
 	// the new metadata model.
-	if err := migrateDataToDuckLake(cmd); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func migrateDataToDuckLake(cmd *cobra.Command) error {
-	baseCtx := cmd.Context()
-	ctx, cancel := context.WithCancel(baseCtx)
-	contexthelpers.StartCancelHandler(cancel)
-	cmd.SetContext(ctx)
-
 	// start migration
-	err := migration.MigrateDataToDucklake(ctx)
+	err := migration.MigrateDataToDucklake(cmd.Context())
 	if error_helpers.IsContextCancelledError(err) {
 		// suppress Cobra's usage/errors only for this cancelled invocation
 		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
@@ -90,6 +85,7 @@ func migrateDataToDuckLake(cmd *cobra.Command) error {
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
 	}
+	// return (possibly nil) error from migration
 	return err
 }
 

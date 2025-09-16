@@ -8,7 +8,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 )
 
-// determine whether we have a ducklake table for this table, and if so, whether it needs schema updating
+// EnsureDuckLakeTable determines whether we have a ducklake table for this table, and if so, whether it needs schema updating
 func EnsureDuckLakeTable(columns []*schema.ColumnSchema, db *DuckDb, tableName string) error {
 	query := fmt.Sprintf("select exists (select 1 from information_schema.tables where table_name = '%s')", tableName)
 	var exists bool
