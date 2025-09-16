@@ -86,7 +86,7 @@ func runFormatListCmd(cmd *cobra.Command, args []string) {
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForFormatError(err,1)
+			setExitCodeForFormatError(err)
 		}
 	}()
 
@@ -150,7 +150,7 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForFormatError(err, 1)
+			setExitCodeForFormatError(err)
 		}
 	}()
 
@@ -172,7 +172,7 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-func setExitCodeForFormatError(err error, nonCancelCode int) {
+func setExitCodeForFormatError(err error) {
 	// set exit code only if an error occurred and no exit code is already set
 	if exitCode != 0 || err == nil {
 		return
@@ -183,5 +183,5 @@ func setExitCodeForFormatError(err error, nonCancelCode int) {
 		return
 	}
 	// no dedicated format exit code exists yet; use generic nonzero failure
-	exitCode = nonCancelCode
+	exitCode = 1
 }
