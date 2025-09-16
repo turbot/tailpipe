@@ -133,18 +133,22 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	err = doMigration(ctx, matchedTableDirs, schemas, status, updateStatus)
 	sp.Stop()
 
-	// no check for success
-	if err != nil || status.Failed > 0 {
-		if perr.IsContextCancelledError(err) {
-			// Cancellation — - update the stats and print summary
-			err = onCancelled(status)
-		} else {
-			// Unexpected error — update the stats
-			err = onFailed(status)
+	// If cancellation arrived after doMigration returned, prefer the CANCELLED outcome
+	if perr.IsContextCancelledError(ctx.Err()) {
+		_ = onCancelled(status)
+		cancelledHandled = true
+		return ctx.Err()
+	}
+
+	// Post-migration outcomes
+	if status.Failed > 0 {
+		if err := onFailed(status); err != nil {
+			return err
 		}
 	} else {
-		// ok - we were able to migrate everything
-		err = onSuccessful(status)
+		if err := onSuccessful(status); err != nil {
+			return err
+		}
 	}
 
 	return err
