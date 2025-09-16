@@ -13,7 +13,6 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -38,8 +37,8 @@ func compactCmd() *cobra.Command {
 
 func runCompactCmd(cmd *cobra.Command, args []string) {
 	var err error
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 
 	defer func() {
 		if r := recover(); r != nil {

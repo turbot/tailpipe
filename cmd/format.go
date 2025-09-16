@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
@@ -69,9 +67,8 @@ func formatListCmd() *cobra.Command {
 }
 
 func runFormatListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runFormatListCmd start")
 	var err error
 	defer func() {
@@ -86,7 +83,7 @@ func runFormatListCmd(cmd *cobra.Command, args []string) {
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForFormatError(err,1)
+			setExitCodeForFormatError(err)
 		}
 	}()
 
@@ -133,9 +130,8 @@ func formatShowCmd() *cobra.Command {
 }
 
 func runFormatShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runFormatShowCmd start")
 	var err error
 	defer func() {
@@ -150,7 +146,7 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForFormatError(err, 1)
+			setExitCodeForFormatError(err)
 		}
 	}()
 
@@ -172,7 +168,7 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-func setExitCodeForFormatError(err error, nonCancelCode int) {
+func setExitCodeForFormatError(err error) {
 	// set exit code only if an error occurred and no exit code is already set
 	if exitCode != 0 || err == nil {
 		return
@@ -183,5 +179,5 @@ func setExitCodeForFormatError(err error, nonCancelCode int) {
 		return
 	}
 	// no dedicated format exit code exists yet; use generic nonzero failure
-	exitCode = nonCancelCode
+	exitCode = 1
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
@@ -238,10 +237,10 @@ var pluginInstallSteps = []string{
 }
 
 func runPluginInstallCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	utils.LogTime("runPluginInstallCmd install")
 	var err error
 	defer func() {
@@ -386,10 +385,10 @@ func doPluginInstall(ctx context.Context, bar *uiprogress.Bar, pluginName string
 }
 
 func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	utils.LogTime("runPluginUpdateCmd start")
 	var err error
 	defer func() {
@@ -667,10 +666,10 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 }
 
 func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 
 	utils.LogTime("runPluginUninstallCmd uninstall")
 	var err error
@@ -768,9 +767,8 @@ func resolveUpdatePluginsFromArgs(args []string) ([]string, error) {
 }
 
 func runPluginListCmd(cmd *cobra.Command, _ []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 
 	utils.LogTime("runPluginListCmd list")
 
@@ -822,17 +820,17 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 }
 
 func runPluginShowCmd(cmd *cobra.Command, args []string) {
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
+
 	// we expect 1 argument, the plugin name
 	if len(args) != 1 {
-		error_helpers.ShowError(cmd.Context(), fmt.Errorf("you need to provide the name of a plugin"))
+		error_helpers.ShowError(ctx, fmt.Errorf("you need to provide the name of a plugin"))
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		return
 	}
-
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginShowCmd start")
 

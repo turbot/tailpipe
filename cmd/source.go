@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,13 +10,12 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
+	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
-	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 func sourceCmd() *cobra.Command {
@@ -66,9 +64,8 @@ func sourceListCmd() *cobra.Command {
 }
 
 func runSourceListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runSourceListCmd start")
 	var err error
 	defer func() {
@@ -130,10 +127,10 @@ func sourceShowCmd() *cobra.Command {
 }
 
 func runSourceShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	utils.LogTime("runSourceShowCmd start")
 	var err error
 	defer func() {

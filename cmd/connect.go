@@ -10,8 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/exp/maps"
-
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/thediveo/enumflag/v2"
@@ -19,7 +17,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	"github.com/turbot/pipe-fittings/v2/connection"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
@@ -27,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
+	"golang.org/x/exp/maps"
 )
 
 // variable used to assign the output mode flag
@@ -96,8 +94,8 @@ The generated script can be used with DuckDB:
 func runConnectCmd(cmd *cobra.Command, _ []string) {
 	var err error
 	var initFilePath string
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 
 	defer func() {
 		if r := recover(); r != nil {

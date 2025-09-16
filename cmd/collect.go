@@ -16,7 +16,6 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
@@ -61,8 +60,9 @@ Every time you run tailpipe collect, Tailpipe refreshes its views over all colle
 }
 
 func runCollectCmd(cmd *cobra.Command, args []string) {
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
+	ctx, cancel := context.WithCancel(ctx) //nolint:govet // cancel is needed for the doCollect func
 
 	var err error
 	defer func() {
@@ -83,7 +83,7 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
 		localcmdconfig.DisplayConfig()
-		return
+		return //nolint:govet // this is explicitly used in tests
 	}
 
 	err = doCollect(ctx, cancel, args)

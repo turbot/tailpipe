@@ -13,6 +13,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	pparse "github.com/turbot/pipe-fittings/v2/parse"
@@ -22,6 +23,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/logger"
+	"github.com/turbot/tailpipe/internal/migration"
 	"github.com/turbot/tailpipe/internal/parse"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -58,7 +60,33 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// set the max memory if specified
 	setMemoryLimit()
 
-	return nil
+	// create cancel context and set back on command
+	baseCtx := cmd.Context()
+	ctx, cancel := context.WithCancel(baseCtx)
+
+	// start the cancel handler to call cancel on interrupt signals
+	contexthelpers.StartCancelHandler(cancel)
+	cmd.SetContext(ctx)
+
+	// migrate legacy data to DuckLake:
+	// Prior to Tailpipe v0.7.0 we stored data as native Parquet files alongside a tailpipe.db
+	// (DuckDB) that defined SQL views. From v0.7.0 onward Tailpipe uses DuckLake, which
+	// introduces a metadata database (metadata.sqlite). We run a one-time migration here to
+	// move existing user data into DuckLake’s layout so it can be queried and managed via
+	// the new metadata model.
+	// start migration
+	err := migration.MigrateDataToDucklake(cmd.Context())
+	if error_helpers.IsContextCancelledError(err) {
+		// suppress Cobra's usage/errors only for this cancelled invocation
+		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
+		// from preRun, so Cobra assumes "user error" and shows help.
+		// This conditional block sets cmd.SilenceUsage = true and cmd.SilenceErrors = true only for cancellation,
+		// telling Cobra "don't print usage or re-print the error". Without it, you get the usage dump.
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+	}
+	// return (possibly nil) error from migration
+	return err
 }
 
 func displayStartupLog() {
