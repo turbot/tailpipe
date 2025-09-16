@@ -44,7 +44,7 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// validate: both should not be true - return that last migration left things in a bad state
 	if initialMigration && continueMigration {
-		return fmt.Errorf("Bad state - migration cannot proceed because both data and migrating directories contain tailpipe.db files.")
+		return fmt.Errorf("Invalid migration state: found tailpipe.db in both data and migrating directories. This should not happen. Please contact Turbot support for assistance.")
 	}
 
 	// STEP 1: Check if migration is needed
@@ -84,7 +84,8 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// STEP 3: If this is the first time we are migrating(tables in ~/.tailpipe/data) then move the whole contents of data dir
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
-	// First-run: copy tailpipe.db into migrated immediately, then move data contents into migrating
+	// First-run: transactionally move contents via moveDirContents: copy data to migrating, move tailpipe.db to migrated,
+	// then empty the original data directory. On any failure, the migrating directory is removed.
 	if initialMigration {
 		if err := moveDirContents(dataDefaultDir, migratingDefaultDir); err != nil {
 			return err
@@ -177,16 +178,23 @@ func moveDirContents(dataDefaultDir, migratingDefaultDir string) (err error) {
 		}
 	}()
 
+	// 1) Ensure the destination for the DB exists first
+	// Reason: we will move tailpipe.db after copying data; guaranteeing the target avoids partial moves later.
 	if err = os.MkdirAll(migratedDir, 0755); err != nil {
 		return err
 	}
+	// 2) Copy ALL data from data/default -> migration/migrating/default (do not delete source yet)
+	// Reason: copying first keeps the legacy data readable if the process crashes midway.
 	if err = utils.CopyDir(dataDefaultDir, migratingDefaultDir); err != nil {
 		return err
 	}
+	// 3) Move the DB file from data/default -> migration/migrated/default
+	// Reason: once data copy succeeded, moving tailpipe.db signals the backup exists and clarifies resume semantics.
 	if err = utils.MoveFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(migratedDir, "tailpipe.db")); err != nil {
 		return err
 	}
-	// emulate a move by clearing original data directory after successful copy+db move
+	// 4) Empty the original data directory last to emulate an atomic move
+	// Reason: only after successful copy+db move do we clear the source so we never strand users without their legacy data.
 	if err = utils.EmptyDir(dataDefaultDir); err != nil {
 		return err
 	}
@@ -281,7 +289,7 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 		}
 
 		// Build and execute the parquet insert
-		if err := insertParquetLeaf(ctx, tx, tableName, ts.Columns, parquetFiles); err != nil {
+		if err := insertFromParquetFiles(ctx, tx, tableName, ts.Columns, parquetFiles); err != nil {
 			slog.Debug("Rollbacking transaction", "table", tableName, "error", err)
 			_ = tx.Rollback()
 			moveTableDirToFailed(dirPath)
@@ -426,8 +434,8 @@ func countParquetFiles(dirs []string) (int, error) {
 	return total, nil
 }
 
-// insertParquetLeaf builds and executes an INSERT … SELECT read_parquet(...) for a set of parquet files
-func insertParquetLeaf(ctx context.Context, tx *sql.Tx, tableName string, columns []*schema.ColumnSchema, parquetFiles []string) error {
+// insertFromParquetFiles builds and executes an INSERT … SELECT read_parquet(...) for a set of parquet files
+func insertFromParquetFiles(ctx context.Context, tx *sql.Tx, tableName string, columns []*schema.ColumnSchema, parquetFiles []string) error {
 	var colList []string
 	for _, c := range columns {
 		colList = append(colList, fmt.Sprintf(`"%s"`, c.ColumnName))

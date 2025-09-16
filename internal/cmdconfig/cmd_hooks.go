@@ -60,7 +60,12 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// set the max memory if specified
 	setMemoryLimit()
 
-	// migrate legacy data to ducklake
+	// migrate legacy data to DuckLake:
+	// Prior to Tailpipe v0.7.0 we stored data as native Parquet files alongside a tailpipe.db
+	// (DuckDB) that defined SQL views. From v0.7.0 onward Tailpipe uses DuckLake, which
+	// introduces a metadata database (metadata.sqlite). We run a one-time migration here to
+	// move existing user data into DuckLake’s layout so it can be queried and managed via
+	// the new metadata model.
 	if err := migrateDataToDuckLake(cmd); err != nil {
 		return err
 	}
