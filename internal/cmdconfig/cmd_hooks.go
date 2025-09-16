@@ -78,6 +78,10 @@ func migrateDataToDuckLake(cmd *cobra.Command) error {
 	err := migration.MigrateDataToDucklake(ctx)
 	if error_helpers.IsContextCancelledError(err) {
 		// suppress Cobra's usage/errors only for this cancelled invocation
+		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
+		// from preRun, so Cobra assumes "user error" and shows help.
+		// This conditional block sets cmd.SilenceUsage = true and cmd.SilenceErrors = true only for cancellation,
+		// telling Cobra "don't print usage or re-print the error". Without it, you get the usage dump.
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
 	}
