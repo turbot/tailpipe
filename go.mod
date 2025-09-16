@@ -6,22 +6,22 @@ toolchain go1.24.0
 
 replace (
 	github.com/c-bata/go-prompt => github.com/turbot/go-prompt v0.2.6-steampipe.0.0.20221028122246-eb118ec58d50
-	github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
+	// github.com/turbot/pipe-fittings/v2 => ../pipe-fittings
 	//github.com/turbot/tailpipe-plugin-core => ../tailpipe-plugin-core
 	github.com/turbot/tailpipe-plugin-sdk => ../tailpipe-plugin-sdk
 )
 
 require (
-	github.com/Masterminds/semver/v3 v3.2.1
-	github.com/hashicorp/hcl/v2 v2.20.1
+	github.com/Masterminds/semver/v3 v3.4.0
+	github.com/hashicorp/hcl/v2 v2.24.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.19.0
 	github.com/stretchr/testify v1.10.0
 	github.com/turbot/go-kit v1.3.0
-	github.com/turbot/pipe-fittings/v2 v2.6.0
+	github.com/turbot/pipe-fittings/v2 v2.7.0-rc.0
 	github.com/turbot/tailpipe-plugin-sdk v0.9.2
-	github.com/zclconf/go-cty v1.14.4
+	github.com/zclconf/go-cty v1.16.3
 	golang.org/x/exp v0.0.0-20250718183923-645b1fa84792
 )
 
@@ -177,7 +177,7 @@ require (
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
-	github.com/mitchellh/go-wordwrap v1.0.0 // indirect
+	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
@@ -205,7 +205,7 @@ require (
 	github.com/sourcegraph/conc v0.3.0 // indirect
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/cast v1.6.0 // indirect
-	github.com/spf13/pflag v1.0.6 // indirect
+	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.5.0 // indirect
 	github.com/stevenle/topsort v0.2.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
