@@ -4,9 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"os/signal"
 	"runtime/debug"
-	"syscall"
 	"time"
 
 	"github.com/mattn/go-isatty"
@@ -15,6 +13,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
+	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	pparse "github.com/turbot/pipe-fittings/v2/parse"
@@ -31,7 +30,6 @@ import (
 
 var waitForTasksChannel chan struct{}
 var tasksCancelFn context.CancelFunc
-var signalStopFn context.CancelFunc
 
 // postRunHook is a function that is executed before the PreRun of every command handler
 func preRunHook(cmd *cobra.Command, args []string) error {
@@ -72,13 +70,12 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 
 func migrateDataToDuckLake(cmd *cobra.Command) error {
 	baseCtx := cmd.Context()
-	sigCtx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
-	// store stop so we can cancel after command completes (postRunHook)
-	signalStopFn = stop
-	cmd.SetContext(sigCtx)
+	ctx, cancel := context.WithCancel(baseCtx)
+	contexthelpers.StartCancelHandler(cancel)
+	cmd.SetContext(ctx)
 
 	// start migration
-	err := migration.MigrateDataToDucklake(sigCtx)
+	err := migration.MigrateDataToDucklake(ctx)
 	if error_helpers.IsContextCancelledError(err) {
 		// suppress Cobra's usage/errors only for this cancelled invocation
 		cmd.SilenceUsage = true
@@ -109,24 +106,10 @@ func postRunHook(_ *cobra.Command, _ []string) error {
 		select {
 		case <-time.After(100 * time.Millisecond):
 			tasksCancelFn()
-			// ensure we cleanup signal context
-			if signalStopFn != nil {
-				signalStopFn()
-				signalStopFn = nil
-			}
 			return nil
 		case <-waitForTasksChannel:
-			if signalStopFn != nil {
-				signalStopFn()
-				signalStopFn = nil
-			}
 			return nil
 		}
-	}
-	// ensure we cleanup signal context
-	if signalStopFn != nil {
-		signalStopFn()
-		signalStopFn = nil
 	}
 	return nil
 }
