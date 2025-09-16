@@ -148,7 +148,7 @@ func partitionShowCmd() *cobra.Command {
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
+	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionShowCmd start")
 	var err error
@@ -235,7 +235,7 @@ func partitionDeleteCmd() *cobra.Command {
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
+	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	var err error
 	defer func() {

@@ -132,7 +132,7 @@ func sourceShowCmd() *cobra.Command {
 func runSourceShowCmd(cmd *cobra.Command, args []string) {
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
+	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runSourceShowCmd start")
 	var err error
