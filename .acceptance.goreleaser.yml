@@ -1,6 +1,3 @@
-# Acceptance testing configuration - builds only Linux AMD64 for faster testing
-version: 2
-
 before:
   hooks:
     - go mod tidy
@@ -13,16 +10,11 @@ builds:
       - amd64
 
     env:
-      - CC=x86_64-linux-gnu-gcc-13
-      - CXX=x86_64-linux-gnu-g++-13
-      - CGO_CXXFLAGS=-std=c++17
-      - CGO_LDFLAGS=-lstdc++ -static-libstdc++
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
-
-    flags:
-      - -buildvcs=false
 
 archives:
   - id: homebrew

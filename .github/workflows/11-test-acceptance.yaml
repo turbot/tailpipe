@@ -45,10 +45,10 @@ jobs:
           path: tailpipe-plugin-core
           ref: main
 
-        # this is required, check golangci-lint-action docs
+       # this is required, check golangci-lint-action docs
       - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
         with:
-          go-version: "1.23"
+          go-version: '1.23'
           cache: false # setup-go v4 caches by default, do not change this parameter, check golangci-lint-action doc: https://github.com/golangci/golangci-lint-action/pull/704
 
       - name: Run CLI Unit Tests
@@ -56,13 +56,6 @@ jobs:
           cd tailpipe
           go clean -testcache
           go test -timeout 30s ./... -test.v
-
-      - name: Build Custom Goreleaser Cross Image for Linux
-        run: |-
-          cd tailpipe
-          make build-goreleaser-image
-          echo "=== Verifying GCC 13 ==="
-          docker run --rm tailpipe-goreleaser-cross:gcc13 gcc-13 --version | head -1
 
       - name: Build
         run: |-
@@ -122,7 +115,7 @@ jobs:
         id: prepare-for-downloads
         run: |
           mkdir ~/artifacts
-
+  
       - name: Download Linux Build Artifacts
         uses: actions/download-artifact@95815c38cf2ff2164869cbab79da8d1f422bc89e # v4.2.1
         if: ${{ matrix.platform == 'ubuntu-latest' }}
@@ -130,7 +123,7 @@ jobs:
           name: build-artifact-linux
           path: ~/artifacts
 
-      - name: Extract Linux Artifacts and Install Binary
+      - name: Extract Ubuntu Artifacts and Install Binary
         if: ${{ matrix.platform == 'ubuntu-latest' }}
         run: |
           mkdir ~/build
@@ -188,8 +181,8 @@ jobs:
           name: build-artifact-linux
           failOnError: true
 
-      - name: Clean up Linux Build
+      - name: Clean up Darwin Build
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
         with:
-          name: build-artifact-linux
+          name: build-artifact-darwin
           failOnError: true
