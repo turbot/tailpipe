@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,7 +10,6 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
@@ -68,9 +66,8 @@ func tableListCmd() *cobra.Command {
 }
 
 func runTableListCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runSourceListCmd start")
 	var err error
 	defer func() {
@@ -138,9 +135,8 @@ func tableShowCmd() *cobra.Command {
 }
 
 func runTableShowCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runTableShowCmd start")
 	var err error
 	defer func() {

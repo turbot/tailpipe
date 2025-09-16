@@ -15,7 +15,6 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
@@ -76,9 +75,8 @@ func partitionListCmd() *cobra.Command {
 }
 
 func runPartitionListCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runPartitionListCmd start")
 	var err error
 	defer func() {
@@ -145,10 +143,10 @@ func partitionShowCmd() *cobra.Command {
 }
 
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	utils.LogTime("runPartitionShowCmd start")
 	var err error
 	defer func() {
@@ -232,10 +230,10 @@ func partitionDeleteCmd() *cobra.Command {
 }
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	var err error
 	defer func() {
 		if r := recover(); r != nil {
