@@ -220,7 +220,7 @@ func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginCli
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
+func (p *PluginManager) Describe(_ context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 

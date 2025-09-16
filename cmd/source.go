@@ -12,12 +12,12 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 func sourceCmd() *cobra.Command {
@@ -79,7 +79,7 @@ func runSourceListCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Source cancelled.")
+				fmt.Println("tailpipe source list command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -132,6 +132,7 @@ func sourceShowCmd() *cobra.Command {
 func runSourceShowCmd(cmd *cobra.Command, args []string) {
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runSourceShowCmd start")
 	var err error
@@ -143,7 +144,7 @@ func runSourceShowCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Source cancelled.")
+				fmt.Println("tailpipe source show command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}

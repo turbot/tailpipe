@@ -239,6 +239,7 @@ var pluginInstallSteps = []string{
 func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPluginInstallCmd install")
 	var err error
@@ -250,7 +251,7 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Plugin cancelled.")
+				fmt.Println("tailpipe plugin install command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -383,6 +384,7 @@ func doPluginInstall(ctx context.Context, bar *uiprogress.Bar, pluginName string
 func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPluginUpdateCmd start")
 	var err error
@@ -394,7 +396,7 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Plugin cancelled.")
+				fmt.Println("tailpipe plugin update command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -646,6 +648,7 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginUninstallCmd uninstall")
@@ -658,7 +661,7 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Plugin cancelled.")
+				fmt.Println("tailpipe plugin uninstall command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -737,7 +740,7 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Plugin cancelled.")
+				fmt.Println("tailpipe plugin list command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -782,6 +785,7 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 
 	//setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginShowCmd start")
@@ -794,7 +798,7 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Plugin cancelled.")
+				fmt.Println("tailpipe plugin show command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}

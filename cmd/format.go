@@ -82,11 +82,11 @@ func runFormatListCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Format cancelled.")
+				fmt.Println("tailpipe format list command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForFormatError(err)
+			setExitCodeForFormatError(err,1)
 		}
 	}()
 
@@ -146,11 +146,11 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Format cancelled.")
+				fmt.Println("tailpipe format show command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
-			setExitCodeForFormatError(err)
+			setExitCodeForFormatError(err, 1)
 		}
 	}()
 
@@ -172,7 +172,7 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-func setExitCodeForFormatError(err error) {
+func setExitCodeForFormatError(err error, nonCancelCode int) {
 	// set exit code only if an error occurred and no exit code is already set
 	if exitCode != 0 || err == nil {
 		return
@@ -183,5 +183,5 @@ func setExitCodeForFormatError(err error) {
 		return
 	}
 	// no dedicated format exit code exists yet; use generic nonzero failure
-	exitCode = 1
+	exitCode = nonCancelCode
 }

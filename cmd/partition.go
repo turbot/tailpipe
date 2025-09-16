@@ -89,7 +89,7 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Partition cancelled.")
+				fmt.Println("taillpipe partition list command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -148,6 +148,7 @@ func partitionShowCmd() *cobra.Command {
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionShowCmd start")
 	var err error
@@ -159,7 +160,7 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui output
-				fmt.Println("Partition cancelled.")
+				fmt.Println("tailpipe partition show command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -234,6 +235,7 @@ func partitionDeleteCmd() *cobra.Command {
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	var err error
 	defer func() {
