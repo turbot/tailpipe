@@ -496,7 +496,6 @@ func TestParseTailpipeConfig(t *testing.T) {
 		want    *config.TailpipeConfig
 		wantErr bool
 	}{
-		// TODO #testing add more test cases https://github.com/turbot/tailpipe/issues/506
 		{
 			name: "static tables",
 			args: args{
