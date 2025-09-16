@@ -46,7 +46,6 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	ew := initGlobalConfig(ctx)
 	// display any warnings
 	ew.ShowWarnings()
-	// TODO #errors sort exit code  https://github.com/turbot/tailpipe/issues/496
 	// check for error
 	error_helpers.FailOnError(ew.Error)
 

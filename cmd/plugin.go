@@ -16,6 +16,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
@@ -259,6 +260,9 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
 		localcmdconfig.DisplayConfig()
@@ -306,7 +310,7 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 				report := &pplugin.PluginInstallReport{
 					Plugin:         pluginName,
 					Skipped:        true,
-					SkipReason:     pconstants.InstallMessagePluginNotFound,
+					SkipReason:     pconstants.InstallMessagePluginNotDistributedViaHub,
 					IsUpdateReport: false,
 				}
 				reportChannel <- report
@@ -404,6 +408,9 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
 		localcmdconfig.DisplayConfig()
@@ -478,6 +485,20 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 					return
 				}
 			} else {
+				// Plugin not installed locally. If it's a hub plugin, check if it exists in hub.
+				org, name, constraint := ref.GetOrgNameAndStream()
+				if ref.IsFromTurbotHub() {
+					if _, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); err != nil {
+						updateResults = append(updateResults, &pplugin.PluginInstallReport{
+							Skipped:        true,
+							Plugin:         p,
+							SkipReason:     pconstants.InstallMessagePluginNotDistributedViaHub,
+							IsUpdateReport: true,
+						})
+						continue
+					}
+				}
+				// Exists on hub (or not a hub plugin) but not installed locally
 				exitCode = pconstants.ExitCodePluginNotFound
 				updateResults = append(updateResults, &pplugin.PluginInstallReport{
 					Skipped:        true,
@@ -669,9 +690,20 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		}
 	}()
 
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	// if diagnostic mode is set, print out config and return
 	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
 		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// load installation state (needed for hub existence checks)
+	state, err := installationstate.Load()
+	if err != nil {
+		error_helpers.ShowError(ctx, fmt.Errorf("could not load state"))
+		exitCode = pconstants.ExitCodePluginLoadingError
 		return
 	}
 
@@ -692,6 +724,16 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		if report, err := plugin.Remove(ctx, p); err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				exitCode = pconstants.ExitCodePluginNotFound
+				// check hub existence to tailor message
+				ref := pociinstaller.NewImageRef(p)
+				if ref.IsFromTurbotHub() {
+					org, name, constraint := ref.GetOrgNameAndStream()
+					if _, herr := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); herr != nil {
+						// Not on hub and not installed locally
+						error_helpers.ShowError(ctx, fmt.Errorf("Failed to uninstall '%s' not found on hub and not installed locally.", p))
+						continue
+					}
+				}
 			} else if error_helpers.IsCancelledError(err) {
 				exitCode = pconstants.ExitCodeOperationCancelled
 			}
@@ -731,6 +773,10 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginListCmd list")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	var err error
 	defer func() {
 		utils.LogTime("runPluginListCmd end")
@@ -789,6 +835,10 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	contexthelpers.StartCancelHandler(cancel)
 
 	utils.LogTime("runPluginShowCmd start")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
 	var err error
 	defer func() {
 		utils.LogTime("runPluginShowCmd end")

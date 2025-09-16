@@ -59,10 +59,9 @@ func rootCommand() *cobra.Command {
 }
 
 func Execute() int {
-	rootCmd := rootCommand()
 	utils.LogTime("cmd.root.Execute start")
 	defer utils.LogTime("cmd.root.Execute end")
-
+	rootCmd := rootCommand()
 	if err := rootCmd.Execute(); err != nil {
 		exitCode = -1
 	}
