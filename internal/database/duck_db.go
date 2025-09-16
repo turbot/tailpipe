@@ -285,10 +285,7 @@ func GetDucklakeInitCommands(readonly bool) []SqlCommand {
 
 	commands := []SqlCommand{
 		{Description: "install sqlite extension", Command: "install sqlite"},
-		// TODO #DL change to using prod extension when stable
-		//  https://github.com/turbot/tailpipe/issues/476
-		// _, err = db.Exec("install ducklake;")
-		{Description: "install ducklake extension", Command: "force install ducklake from core_nightly"},
+		{Description: "install ducklake extension", Command: "install ducklake;"},
 		{Description: "attach to ducklake database", Command: attachQuery},
 	}
 	return commands

@@ -119,6 +119,5 @@ func setExitCodeForQueryError(err error) {
 		return
 	}
 
-	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/496
 	exitCode = 1
 }
