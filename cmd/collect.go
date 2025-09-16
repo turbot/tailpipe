@@ -17,7 +17,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/modconfig"
 	"github.com/turbot/pipe-fittings/v2/parse"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
@@ -25,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/plugin"
 	"golang.org/x/exp/maps"
 )
@@ -71,8 +71,8 @@ func runCollectCmd(cmd *cobra.Command, args []string) {
 		}
 
 		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				fmt.Println("Collection cancelled.") //nolint:forbidigo // ui output
+			if error_helpers.IsCancelledError(err) {
+				fmt.Println("tailpipe collect command cancelled.") //nolint:forbidigo // ui output
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -364,14 +364,13 @@ func setExitCodeForCollectError(err error) {
 	if exitCode != 0 || err == nil {
 		return
 	}
-	// TODO Set exit code for cancellation
-	if errors.Is(err, context.Canceled) {
-		exitCode = 0
+	// set exit code for cancellation
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
 		return
 	}
 
-	// TODO #errors - assign exit codes https://github.com/turbot/tailpipe/issues/496
-	exitCode = 1
+	exitCode = pconstants.ExitCodeCollectionFailed
 }
 
 // parse the from time

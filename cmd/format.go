@@ -12,12 +12,12 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 // variable used to assign the output mode flag
@@ -73,11 +73,20 @@ func runFormatListCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runFormatListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runFormatListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe format list command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForFormatError(err,1)
 		}
 	}()
 
@@ -99,8 +108,8 @@ func runFormatListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -128,11 +137,20 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runFormatShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runFormatShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe format show command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForFormatError(err, 1)
 		}
 	}()
 
@@ -149,7 +167,21 @@ func runFormatShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
+}
+
+func setExitCodeForFormatError(err error, nonCancelCode int) {
+	// set exit code only if an error occurred and no exit code is already set
+	if exitCode != 0 || err == nil {
+		return
+	}
+	// set exit code for cancellation
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	// no dedicated format exit code exists yet; use generic nonzero failure
+	exitCode = nonCancelCode
 }

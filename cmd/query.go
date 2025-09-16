@@ -73,7 +73,7 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		}
 		if err != nil {
 			error_helpers.ShowError(ctx, err)
-			setExitCodeForQueryError(err)
+			exitCode = pconstants.ExitCodeInitializationFailed
 		}
 	}()
 
@@ -111,13 +111,4 @@ func runQueryCmd(cmd *cobra.Command, args []string) {
 		// if there were any errors, they would have been shown already from `RunBatchSession` - just set the exit code
 		exitCode = pconstants.ExitCodeQueryExecutionFailed
 	}
-}
-
-func setExitCodeForQueryError(err error) {
-	// if exit code already set, leave as is
-	if exitCode != 0 || err == nil {
-		return
-	}
-
-	exitCode = 1
 }

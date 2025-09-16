@@ -3,8 +3,6 @@ package plugin
 import (
 	"context"
 	"fmt"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"log/slog"
 	"math/rand/v2"
 	"os"
@@ -14,6 +12,9 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/hashicorp/go-hclog"
 	goplugin "github.com/hashicorp/go-plugin"
 	"github.com/hashicorp/go-version"
@@ -22,7 +23,6 @@ import (
 	gokithelpers "github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	pfilepaths "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
@@ -38,6 +38,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/types"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/helpers"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -151,7 +152,7 @@ func (p *PluginManager) Collect(ctx context.Context, partition *config.Partition
 
 	collectResponse, err := tablePluginClient.Collect(req)
 	if err != nil {
-		return nil, fmt.Errorf("error starting collection for plugin %s: %w", tablePluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
+		return nil, fmt.Errorf("error starting collection for plugin %s: %w", tablePluginClient.Name, error_helpers.TransformErrorToTailpipe(err))
 	}
 
 	// start a goroutine to read the eventStream and listen to file events
@@ -219,7 +220,7 @@ func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginCli
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(ctx context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
+func (p *PluginManager) Describe(_ context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
@@ -278,7 +279,7 @@ func (p *PluginManager) UpdateCollectionState(ctx context.Context, partition *co
 
 	_, err = pluginClient.UpdateCollectionState(req)
 	if err != nil {
-		return fmt.Errorf("error updating collection state for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToSteampipe(err))
+		return fmt.Errorf("error updating collection state for plugin %s: %w", pluginClient.Name, error_helpers.TransformErrorToTailpipe(err))
 	}
 
 	// just return - the observer is responsible for waiting for completion

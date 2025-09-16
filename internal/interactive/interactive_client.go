@@ -17,10 +17,10 @@ import (
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/metaquery"
 	"github.com/turbot/tailpipe/internal/query"
 )
@@ -346,7 +346,7 @@ func (c *InteractiveClient) executor(ctx context.Context, line string) {
 func (c *InteractiveClient) executeQuery(ctx context.Context, queryCtx context.Context, resolvedQuery *ResolvedQuery) {
 	_, err := query.ExecuteQuery(queryCtx, resolvedQuery.ExecuteSQL, c.db)
 	if err != nil {
-		error_helpers.ShowError(ctx, error_helpers.HandleCancelError(err))
+		error_helpers.ShowError(ctx, err)
 	}
 }
 

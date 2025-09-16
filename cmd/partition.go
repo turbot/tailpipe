@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,7 +16,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
@@ -24,6 +24,7 @@ import (
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/filepaths"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -79,11 +80,20 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	ctx, cancel := context.WithCancel(cmd.Context())
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPartitionListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("taillpipe partition list command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
@@ -110,8 +120,8 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -138,13 +148,23 @@ func partitionShowCmd() *cobra.Command {
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// setup a cancel context and start cancel handler
 	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
 	contexthelpers.StartCancelHandler(cancel)
 	utils.LogTime("runPartitionShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPartitionShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe partition show command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
@@ -183,8 +203,8 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -213,12 +233,23 @@ func partitionDeleteCmd() *cobra.Command {
 }
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
-	ctx := cmd.Context()
-
+	// setup a cancel context and start cancel handler
+	ctx, cancel := context.WithCancel(cmd.Context())
+	//TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a cancellation error. Cancellation won't work right now
+	contexthelpers.StartCancelHandler(cancel)
+	var err error
 	defer func() {
 		if r := recover(); r != nil {
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
-			error_helpers.FailOnError(helpers.ToError(r))
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Partition cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
@@ -279,7 +310,14 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	spinner.Show()
 	rowsDeleted, err := database.DeletePartition(ctx, partition, fromTime, toTime, db)
 	spinner.Hide()
-	error_helpers.FailOnError(err)
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
+		error_helpers.FailOnError(err)
+	}
 
 	// build the collection state path
 	collectionStatePath := partition.CollectionStatePath(config.GlobalWorkspaceProfile.GetCollectionDir())
@@ -288,6 +326,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	if fromTime.IsZero() {
 		err := os.Remove(collectionStatePath)
 		if err != nil && !os.IsNotExist(err) {
+			exitCode = 1
 			error_helpers.FailOnError(fmt.Errorf("failed to delete collection state file: %s", err.Error()))
 		}
 	} else {
@@ -296,7 +335,14 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		pluginManager := plugin.NewPluginManager()
 		defer pluginManager.Close()
 		err = pluginManager.UpdateCollectionState(ctx, partition, fromTime, collectionStatePath)
-		error_helpers.FailOnError(err)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
+			error_helpers.FailOnError(err)
+		}
 	}
 
 	// now prune the collection folders
@@ -316,4 +362,16 @@ func buildStatusMessage(rowsDeleted int, partition string, fromStr string) inter
 	}
 
 	return fmt.Sprintf("\nDeleted partition '%s'%s%s.\n", partition, fromStr, deletedStr)
+}
+
+func setExitCodeForPartitionError(err error) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	// no dedicated partition exit code; use generic nonzero failure
+	exitCode = 1
 }

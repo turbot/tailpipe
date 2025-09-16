@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/constants"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 // DisplayConfig prints all config set via WorkspaceProfile or HCL options

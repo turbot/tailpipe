@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,11 +14,11 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"golang.org/x/exp/maps"
 )
 
@@ -49,9 +48,9 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 		if err != nil {
 			setExitCodeForCompactError(err)
 
-			if errors.Is(err, context.Canceled) {
+			if error_helpers.IsCancelledError(err) {
 				//nolint:forbidigo // ui
-				fmt.Println("Compact cancelled")
+				fmt.Println("tailpipe compact command cancelled.")
 			} else {
 				error_helpers.ShowError(ctx, err)
 			}
@@ -126,5 +125,11 @@ func setExitCodeForCompactError(err error) {
 	if exitCode != 0 || err == nil {
 		return
 	}
-	exitCode = 1
+	// set exit code for cancellation
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+
+	exitCode = pconstants.ExitCodeCompactFailed
 }
