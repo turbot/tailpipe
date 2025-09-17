@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/turbot/tailpipe/internal/filepaths"
 	"log"
 	"log/slog"
 	"os"
@@ -24,7 +25,7 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
-	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
+	"github.com/turbot/tailpipe/internal/error_helpers"
 	"golang.org/x/exp/maps"
 )
 
@@ -136,14 +137,19 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 
 }
 
-func checkForLegacyDb() (error, bool) {
-	// if we are int he middle of a migration, return an error
+func checkForLegacyDb() (bool, error) {
+	legacyDbPath := filepaths.TailpipeLegacyDbFilePath()
+	_, err := os.Stat(legacyDbPath)
+	legacyDbExists := err == nil
 
-	// if we have both a tailpipe.db and a metadata.sqlite, return an error
-
-	// if there is an old db file and NOT a sqlite metadata file, we have legacy data
-
-	//if there is a db file, return true
+	// if we are in the middle of a migration, return an error
+	migratingDir := config.GlobalWorkspaceProfile.GetMigratingDir()
+	_, err = os.Stat(migratingDir)
+	migrationInProgress := err == nil
+	if migrationInProgress {
+		return false, fmt.Errorf("a data migration is in progress - run any tailpipe command apart from 'connect` to complete migration")
+	}
+	return legacyDbExists, nil
 }
 
 func generateInitFile(ctx context.Context) (string, error) {

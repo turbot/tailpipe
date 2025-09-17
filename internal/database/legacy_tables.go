@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/tailpipe-plugin-sdk/helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/helpers"
 )
 
 // AddTableViews creates a view for each table in the data directory, applying the provided duck db filters to the view query
@@ -145,102 +144,4 @@ func getDirNames(folderPath string) ([]string, error) {
 	}
 
 	return dirNames, nil
-}
-
-func GetRowCount(ctx context.Context, tableName string, partitionName *string) (int64, error) {
-	// Open a DuckDB connection
-	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
-	if err != nil {
-		return 0, fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
-	var tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-	if !tableNameRegex.MatchString(tableName) {
-		return 0, fmt.Errorf("invalid table name")
-	}
-	query := fmt.Sprintf("select count(*) from %s", tableName) // #nosec G201 // this is a controlled query tableName must match a regex
-	if partitionName != nil {
-		query = fmt.Sprintf("select count(*) from %s where tp_partition = '%s'", tableName, *partitionName) // #nosec G201 // this is a controlled query tableName must match a regex
-	}
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get row count: %w", err)
-	}
-	defer rows.Close()
-
-	var count int64
-	if rows.Next() {
-		err = rows.Scan(&count)
-		if err != nil {
-			return 0, fmt.Errorf("failed to scan row count: %w", err)
-		}
-	}
-	return count, nil
-}
-
-func GetTableViews(ctx context.Context) ([]string, error) {
-	// Open a DuckDB connection
-	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
-	query := "select table_name from information_schema.tables where table_type='VIEW';"
-	rows, err := db.QueryContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get table views: %w", err)
-	}
-	defer rows.Close()
-
-	var tableViews []string
-	for rows.Next() {
-		var tableView string
-		err = rows.Scan(&tableView)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan table view: %w", err)
-		}
-		tableViews = append(tableViews, tableView)
-	}
-	return tableViews, nil
-}
-
-func GetTableViewSchema(ctx context.Context, viewName string) (map[string]string, error) {
-	// Open a DuckDB connection
-	db, err := NewDuckDb(WithDbFile(filepaths.TailpipeDbFilePath()))
-	if err != nil {
-		return nil, fmt.Errorf("failed to open DuckDB connection: %w", err)
-	}
-	defer db.Close()
-
-	query := `
-		select column_name, data_type 
-		from information_schema.columns 
-		where table_name = ? ORDER BY columns.column_name;
-	`
-	rows, err := db.QueryContext(ctx, query, viewName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get view schema for %s: %w", viewName, err)
-	}
-	defer rows.Close()
-
-	schema := make(map[string]string)
-	for rows.Next() {
-		var columnName, columnType string
-		err = rows.Scan(&columnName, &columnType)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan column schema: %w", err)
-		}
-		if strings.HasPrefix(columnType, "struct") {
-			columnType = "struct"
-		}
-		schema[columnName] = columnType
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over view schema rows: %w", err)
-	}
-
-	return schema, nil
 }
