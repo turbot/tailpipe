@@ -301,6 +301,13 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	error_helpers.FailOnError(err)
 	defer db.Close()
 
+	// Create backup before deletion
+	slog.Info("Creating backup before partition deletion", "partition", partitionName)
+	if err := database.BackupDucklakeMetadata(); err != nil {
+		slog.Warn("Failed to create backup before partition deletion", "error", err)
+		// Continue with deletion - backup failure should not prevent deletion
+	}
+
 	// show spinner while deleting the partition
 	spinner := statushooks.NewStatusSpinnerHook()
 	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
