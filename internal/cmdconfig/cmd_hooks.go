@@ -68,6 +68,15 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	contexthelpers.StartCancelHandler(cancel)
 	cmd.SetContext(ctx)
 
+	// skip migration for the 'connect' command (and its subcommands)
+	// this is necessary since connect is used by powerpipe to connect to the tailpipe
+	// db, and it could take a long time to migrate if there are large number of rows and tables.
+	// this can cause no-feedback in powerpipe (while it is trying to connect to tailpipe db).
+	// to avoid this scenario we skip migration for the 'connect' command
+	if isConnectCommand(cmd) {
+		return nil
+	}
+
 	// migrate legacy data to DuckLake:
 	// Prior to Tailpipe v0.7.0 we stored data as native Parquet files alongside a tailpipe.db
 	// (DuckDB) that defined SQL views. From v0.7.0 onward Tailpipe uses DuckLake, which
@@ -126,6 +135,16 @@ func setMemoryLimit() {
 		// set the max memory
 		debug.SetMemoryLimit(maxMemoryBytes)
 	}
+}
+
+// isConnectCommand returns true if the current command or any of its parents is 'connect'
+func isConnectCommand(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Name() == "connect" {
+			return true
+		}
+	}
+	return false
 }
 
 // runScheduledTasks runs the task runner and returns a channel which is closed when

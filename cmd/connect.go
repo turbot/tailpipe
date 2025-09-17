@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/turbot/tailpipe/internal/filepaths"
 	"log"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/turbot/tailpipe/internal/filepaths"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -147,7 +148,7 @@ func checkForLegacyDb() (bool, error) {
 	_, err = os.Stat(migratingDir)
 	migrationInProgress := err == nil
 	if migrationInProgress {
-		return false, fmt.Errorf("a data migration is in progress - run any tailpipe command apart from 'connect` to complete migration")
+		return false, fmt.Errorf("a data migration is in progress - run any tailpipe command apart from 'connect' to complete migration")
 	}
 	return legacyDbExists, nil
 }
