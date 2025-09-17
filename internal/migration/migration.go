@@ -133,11 +133,12 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	err = doMigration(ctx, matchedTableDirs, schemas, status, updateStatus)
 	sp.Stop()
 
+	logPath := filepath.Join(config.GlobalWorkspaceProfile.GetMigrationDir(), "migration.log")
 	// If cancellation arrived after doMigration returned, prefer the CANCELLED outcome
 	if perr.IsContextCancelledError(ctx.Err()) {
 		status.Finish("CANCELLED")
 		_ = status.WriteStatusToFile()
-		perr.ShowWarning("Migration cancelled. It will automatically resume next time you run Tailpipe.\nFor details, see ~/.tailpipe/migration/migration.log\n")
+		perr.ShowWarning(fmt.Sprintf("Migration cancelled. It will automatically resume next time you run Tailpipe.\nFor details, see %s\n", logPath))
 		cancelledHandled = true
 		return ctx.Err()
 	}
@@ -147,12 +148,12 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		if err := onFailed(status); err != nil {
 			return err
 		}
-		perr.ShowWarning("Your data has been migrated to DuckLake with issues.\nFor details, see ~/.tailpipe/migration/migration.log\n")
+		perr.ShowWarning(fmt.Sprintf("Your data has been migrated to DuckLake with issues.\nFor details, see %s\n", logPath))
 	} else {
 		if err := onSuccessful(status); err != nil {
 			return err
 		}
-		error_helpers.ShowInfo("Your data has been migrated to DuckLake.\nFor details, see ~/.tailpipe/migration/migration.log\n")
+		error_helpers.ShowInfo(fmt.Sprintf("Your data has been migrated to DuckLake.\nFor details, see %s\n", logPath))
 	}
 
 	return err

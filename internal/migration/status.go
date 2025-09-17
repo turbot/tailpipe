@@ -147,8 +147,7 @@ func (s *MigrationStatus) StatusMessage() string {
 // The file is overwritten on each run (resume will update it).
 func (s *MigrationStatus) WriteStatusToFile() error {
 	// Place the file under the migration root (e.g., ~/.tailpipe/migration/migration.log)
-	migratedProfileDir := config.GlobalWorkspaceProfile.GetMigratedDir() // ~/.tailpipe/migration/migrated/<profile>
-	migrationRootDir := filepath.Dir(filepath.Dir(migratedProfileDir))   // ~/.tailpipe/migration
+	migrationRootDir := config.GlobalWorkspaceProfile.GetMigrationDir()
 	statsFile := filepath.Join(migrationRootDir, "migration.log")
 	msg := s.StatusMessage()
 	if err := os.MkdirAll(migrationRootDir, 0755); err != nil {
