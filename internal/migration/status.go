@@ -153,5 +153,5 @@ func (s *MigrationStatus) WriteStatusToFile() error {
 	if err := os.MkdirAll(migrationRootDir, 0755); err != nil {
 		return err
 	}
-	return os.WriteFile(statsFile, []byte(msg), 0644)
+	return os.WriteFile(statsFile, []byte(msg), 0600)
 }
