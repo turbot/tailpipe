@@ -2,19 +2,22 @@ package database
 
 import (
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
 // BackupDucklakeMetadata creates a timestamped backup of the DuckLake metadata database.
-// It creates a backup file with format: tailpipe_ducklake.db.backup.YYYYMMDDHHMMSS
-// and removes any existing backup files to maintain only the most recent backup.
+// It creates backup files with format: metadata.sqlite.backup.YYYYMMDDHHMMSS
+// and also backs up the WAL and SHM files if they exist:
+// - metadata.sqlite-wal.backup.YYYYMMDDHHMMSS
+// - metadata.sqlite-shm.backup.YYYYMMDDHHMMSS
+// It removes any existing backup files to maintain only the most recent backup.
 //
 // The backup is created in the same directory as the original database file.
 // If the database file doesn't exist, no backup is created and no error is returned.
@@ -35,95 +38,116 @@ func BackupDucklakeMetadata() error {
 	// Generate timestamp for backup filename
 	timestamp := time.Now().Format("20060102150405") // YYYYMMDDHHMMSS format
 
-	// Create backup filename
+	// Create backup filenames
 	dbDir := filepath.Dir(dbPath)
-	backupFilename := fmt.Sprintf("tailpipe_ducklake.db.backup.%s", timestamp)
-	backupPath := filepath.Join(dbDir, backupFilename)
+	mainBackupFilename := fmt.Sprintf("metadata.sqlite.backup.%s", timestamp)
+	mainBackupPath := filepath.Join(dbDir, mainBackupFilename)
 
-	slog.Info("Creating backup of DuckLake metadata database", "source", dbPath, "backup", backupPath)
+	// Also prepare paths for WAL and SHM files
+	walPath := dbPath + "-wal"
+	shmPath := dbPath + "-shm"
+	walBackupFilename := fmt.Sprintf("metadata.sqlite-wal.backup.%s", timestamp)
+	shmBackupFilename := fmt.Sprintf("metadata.sqlite-shm.backup.%s", timestamp)
+	walBackupPath := filepath.Join(dbDir, walBackupFilename)
+	shmBackupPath := filepath.Join(dbDir, shmBackupFilename)
 
-	// Clean up any existing backup files before creating new one
-	if err := cleanupOldBackups(dbDir); err != nil {
+	slog.Info("Creating backup of DuckLake metadata database", "source", dbPath, "backup", mainBackupPath)
+
+	// Create the main database backup first
+	if err := utils.CopyFile(dbPath, mainBackupPath); err != nil {
+		return fmt.Errorf("failed to create main database backup: %w", err)
+	}
+
+	// Backup WAL file if it exists
+	if _, err := os.Stat(walPath); err == nil {
+		if err := utils.CopyFile(walPath, walBackupPath); err != nil {
+			slog.Warn("Failed to backup WAL file", "source", walPath, "error", err)
+			// Continue - WAL backup failure is not critical
+		} else {
+			slog.Debug("Successfully backed up WAL file", "backup", walBackupPath)
+		}
+	}
+
+	// Backup SHM file if it exists
+	if _, err := os.Stat(shmPath); err == nil {
+		if err := utils.CopyFile(shmPath, shmBackupPath); err != nil {
+			slog.Warn("Failed to backup SHM file", "source", shmPath, "error", err)
+			// Continue - SHM backup failure is not critical
+		} else {
+			slog.Debug("Successfully backed up SHM file", "backup", shmBackupPath)
+		}
+	}
+
+	slog.Info("Successfully created backup of DuckLake metadata database", "backup", mainBackupPath)
+
+	// Clean up old backup files after successfully creating the new one
+	if err := cleanupOldBackups(dbDir, timestamp); err != nil {
 		slog.Warn("Failed to clean up old backup files", "error", err)
-		// Continue with backup creation even if cleanup fails
+		// Don't return error - the backup was successful, cleanup is just housekeeping
 	}
-
-	// Create the backup by copying the database file
-	if err := copyFile(dbPath, backupPath); err != nil {
-		return fmt.Errorf("failed to create backup: %w", err)
-	}
-
-	slog.Info("Successfully created backup of DuckLake metadata database", "backup", backupPath)
 	return nil
 }
 
-// cleanupOldBackups removes all existing backup files in the specified directory.
-// Backup files are identified by the pattern: tailpipe_ducklake.db.backup.*
-func cleanupOldBackups(dir string) error {
+// isBackupFile checks if a filename matches any of the backup patterns
+func isBackupFile(filename string) bool {
+	backupPrefixes := []string{
+		"metadata.sqlite.backup.",
+		"metadata.sqlite-wal.backup.",
+		"metadata.sqlite-shm.backup.",
+	}
+
+	for _, prefix := range backupPrefixes {
+		if strings.HasPrefix(filename, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldRemoveBackup determines if a backup file should be removed
+func shouldRemoveBackup(filename, excludeTimestamp string) bool {
+	if !isBackupFile(filename) {
+		return false
+	}
+	// Don't remove files with the current timestamp
+	return !strings.HasSuffix(filename, "."+excludeTimestamp)
+}
+
+// cleanupOldBackups removes all existing backup files in the specified directory,
+// except for the newly created backup files with the given timestamp.
+// Backup files are identified by the patterns:
+// - metadata.sqlite.backup.*
+// - metadata.sqlite-wal.backup.*
+// - metadata.sqlite-shm.backup.*
+func cleanupOldBackups(dir, excludeTimestamp string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("failed to read directory: %w", err)
 	}
 
-	backupPrefix := "tailpipe_ducklake.db.backup."
 	var deletedCount int
-
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 
 		filename := entry.Name()
-		if strings.HasPrefix(filename, backupPrefix) {
-			backupPath := filepath.Join(dir, filename)
-			if err := os.Remove(backupPath); err != nil {
-				slog.Warn("Failed to remove old backup file", "file", backupPath, "error", err)
-				// Continue removing other files even if one fails
-			} else {
-				slog.Debug("Removed old backup file", "file", backupPath)
-				deletedCount++
-			}
+		if !shouldRemoveBackup(filename, excludeTimestamp) {
+			continue
+		}
+
+		backupPath := filepath.Join(dir, filename)
+		if err := os.Remove(backupPath); err != nil {
+			slog.Warn("Failed to remove old backup file", "file", backupPath, "error", err)
+			// Continue removing other files even if one fails
+		} else {
+			slog.Debug("Removed old backup file", "file", backupPath)
+			deletedCount++
 		}
 	}
 
 	if deletedCount > 0 {
 		slog.Debug("Cleaned up old backup files", "count", deletedCount)
-	}
-
-	return nil
-}
-
-// copyFile copies a file from src to dst, preserving file permissions.
-// It creates the destination file and copies the content using io.Copy.
-func copyFile(src, dst string) error {
-	// Open source file
-	srcFile, err := os.Open(src)
-	if err != nil {
-		return fmt.Errorf("failed to open source file %s: %w", src, err)
-	}
-	defer srcFile.Close()
-
-	// Get source file info for permissions
-	srcInfo, err := srcFile.Stat()
-	if err != nil {
-		return fmt.Errorf("failed to get source file info: %w", err)
-	}
-
-	// Create destination file
-	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
-	if err != nil {
-		return fmt.Errorf("failed to create destination file %s: %w", dst, err)
-	}
-	defer dstFile.Close()
-
-	// Copy content
-	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return fmt.Errorf("failed to copy file content: %w", err)
-	}
-
-	// Ensure data is written to disk
-	if err := dstFile.Sync(); err != nil {
-		return fmt.Errorf("failed to sync destination file: %w", err)
 	}
 
 	return nil
