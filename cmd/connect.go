@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -97,6 +98,17 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 	// use the signal-aware/cancelable context created upstream in preRunHook
 	ctx := cmd.Context()
 
+	// first - determine whether we still have unmigrated data - if so, run the legacy connect command
+	// (NOTE: if a migration is in progress, fail with an error)
+	// TODO - remove this check in a future release
+	legacyDb, err := checkForLegacyDb()
+	error_helpers.FailOnError(err)
+	if legacyDb {
+		slog.Warn("Legacy data detected - running legacy connect command. Data will be migrated to ducklake when running any command except connect ")
+		runLegacyConnectCmd(cmd, nil)
+		return
+	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			err = helpers.ToError(r)
@@ -122,6 +134,16 @@ func runConnectCmd(cmd *cobra.Command, _ []string) {
 
 	// we are done - the defer block will print either the filepath (if successful) or the error (if not)
 
+}
+
+func checkForLegacyDb() (error, bool) {
+	// if we are int he middle of a migration, return an error
+
+	// if we have both a tailpipe.db and a metadata.sqlite, return an error
+
+	// if there is an old db file and NOT a sqlite metadata file, we have legacy data
+
+	//if there is a db file, return true
 }
 
 func generateInitFile(ctx context.Context) (string, error) {
