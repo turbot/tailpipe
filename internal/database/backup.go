@@ -14,9 +14,8 @@ import (
 
 // BackupDucklakeMetadata creates a timestamped backup of the DuckLake metadata database.
 // It creates backup files with format: metadata.sqlite.backup.YYYYMMDDHHMMSS
-// and also backs up the WAL and SHM files if they exist:
+// and also backs up the WAL file if it exists:
 // - metadata.sqlite-wal.backup.YYYYMMDDHHMMSS
-// - metadata.sqlite-shm.backup.YYYYMMDDHHMMSS
 // It removes any existing backup files to maintain only the most recent backup.
 //
 // The backup is created in the same directory as the original database file.
@@ -43,13 +42,10 @@ func BackupDucklakeMetadata() error {
 	mainBackupFilename := fmt.Sprintf("metadata.sqlite.backup.%s", timestamp)
 	mainBackupPath := filepath.Join(dbDir, mainBackupFilename)
 
-	// Also prepare paths for WAL and SHM files
+	// Also prepare paths for WAL file
 	walPath := dbPath + "-wal"
-	shmPath := dbPath + "-shm"
 	walBackupFilename := fmt.Sprintf("metadata.sqlite-wal.backup.%s", timestamp)
-	shmBackupFilename := fmt.Sprintf("metadata.sqlite-shm.backup.%s", timestamp)
 	walBackupPath := filepath.Join(dbDir, walBackupFilename)
-	shmBackupPath := filepath.Join(dbDir, shmBackupFilename)
 
 	slog.Info("Creating backup of DuckLake metadata database", "source", dbPath, "backup", mainBackupPath)
 
@@ -68,16 +64,6 @@ func BackupDucklakeMetadata() error {
 		}
 	}
 
-	// Backup SHM file if it exists
-	if _, err := os.Stat(shmPath); err == nil {
-		if err := utils.CopyFile(shmPath, shmBackupPath); err != nil {
-			slog.Warn("Failed to backup SHM file", "source", shmPath, "error", err)
-			// Continue - SHM backup failure is not critical
-		} else {
-			slog.Debug("Successfully backed up SHM file", "backup", shmBackupPath)
-		}
-	}
-
 	slog.Info("Successfully created backup of DuckLake metadata database", "backup", mainBackupPath)
 
 	// Clean up old backup files after successfully creating the new one
@@ -93,7 +79,6 @@ func isBackupFile(filename string) bool {
 	backupPrefixes := []string{
 		"metadata.sqlite.backup.",
 		"metadata.sqlite-wal.backup.",
-		"metadata.sqlite-shm.backup.",
 	}
 
 	for _, prefix := range backupPrefixes {
@@ -118,7 +103,6 @@ func shouldRemoveBackup(filename, excludeTimestamp string) bool {
 // Backup files are identified by the patterns:
 // - metadata.sqlite.backup.*
 // - metadata.sqlite-wal.backup.*
-// - metadata.sqlite-shm.backup.*
 func cleanupOldBackups(dir, excludeTimestamp string) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
