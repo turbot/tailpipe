@@ -3,7 +3,6 @@ package migration
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -18,6 +17,7 @@ import (
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
@@ -135,7 +135,9 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// If cancellation arrived after doMigration returned, prefer the CANCELLED outcome
 	if perr.IsContextCancelledError(ctx.Err()) {
-		_ = onCancelled(status)
+		status.Finish("CANCELLED")
+		_ = status.WriteStatusToFile()
+		perr.ShowWarning("Migration cancelled. It will automatically resume next time you run Tailpipe.\nFor details, see ~/.tailpipe/migration/migration.log\n")
 		cancelledHandled = true
 		return ctx.Err()
 	}
@@ -145,10 +147,12 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		if err := onFailed(status); err != nil {
 			return err
 		}
+		perr.ShowWarning("Your data has been migrated to DuckLake with issues.\nFor details, see ~/.tailpipe/migration/migration.log\n")
 	} else {
 		if err := onSuccessful(status); err != nil {
 			return err
 		}
+		error_helpers.ShowInfo("Your data has been migrated to DuckLake.\nFor details, see ~/.tailpipe/migration/migration.log\n")
 	}
 
 	return err
@@ -241,20 +245,19 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 	}
 
 	var parquetFiles []string
-	var errList []error
+	aggErr := NewMigrationError()
 	for _, entry := range entries {
 		// early exit on cancellation
 		if ctx.Err() != nil {
-			errList = append(errList, ctx.Err())
-			// TODO format better
-			return errors.Join(errList...)
+			aggErr.Append(ctx.Err())
+			return aggErr
 		}
 
 		if entry.IsDir() {
 			subDir := filepath.Join(dirPath, entry.Name())
 			if err := migrateTableDirectory(ctx, db, tableName, subDir, ts, status); err != nil {
 				// just add to error list and continue with other entries
-				errList = append(errList, err)
+				aggErr.Append(err)
 			}
 		}
 
@@ -267,12 +270,15 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 	if len(parquetFiles) > 0 {
 		err = migrateParquetFiles(ctx, db, tableName, dirPath, ts, status, parquetFiles)
 		if err != nil {
-			errList = append(errList, err)
+			aggErr.Append(err)
+			status.AddError(fmt.Errorf("failed migrating parquet files for table '%s' at '%s': %w", tableName, dirPath, err))
 		}
 	}
 
-	// TODO format better
-	return errors.Join(errList...)
+	if aggErr.Len() == 0 {
+		return nil
+	}
+	return aggErr
 }
 
 func migrateParquetFiles(ctx context.Context, db *database.DuckDb, tableName string, dirPath string, ts *schema.TableSchema, status *MigrationStatus, parquetFiles []string) error {
@@ -479,7 +485,7 @@ func onSuccessful(status *MigrationStatus) error {
 		return fmt.Errorf("failed to prune empty directories in migrating: %w", err)
 	}
 	status.Finish("SUCCESS")
-	perr.ShowWarning(status.StatusMessage())
+	_ = status.WriteStatusToFile()
 	return nil
 }
 
@@ -488,7 +494,7 @@ func onCancelled(status *MigrationStatus) error {
 	// Do not move db; just prune empties so tree is clean
 	_ = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir())
 	status.Finish("CANCELLED")
-	perr.ShowWarning(status.StatusMessage())
+	_ = status.WriteStatusToFile()
 	return nil
 }
 
@@ -506,6 +512,6 @@ func onFailed(status *MigrationStatus) error {
 	}
 	_ = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetMigratingDir())
 	status.Finish("INCOMPLETE")
-	perr.ShowWarning(status.StatusMessage())
+	_ = status.WriteStatusToFile()
 	return nil
 }

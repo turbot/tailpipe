@@ -93,6 +93,17 @@ func ShowWarning(warning string) {
 	fmt.Fprintf(opStream, "%s: %v\n", constants.ColoredWarn, warning)
 }
 
+// ShowInfo prints a non-critical info message to the appropriate output stream.
+// Behaves like ShowWarning but with a calmer label (Note) to avoid alarming users
+// for successful outcomes or informational messages.
+func ShowInfo(info string) {
+	if len(info) == 0 {
+		return
+	}
+	opStream := GetWarningOutputStream()
+	fmt.Fprintf(opStream, "%s: %v\n", color.YellowString("Note"), info)
+}
+
 func PrefixError(err error, prefix string) error {
 	return fmt.Errorf("%s: %s\n", prefix, TransformErrorToTailpipe(err).Error())
 }

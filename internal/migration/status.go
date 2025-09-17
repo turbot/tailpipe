@@ -2,6 +2,8 @@ package migration
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,6 +26,8 @@ type MigrationStatus struct {
 	FailedTables []string      `json:"failed_tables,omitempty"`
 	StartTime    time.Time     `json:"start_time"`
 	Duration     time.Duration `json:"duration"`
+
+	Errors []string `json:"errors,omitempty"`
 }
 
 func NewMigrationStatus(total int) *MigrationStatus {
@@ -55,6 +59,13 @@ func (s *MigrationStatus) OnFilesFailed(n int) {
 	}
 	s.FailedFiles += n
 	s.updateFiles()
+}
+
+func (s *MigrationStatus) AddError(err error) {
+	if err == nil {
+		return
+	}
+	s.Errors = append(s.Errors, err.Error())
 }
 
 func (s *MigrationStatus) update() {
@@ -106,7 +117,7 @@ func (s *MigrationStatus) StatusMessage() string {
 		if len(s.FailedTables) > 0 {
 			failedList = strings.Join(s.FailedTables, ", ")
 		}
-		return fmt.Sprintf(
+		base := fmt.Sprintf(
 			"DuckLake migration completed with issues.\n"+
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
@@ -119,7 +130,29 @@ func (s *MigrationStatus) StatusMessage() string {
 			failedDir,
 			migratedDir,
 		)
+		if len(s.Errors) > 0 {
+			base += fmt.Sprintf("\nErrors: %d error(s) occurred during migration\n", len(s.Errors))
+			base += "Details:\n"
+			for _, e := range s.Errors {
+				base += "- " + e + "\n"
+			}
+		}
+		return base
 	default:
 		return "DuckLake migration status unknown"
 	}
+}
+
+// WriteStatusToFile writes the status message to a migration stats file under the migration directory.
+// The file is overwritten on each run (resume will update it).
+func (s *MigrationStatus) WriteStatusToFile() error {
+	// Place the file under the migration root (e.g., ~/.tailpipe/migration/migration.log)
+	migratedProfileDir := config.GlobalWorkspaceProfile.GetMigratedDir() // ~/.tailpipe/migration/migrated/<profile>
+	migrationRootDir := filepath.Dir(filepath.Dir(migratedProfileDir))   // ~/.tailpipe/migration
+	statsFile := filepath.Join(migrationRootDir, "migration.log")
+	msg := s.StatusMessage()
+	if err := os.MkdirAll(migrationRootDir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(statsFile, []byte(msg), 0644)
 }
