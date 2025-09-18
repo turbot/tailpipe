@@ -55,6 +55,7 @@ func getStatus(ctx context.Context, err error, msgType StatusType, logPath strin
 	case CleanupAfterSuccess:
 		return fmt.Sprintf("Migration succeeded but cleanup failed: %s\nFor details, see %s\n", err.Error(), logPath), err
 	case PartialSuccess:
+		// TODO puskar improve this message
 		return fmt.Sprintf("Your data has been migrated to DuckLake with issues.\nFor details, see %s\n", logPath), err
 	// success
 	default:
@@ -95,7 +96,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 				// set cancel status and prune the tree
 				_ = onCancelled(status)
 			} else {
-				// TODO maybe also prune tree here??
+				// TODO puskar maybe also prune tree here??
 				status.Finish("FAILED")
 			}
 		}
@@ -227,7 +228,6 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 			statusMsg, err = getStatus(ctx, err, MigrationFailed, logPath)
 			return fmt.Errorf("failed to cleanup after failed migration: %w", err)
 		}
-		// TODO improve this message
 		statusMsg, err = getStatus(ctx, err, PartialSuccess, logPath)
 		return err
 
