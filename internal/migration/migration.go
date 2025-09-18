@@ -33,30 +33,6 @@ const (
 	Success
 )
 
-// moveDataToMigrating ensures the migration folder exists and handles any existing migrating folder
-func moveDataToMigrating(ctx context.Context, dataDefaultDir, migratingDefaultDir string) error {
-	// Ensure the 'migrating' folder exists
-	migrationDir := config.GlobalWorkspaceProfile.GetMigratingDir()
-	if err := os.MkdirAll(migrationDir, 0755); err != nil {
-		return fmt.Errorf("failed to create migration directory: %w", err)
-	}
-
-	// If the migrating folder exists, it can't have a db as we already checked - delete it
-	if _, err := os.Stat(migratingDefaultDir); err == nil {
-		// Directory exists, remove it since we already verified it doesn't contain a db
-		if err := os.RemoveAll(migratingDefaultDir); err != nil {
-			return fmt.Errorf("failed to remove existing migrating directory: %w", err)
-		}
-	}
-
-	// Now move the data directory to the migrating directory
-	if err := os.Rename(dataDefaultDir, migratingDefaultDir); err != nil {
-		return fmt.Errorf("failed to move data to migration area: %w", err)
-	}
-
-	return nil
-}
-
 // MigrateDataToDucklake performs migration of views from tailpipe.db and associated parquet files
 // into the new DuckLake metadata catalog
 func MigrateDataToDucklake(ctx context.Context) (err error) {
@@ -66,28 +42,6 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
-
-	// Prompt the user to confirm migration
-	shouldContinue, err := promptUserForMigration(ctx, dataDefaultDir)
-	if err != nil {
-		return fmt.Errorf("failed to get user confirmation: %w", err)
-	}
-	if !shouldContinue {
-		return context.Canceled
-	}
-
-	// if we have a status message, show it at the end
-	defer func() {
-		if statusMsg != "" {
-			if err != nil || partialMigrated {
-				// if there is an error or a partial migration, show as warning
-				error_helpers.ShowWarning(statusMsg)
-			} else {
-				// show as info if there is no error, or if it is not a partial migration
-				error_helpers.ShowInfo(statusMsg)
-			}
-		}
-	}()
 
 	var matchedTableDirs, unmatchedTableDirs []string
 
@@ -108,6 +62,15 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 		return nil
 	}
 
+	// Prompt the user to confirm migration
+	shouldContinue, err := promptUserForMigration(ctx, dataDefaultDir)
+	if err != nil {
+		return fmt.Errorf("failed to get user confirmation: %w", err)
+	}
+	if !shouldContinue {
+		return context.Canceled
+	}
+
 	// Initialize migration status
 	status := NewMigrationStatus(0)
 
@@ -123,6 +86,15 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 			}
 		}
 
+		if statusMsg != "" {
+			if err != nil || partialMigrated {
+				// if there is an error or a partial migration, show as warning
+				error_helpers.ShowWarning(statusMsg)
+			} else {
+				// show as info if there is no error, or if it is not a partial migration
+				error_helpers.ShowInfo(statusMsg)
+			}
+		}
 		// write the status back
 		_ = status.WriteStatusToFile()
 	}()
@@ -255,6 +227,34 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	statusMsg = getStatus(ctx, Success, logPath)
 
 	return err
+}
+
+// moveDataToMigrating ensures the migration folder exists and handles any existing migrating folder
+func moveDataToMigrating(ctx context.Context, dataDefaultDir, migratingDefaultDir string) error {
+	// Ensure the 'migrating' folder exists
+	migrationDir := config.GlobalWorkspaceProfile.GetMigratingDir()
+	if err := os.MkdirAll(migrationDir, 0755); err != nil {
+		return fmt.Errorf("failed to create migration directory: %w", err)
+	}
+
+	// If the migrating folder exists, it can't have a db as we already checked - delete it
+	if _, err := os.Stat(migratingDefaultDir); err == nil {
+		// Directory exists, remove it since we already verified it doesn't contain a db
+		if err := os.RemoveAll(migratingDefaultDir); err != nil {
+			return fmt.Errorf("failed to remove existing migrating directory: %w", err)
+		}
+	}
+
+	// Now move the data directory to the migrating directory
+	if err := os.Rename(dataDefaultDir, migratingDefaultDir); err != nil {
+		return fmt.Errorf("failed to move data to migration area: %w", err)
+	}
+
+	// now recreate the moved folder
+	if err := os.MkdirAll(dataDefaultDir, 0755); err != nil {
+		return fmt.Errorf("failed to recreate data directory after moving: %w", err)
+	}
+	return nil
 }
 
 // promptUserForMigration prompts the user to confirm migration and returns true if they want to continue
