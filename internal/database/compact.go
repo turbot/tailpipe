@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"log/slog"
 	"strings"
 	"time"
@@ -46,14 +47,14 @@ func CompactDataFiles(ctx context.Context, db *DuckDb, updateFunc func(Compactio
 	}
 
 	slog.Info("[SKIPPING] Merging adjacent DuckLake parquet files")
-	// TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
+
 	// so we should now have multiple, time ordered parquet files
 	// now merge the the parquet files in the duckdb database
 	// the will minimise the parquet file count to the optimum
-	// if err := mergeParquetFiles(ctx, db); err != nil {
-	//	slog.Error("Failed to merge DuckLake parquet files", "error", err)
-	//	return nil, err
-	// }
+	if err := mergeParquetFiles(ctx, db); err != nil {
+		slog.Error("Failed to merge DuckLake parquet files", "error", err)
+		return err
+	}
 
 	// delete unused files
 	if err := cleanupExpiredFiles(ctx, db); err != nil {
@@ -77,17 +78,16 @@ func CompactDataFiles(ctx context.Context, db *DuckDb, updateFunc func(Compactio
 	return nil
 }
 
-// TODO merge_adjacent_files sometimes crashes, awaiting fix from DuckDb https://github.com/turbot/tailpipe/issues/530
-//// mergeParquetFiles combines adjacent parquet files in the DuckDB database.
-//func mergeParquetFiles(ctx context.Context, db *database.DuckDb) error {
-//	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
-//		if ctx.Err() != nil {
-//			return err
-//		}
-//		return fmt.Errorf("failed to merge parquet files: %w", err)
-//	}
-//	return nil
-//}
+// mergeParquetFiles combines adjacent parquet files in the DuckDB database.
+func mergeParquetFiles(ctx context.Context, db *DuckDb) error {
+	if _, err := db.ExecContext(ctx, "call merge_adjacent_files()"); err != nil {
+		if ctx.Err() != nil {
+			return err
+		}
+		return fmt.Errorf("failed to merge parquet files: %w", err)
+	}
+	return nil
+}
 
 // we order data files as follows:
 // - get list of partition keys matching patterns. For each key:
