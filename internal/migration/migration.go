@@ -87,24 +87,6 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	}()
 
 	var matchedTableDirs, unmatchedTableDirs []string
-	status := NewMigrationStatus(0)
-
-	// add any error to status and write to file before returning
-	defer func() {
-		if err != nil {
-			status.AddError(err)
-			if perr.IsContextCancelledError(ctx.Err()) {
-				// set cancel status and prune the tree
-				_ = onCancelled(status)
-			} else {
-				// TODO puskar maybe also prune tree here??
-				status.Finish("FAILED")
-			}
-		}
-
-		// write the status back
-		_ = status.WriteStatusToFile()
-	}()
 
 	// if the ~/.tailpipe/data directory has a .db file, it means that this is the first time we are migrating
 	// if the ~/.tailpipe/migration/migrating directory has a .db file, it means that this is a resume migration
@@ -119,10 +101,28 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// STEP 1: Check if migration is needed
 	// We need to migrate if it is the first time we are migrating or if we are resuming a migration
 	if !initialMigration && !continueMigration {
-		status.Finish("NOT_NEEDED")
 		slog.Info("No migration needed - no tailpipe.db found in data or migrating directory")
 		return nil
 	}
+
+	// Initialize migration status
+	status := NewMigrationStatus(0)
+
+	// add any error to status and write to file before returning
+	defer func() {
+		if err != nil {
+			status.AddError(err)
+			if perr.IsContextCancelledError(ctx.Err()) {
+				// set cancel status and prune the tree
+				_ = onCancelled(status)
+			} else {
+				status.Finish("FAILED")
+			}
+		}
+
+		// write the status back
+		_ = status.WriteStatusToFile()
+	}()
 
 	logPath := filepath.Join(config.GlobalWorkspaceProfile.GetMigrationDir(), "migration.log")
 
