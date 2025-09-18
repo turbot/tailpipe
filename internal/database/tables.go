@@ -113,6 +113,11 @@ func GetLegacyTableViewSchema(ctx context.Context, viewName string, db *DuckDb) 
 			return nil, fmt.Errorf("failed to scan column schema: %w", err)
 		}
 
+		// NOTE: legacy tailpipe views may include `rowid` which we must exclude from the schema as this is a DuckDb system column
+		// that is automatically added to every table
+		if columnName == "rowid" {
+			continue
+		}
 		col := buildColumnSchema(columnName, columnType)
 		ts.Columns = append(ts.Columns, col)
 	}
