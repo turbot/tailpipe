@@ -75,7 +75,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// move existing user data into DuckLake’s layout so it can be queried and managed via
 	// the new metadata model.
 	// start migration
-	err := migration.MigrateDataToDucklake(cmd.Context())
+	_, err := migration.MigrateDataToDucklake(cmd.Context())
 	if error_helpers.IsContextCancelledError(err) {
 		// suppress Cobra's usage/errors only for this cancelled invocation
 		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)

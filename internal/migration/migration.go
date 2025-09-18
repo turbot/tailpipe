@@ -15,6 +15,7 @@ import (
 	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
+
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/error_helpers"
@@ -23,7 +24,7 @@ import (
 
 // MigrateDataToDucklake performs migration of views from tailpipe.db and associated parquet files
 // into the new DuckLake metadata catalog
-func MigrateDataToDucklake(ctx context.Context) error {
+func MigrateDataToDucklake(ctx context.Context) (*MigrationStatus, error) {
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
@@ -45,15 +46,32 @@ func MigrateDataToDucklake(ctx context.Context) error {
 
 	// validate: both should not be true - return that last migration left things in a bad state
 	if initialMigration && continueMigration {
-		return fmt.Errorf("Invalid migration state: found tailpipe.db in both data and migrating directories. This should not happen. Please contact Turbot support for assistance.")
+		status.Finish("INVALID")
+		return status, fmt.Errorf("Invalid migration state: found tailpipe.db in both data and migrating directories. This should not happen. Please contact Turbot support for assistance.")
 	}
 
 	// STEP 1: Check if migration is needed
 	// We need to migrate if it is the first time we are migrating or if we are resuming a migration
 	if !initialMigration && !continueMigration {
+		status.Finish("NOT_NEEDED")
 		slog.Info("No migration needed - no tailpipe.db found in data or migrating directory")
-		return nil
+		return "", nil
 	}
+
+
+	logPath := filepath.Join(config.GlobalWorkspaceProfile.GetMigrationDir(), "migration.log")
+
+	// Spinner for migration progress
+	sp := spinner.New(
+		spinner.CharSets[14],
+		100*time.Millisecond,
+		spinner.WithHiddenCursor(true),
+		spinner.WithWriter(os.Stdout),
+	)
+
+	sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format")
+	sp.Start()
+	defer sp.Stop()
 
 	// Choose DB path for discovery
 	// If this is the first time we are migrating, we need to use .db file from the ~/.tailpipe/data directory
@@ -65,23 +83,39 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		discoveryDbPath = filepath.Join(migratingDefaultDir, "tailpipe.db")
 	}
 
+	sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format: discover tables to migrate")
 	// STEP 2: Discover legacy tables and their schemas (from chosen DB path)
 	// This returns the list of views and a map of view name to its schema
 	views, schemas, err := discoverLegacyTablesAndSchemas(ctx, discoveryDbPath)
 	if err != nil {
-		return fmt.Errorf("failed to discover legacy tables: %w", err)
+		statusMsg := ""
+		if perr.IsContextCancelledError(ctx.Err()) {
+			statusMsg = fmt.Sprintf("Migration cancelled. Migration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n"))
+		} else {
+			statusMsg = fmt.Sprintf("Migration initialisation failed: %s\n Migration data cleaneed up and all original data files remain unchanged. Migration will automatically retry next time you run Tailpipe.\n", err.Error()))
+			err = fmt.Errorf("failed to discover legacy tables: %w", err)
+		}
+		return statusMsg, err
 	}
 
 	slog.Info("Views: ", "views", views)
 	slog.Info("Schemas: ", "schemas", schemas)
+
 
 	// STEP 3: If this is the first time we are migrating(tables in ~/.tailpipe/data) then move the whole contents of data dir
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
 	// First-run: transactionally move contents via moveDirContents: copy data to migrating, move tailpipe.db to migrated,
 	// then empty the original data directory. On any failure, the migrating directory is removed.
 	if initialMigration {
+		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format: moving data to migration area")
 		if err := moveDirContents(ctx, dataDefaultDir, migratingDefaultDir); err != nil {
-			return err
+			statusMsg := ""
+			if perr.IsContextCancelledError(ctx.Err()) {
+				statusMsg = fmt.Sprintf("Migration cancelled. Migration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n"))
+			} else {
+				statusMsg = fmt.Sprintf("Migration initialisation failed: %s\n Migration data cleaned up and all original data files remain unchanged. Migration will automatically retry next time you run Tailpipe.\n", err.Error())
+			}
+			return statusMsg, err
 		}
 	}
 
@@ -96,17 +130,33 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	baseDir := migratingDefaultDir
 	matchedTableDirs, unmatchedTableDirs, err = findMatchingTableDirs(baseDir, views)
 	if err != nil {
-		return err
-	}
-	// move the unmatched table directories to 'unmigrated'
-	if err = archiveUnmatchedDirs(ctx, unmatchedTableDirs); err != nil {
-		return err
+		statusMsg := ""
+		if perr.IsContextCancelledError(ctx.Err()) {
+			statusMsg = fmt.Sprintf("Migration cancelled. Migration will automatically resume next time you run Tailpipe.\n")
+		} else {
+			statusMsg = fmt.Sprintf("Migration failed: %s\nMigration will automatically retry next time you run Tailpipe. For details, see %s\n", logPath))
+		}
+		return statusMsg, err
 	}
 
+	if len(unmatchedTableDirs) > 0 {
+		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format: archiving tables without views")
+		// move the unmatched table directories to 'unmigrated'
+		if err = archiveUnmatchedDirs(ctx, unmatchedTableDirs); err != nil {
+			statusMsg := ""
+			if perr.IsContextCancelledError(ctx.Err()) {
+				statusMsg = fmt.Sprintf("Migration cancelled. Migration will automatically resume next time you run Tailpipe.\n")
+			} else {
+				statusMsg = fmt.Sprintf("Migration failed: %s\nMigration will automatically retry next time you run Tailpipe. For details, see %s\n", logPath))
+			}
+			return statusMsg, err
+		}
+	}
 	// Initialize status with total tables to migrate
 	status.Total = len(matchedTableDirs)
 	status.update()
 
+	sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format: counting parquet files")
 	// Pre-compute total parquet files across matched directories
 	totalFiles, err := countParquetFiles(ctx, matchedTableDirs)
 	if err == nil {
@@ -114,18 +164,10 @@ func MigrateDataToDucklake(ctx context.Context) error {
 		status.updateFiles()
 	}
 
-	// Spinner for migration progress
-	sp := spinner.New(
-		spinner.CharSets[14],
-		100*time.Millisecond,
-		spinner.WithHiddenCursor(true),
-		spinner.WithWriter(os.Stdout),
-	)
-	sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%) | parquet files (%d/%d)", status.Migrated, status.Total, status.ProgressPercent, status.MigratedFiles, status.TotalFiles)
-	sp.Start()
+	sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format (%d/%d, %0.1f%%) | parquet files (%d/%d)", status.Migrated, status.Total, status.ProgressPercent, status.MigratedFiles, status.TotalFiles)
 
 	updateStatus := func(st *MigrationStatus) {
-		sp.Suffix = fmt.Sprintf(" Migrating tables to DuckLake (%d/%d, %0.1f%%) | parquet files (%d/%d)", st.Migrated, st.Total, st.ProgressPercent, st.MigratedFiles, st.TotalFiles)
+		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake (%d/%d, %0.1f%%) | parquet files (%d/%d)", st.Migrated, st.Total, st.ProgressPercent, st.MigratedFiles, st.TotalFiles)
 	}
 
 	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
@@ -133,30 +175,29 @@ func MigrateDataToDucklake(ctx context.Context) error {
 	err = doMigration(ctx, matchedTableDirs, schemas, status, updateStatus)
 	sp.Stop()
 
-	logPath := filepath.Join(config.GlobalWorkspaceProfile.GetMigrationDir(), "migration.log")
 	// If cancellation arrived after doMigration returned, prefer the CANCELLED outcome
 	if perr.IsContextCancelledError(ctx.Err()) {
 		status.Finish("CANCELLED")
 		_ = status.WriteStatusToFile()
 		perr.ShowWarning(fmt.Sprintf("Migration cancelled. It will automatically resume next time you run Tailpipe.\nFor details, see %s\n", logPath))
 		cancelledHandled = true
-		return ctx.Err()
+		return statusMessage, ctx.Err()
 	}
 
 	// Post-migration outcomes
 	if status.Failed > 0 {
 		if err := onFailed(status); err != nil {
-			return err
+			return statusMessage, err
 		}
 		perr.ShowWarning(fmt.Sprintf("Your data has been migrated to DuckLake with issues.\nFor details, see %s\n", logPath))
 	} else {
 		if err := onSuccessful(status); err != nil {
-			return err
+			return statusMessage, err
 		}
 		error_helpers.ShowInfo(fmt.Sprintf("Your data has been migrated to DuckLake.\nFor details, see %s\n", logPath))
 	}
 
-	return err
+	return statusMessage, err
 }
 
 // moveDirContents handles the initial migration move: copy data dir into migrating and move the legacy DB
@@ -165,8 +206,8 @@ func moveDirContents(ctx context.Context, dataDefaultDir, migratingDefaultDir st
 	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
 	defer func() {
 		if err != nil {
+			// in case of error (includinging calkcellation, delete the migrating folder
 			_ = os.RemoveAll(migratingDefaultDir)
-			perr.ShowWarning(fmt.Sprintf("Migration initialisation failed. Cleaned up '%s'. Please contact Turbot support.", migratingDefaultDir))
 		}
 	}()
 
