@@ -77,14 +77,15 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// the new metadata model.
 	// start migration
 	err := migration.MigrateDataToDucklake(cmd.Context())
-	if perror_helpers.IsContextCancelledError(err) {
-		// suppress Cobra's usage/errors only for this cancelled invocation
-		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
-		// from preRun, so Cobra assumes "user error" and shows help.
-		// This conditional block sets cmd.SilenceUsage = true and cmd.SilenceErrors = true only for cancellation,
-		// telling Cobra "don't print usage or re-print the error". Without it, you get the usage dump.
+	if err != nil {
+		// we do not want Cobra usage errors for migration errors - suppress
+
+		// suppress usage and error printing for migration errors
 		cmd.SilenceUsage = true
-		cmd.SilenceErrors = true
+		// for cancelled errors, also silence the error message
+		if perror_helpers.IsCancelledError(err) {
+			cmd.SilenceErrors = true
+		}
 	}
 
 	// return (possibly nil) error from migration

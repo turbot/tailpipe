@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"fmt"
@@ -11,14 +12,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/tailpipe/internal/error_helpers"
-
 	"github.com/briandowns/spinner"
 	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	"github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/filepaths"
 )
 
@@ -33,34 +33,28 @@ const (
 	Success
 )
 
-// getStatus returns the appropriate status message based on error type and context
-// It handles cancellation checking internally and returns the appropriate message
-func getStatus(ctx context.Context, err error, msgType StatusType, logPath string) (string, error) {
-	// Handle cancellation first
-	if perr.IsContextCancelledError(ctx.Err()) {
-		switch msgType {
-		case InitialisationFailed:
-			return "Migration cancelled. Migration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n", ctx.Err()
-		default:
-			return "Migration cancelled. Migration will automatically resume next time you run Tailpipe.\n", ctx.Err()
+// moveDataToMigrating ensures the migration folder exists and handles any existing migrating folder
+func moveDataToMigrating(ctx context.Context, dataDefaultDir, migratingDefaultDir string) error {
+	// Ensure the 'migrating' folder exists
+	migrationDir := config.GlobalWorkspaceProfile.GetMigratingDir()
+	if err := os.MkdirAll(migrationDir, 0755); err != nil {
+		return fmt.Errorf("failed to create migration directory: %w", err)
+	}
+
+	// If the migrating folder exists, it can't have a db as we already checked - delete it
+	if _, err := os.Stat(migratingDefaultDir); err == nil {
+		// Directory exists, remove it since we already verified it doesn't contain a db
+		if err := os.RemoveAll(migratingDefaultDir); err != nil {
+			return fmt.Errorf("failed to remove existing migrating directory: %w", err)
 		}
 	}
 
-	// Handle non-cancellation cases
-	switch msgType {
-	case InitialisationFailed:
-		return fmt.Sprintf("Migration initialisation failed: %s\nMigration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n", err.Error()), err
-	case MigrationFailed:
-		return fmt.Sprintf("Migration failed: %s\nPlease contact tailpipe support. For details, see %s\n", err.Error(), logPath), err
-	case CleanupAfterSuccess:
-		return fmt.Sprintf("Migration succeeded but cleanup failed: %s\nFor details, see %s\n", err.Error(), logPath), err
-	case PartialSuccess:
-		// TODO puskar improve this message
-		return fmt.Sprintf("Your data has been migrated to DuckLake with issues.\nFor details, see %s\n", logPath), err
-	// success
-	default:
-		return fmt.Sprintf("Your data has been migrated to DuckLake.\nFor details, see %s\n", logPath), err
+	// Now move the data directory to the migrating directory
+	if err := os.Rename(dataDefaultDir, migratingDefaultDir); err != nil {
+		return fmt.Errorf("failed to move data to migration area: %w", err)
 	}
+
+	return nil
 }
 
 // MigrateDataToDucklake performs migration of views from tailpipe.db and associated parquet files
@@ -69,11 +63,18 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	var statusMsg string
 	var partialMigrated bool
 
-	// first prompt the user to confirm migration
-
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
+
+	// Prompt the user to confirm migration
+	shouldContinue, err := promptUserForMigration(ctx, dataDefaultDir)
+	if err != nil {
+		return fmt.Errorf("failed to get user confirmation: %w", err)
+	}
+	if !shouldContinue {
+		return context.Canceled
+	}
 
 	// if we have a status message, show it at the end
 	defer func() {
@@ -97,7 +98,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 
 	// validate: both should not be true - return that last migration left things in a bad state
 	if initialMigration && continueMigration {
-		return fmt.Errorf("Invalid migration state: found tailpipe.db in both data and migrating directories. This should not happen. Please contact Turbot support for assistance.")
+		return fmt.Errorf("invalid migration state: found tailpipe.db in both data and migrating directories. This should not happen. Please contact Turbot support for assistance")
 	}
 
 	// STEP 1: Check if migration is needed
@@ -155,7 +156,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// This returns the list of views and a map of view name to its schema
 	views, schemas, err := discoverLegacyTablesAndSchemas(ctx, discoveryDbPath)
 	if err != nil {
-		statusMsg, err = getStatus(ctx, err, InitialisationFailed, "")
+		statusMsg = getStatus(ctx, InitialisationFailed, "")
 		return fmt.Errorf("failed to discover legacy tables: %w", err)
 	}
 
@@ -167,9 +168,11 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// We do this by simply renaming the directory.
 	if initialMigration {
 		sp.Suffix = " Migrating data to DuckLake format: moving legacy data to migration area"
-		if err := os.Rename(dataDefaultDir, migratingDefaultDir); err != nil {
-			statusMsg, err = getStatus(ctx, err, InitialisationFailed, "")
-			return fmt.Errorf("failed to move data to migration area: %w", err)
+
+		if err := moveDataToMigrating(ctx, dataDefaultDir, migratingDefaultDir); err != nil {
+			slog.Error("Failed to move data to migrating directory", "error", err)
+			statusMsg = getStatus(ctx, InitialisationFailed, logPath)
+			return err
 		}
 	}
 
@@ -184,7 +187,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	baseDir := migratingDefaultDir
 	matchedTableDirs, unmatchedTableDirs, err = findMatchingTableDirs(baseDir, views)
 	if err != nil {
-		statusMsg, err = getStatus(ctx, err, MigrationFailed, logPath)
+		statusMsg = getStatus(ctx, MigrationFailed, logPath)
 		return fmt.Errorf("failed to find matching table directories: %w", err)
 	}
 
@@ -192,7 +195,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 		sp.Suffix = " Migrating data to DuckLake format: archiving tables without views"
 		// move the unmatched table directories to 'unmigrated'
 		if err = archiveUnmatchedDirs(ctx, unmatchedTableDirs); err != nil {
-			statusMsg, err = getStatus(ctx, err, MigrationFailed, logPath)
+			statusMsg = getStatus(ctx, MigrationFailed, logPath)
 			return fmt.Errorf("failed to archive unmatched table directories: %w", err)
 		}
 	}
@@ -220,12 +223,12 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// If cancellation arrived during migration, prefer the CANCELLED outcome and do not
 	// treat it as a failure (which would incorrectly move tailpipe.db to failed)
 	if perr.IsContextCancelledError(ctx.Err()) {
-		statusMsg, err = getStatus(ctx, ctx.Err(), MigrationFailed, logPath)
+		statusMsg = getStatus(ctx, MigrationFailed, logPath)
 		return ctx.Err()
 	}
 
 	if err != nil {
-		statusMsg, err = getStatus(ctx, err, MigrationFailed, logPath)
+		statusMsg = getStatus(ctx, MigrationFailed, logPath)
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
@@ -233,25 +236,90 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 
 	if status.Failed > 0 {
 		if err := onFailed(status); err != nil {
-			statusMsg, err = getStatus(ctx, err, MigrationFailed, logPath)
+			statusMsg = getStatus(ctx, MigrationFailed, logPath)
 			return fmt.Errorf("failed to cleanup after failed migration: %w", err)
 		}
 		partialMigrated = true
-		statusMsg, err = getStatus(ctx, err, PartialSuccess, logPath)
+		statusMsg = getStatus(ctx, PartialSuccess, logPath)
 		return err
 
 	}
 
 	// so we are successful - cleanup
 	if err := onSuccessful(status); err != nil {
-		statusMsg, err = getStatus(ctx, err, CleanupAfterSuccess, logPath)
+		statusMsg = getStatus(ctx, CleanupAfterSuccess, logPath)
 		return fmt.Errorf("failed to cleanup after successful migration: %w", err)
 	}
 
 	// all good!
-	statusMsg, err = getStatus(ctx, err, Success, logPath)
+	statusMsg = getStatus(ctx, Success, logPath)
 
 	return err
+}
+
+// promptUserForMigration prompts the user to confirm migration and returns true if they want to continue
+func promptUserForMigration(ctx context.Context, dataDir string) (bool, error) {
+	// Check if context is already cancelled
+	if ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+
+	fmt.Printf("We're about to migrate your data to the Ducklake format.\nIf you'd like a backup, your data folder is located at: %s\n\nContinue? [y/N]: ", dataDir)
+
+	// Use goroutine to read input while allowing context cancellation
+	type result struct {
+		response string
+		err      error
+	}
+
+	resultChan := make(chan result, 1)
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		resultChan <- result{response, err}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return false, ctx.Err()
+	case res := <-resultChan:
+		if res.err != nil {
+			return false, fmt.Errorf("failed to read user input: %w", res.err)
+		}
+
+		response := strings.TrimSpace(strings.ToLower(res.response))
+		return response == "y" || response == "yes", nil
+	}
+}
+
+// getStatus returns the appropriate status message based on error type and context
+// It handles cancellation checking internally and returns the appropriate message
+func getStatus(ctx context.Context, msgType StatusType, logPath string) string {
+	// Handle cancellation first
+	if perr.IsContextCancelledError(ctx.Err()) {
+		switch msgType {
+		case InitialisationFailed:
+			return "Migration cancelled. Migration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n"
+		default:
+			return "Migration cancelled. Migration will automatically resume next time you run Tailpipe.\n"
+		}
+	}
+
+	// Handle non-cancellation cases
+	switch msgType {
+	case InitialisationFailed:
+		return "Migration initialisation failed\nMigration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n"
+	case MigrationFailed:
+		return fmt.Sprintf("Migration failed\nPlease contact tailpipe support. For details, see %s\n", logPath)
+	case CleanupAfterSuccess:
+		return fmt.Sprintf("Migration succeeded but cleanup failed\nFor details, see %s\n", logPath)
+	case PartialSuccess:
+		// TODO puskar improve this message
+		return fmt.Sprintf("Your data has been migrated to DuckLake with issues.\nFor details, see %s\n", logPath)
+	// success
+	default:
+		return fmt.Sprintf("Your data has been migrated to DuckLake.\nFor details, see %s\n", logPath)
+	}
 }
 
 // discoverLegacyTablesAndSchemas enumerates legacy DuckDB views and, for each view, its schema.
