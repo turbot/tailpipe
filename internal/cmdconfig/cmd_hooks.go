@@ -23,7 +23,6 @@ import (
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/migration"
 	"github.com/turbot/tailpipe/internal/parse"
@@ -77,7 +76,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// move existing user data into DuckLake’s layout so it can be queried and managed via
 	// the new metadata model.
 	// start migration
-	statusMsg, err := migration.MigrateDataToDucklake(cmd.Context())
+	err := migration.MigrateDataToDucklake(cmd.Context())
 	if perror_helpers.IsContextCancelledError(err) {
 		// suppress Cobra's usage/errors only for this cancelled invocation
 		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
@@ -87,15 +86,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
 	}
-	if statusMsg != "" {
-		if err == nil {
-			// print the migration status message if we have one
-			error_helpers.ShowInfo(statusMsg)
-		} else {
-			// print the migration status message as a warning if we have one and there was an error
-			error_helpers.ShowWarning(statusMsg)
-		}
-	}
+
 	// return (possibly nil) error from migration
 	return err
 }
