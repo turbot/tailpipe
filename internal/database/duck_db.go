@@ -271,6 +271,7 @@ func GetDucklakeInitCommands(readonly bool) []SqlCommand {
 	attachOptions := []string{
 		fmt.Sprintf("data_path '%s'", config.GlobalWorkspaceProfile.GetDataDir()),
 		"meta_journal_mode 'WAL'",
+		"meta_synchronous 'NORMAL'",
 	}
 	// if readonly mode is requested, add the option
 	if readonly {
