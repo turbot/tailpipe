@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+	"github.com/spf13/viper"
+	"github.com/turbot/pipe-fittings/v2/constants"
 	perr "github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
@@ -60,6 +62,15 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	if !initialMigration && !continueMigration {
 		slog.Info("No migration needed - no tailpipe.db found in data or migrating directory")
 		return nil
+	}
+
+	// if the output for this command is a machine readable format (csv/json) or progress is false,
+	// it is possible/likely that tailpipe is being used in a non interactive way - in this case,
+	// we should not prompt the user, instead return an error
+	if error_helpers.IsMachineReadableOutput() {
+		return fmt.Errorf("data migration not supported  with output mode '%s': run 'tailpipe query' to migrate your data to DuckLake format", viper.GetString(constants.ArgOutput))
+	} else if !viper.GetBool(constants.ArgProgress) {
+		return fmt.Errorf("data migration not supported with '--progress=false': run 'tailpipe query' to migrate your data to DuckLake format")
 	}
 
 	// Prompt the user to confirm migration
