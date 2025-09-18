@@ -14,7 +14,8 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	perror_helpers "github.com/turbot/pipe-fittings/v2/error_helpers"
+
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	pparse "github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/task"
@@ -22,6 +23,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/logger"
 	"github.com/turbot/tailpipe/internal/migration"
 	"github.com/turbot/tailpipe/internal/parse"
@@ -49,7 +51,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// display any warnings
 	ew.ShowWarnings()
 	// check for error
-	error_helpers.FailOnError(ew.Error)
+	perror_helpers.FailOnError(ew.Error)
 
 	// pump in the initial set of logs (AFTER we have loaded the config, which may specify log level)
 	displayStartupLog()
@@ -75,8 +77,8 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// move existing user data into DuckLake’s layout so it can be queried and managed via
 	// the new metadata model.
 	// start migration
-	_, err := migration.MigrateDataToDucklake(cmd.Context())
-	if error_helpers.IsContextCancelledError(err) {
+	statusMsg, err := migration.MigrateDataToDucklake(cmd.Context())
+	if perror_helpers.IsContextCancelledError(err) {
 		// suppress Cobra's usage/errors only for this cancelled invocation
 		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
 		// from preRun, so Cobra assumes "user error" and shows help.
@@ -84,6 +86,15 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 		// telling Cobra "don't print usage or re-print the error". Without it, you get the usage dump.
 		cmd.SilenceUsage = true
 		cmd.SilenceErrors = true
+	}
+	if statusMsg != "" {
+		if err == nil {
+			// print the migration status message if we have one
+			error_helpers.ShowInfo(statusMsg)
+		} else {
+			// print the migration status message as a warning if we have one and there was an error
+			error_helpers.ShowWarning(statusMsg)
+		}
 	}
 	// return (possibly nil) error from migration
 	return err
@@ -154,7 +165,7 @@ func runScheduledTasks(ctx context.Context, cmd *cobra.Command, args []string) c
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
+func initGlobalConfig(ctx context.Context) perror_helpers.ErrorAndWarnings {
 	utils.LogTime("cmdconfig.initGlobalConfig start")
 	defer utils.LogTime("cmdconfig.initGlobalConfig end")
 
@@ -171,14 +182,14 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
 	// create the required data and internal folder for this workspace if needed
 	err = config.GlobalWorkspaceProfile.EnsureWorkspaceDirs()
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	var cmd = viper.Get(pconstants.ConfigKeyActiveCommand).(*cobra.Command)
@@ -199,7 +210,7 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// NOTE: if this installed the core plugin, the plugin version file will be updated and the updated file returned
 	pluginVersionFile, err := plugin.EnsureCorePlugin(ctx)
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	// load the connection config and HCL options (passing plugin versions
