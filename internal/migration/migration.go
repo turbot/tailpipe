@@ -67,10 +67,10 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// if the output for this command is a machine readable format (csv/json) or progress is false,
 	// it is possible/likely that tailpipe is being used in a non interactive way - in this case,
 	// we should not prompt the user, instead return an error
-	msgFormat := "data must be migrated to Ducklake format. Migration is not supported with '%s' : run 'tailpipe query' to migrate your data to DuckLake format"
+	msgFormat := "data must be migrated to Ducklake format - migration is not supported with '%s'.\n\nRun 'tailpipe query' to migrate your data to DuckLake format"
 	if error_helpers.IsMachineReadableOutput() {
 		return fmt.Errorf(msgFormat, "--output "+viper.GetString(constants.ArgOutput))
-	} else if !viper.GetBool(constants.ArgProgress) {
+	} else if viper.IsSet(constants.ArgProgress) && !viper.GetBool(constants.ArgProgress) {
 		return fmt.Errorf(msgFormat, "--progress=false")
 	}
 
