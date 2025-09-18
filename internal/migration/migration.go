@@ -69,6 +69,8 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	var statusMsg string
 	var partialMigrated bool
 
+	// first prompt the user to confirm migration
+
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
 	migratingDefaultDir := config.GlobalWorkspaceProfile.GetMigratingDir()
@@ -162,11 +164,10 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 
 	// STEP 3: If this is the first time we are migrating(tables in ~/.tailpipe/data) then move the whole contents of data dir
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
-	// First-run: transactionally move contents via moveDirContents: copy data to migrating, move tailpipe.db to migrated,
-	// then empty the original data directory. On any failure, the migrating directory is removed.
+	// We do this by simply renaming the directory.
 	if initialMigration {
-		sp.Suffix = " Migrating data to DuckLake format: moving data to migration area"
-		if err := moveDirContents(ctx, dataDefaultDir, migratingDefaultDir); err != nil {
+		sp.Suffix = " Migrating data to DuckLake format: moving legacy data to migration area"
+		if err := os.Rename(dataDefaultDir, migratingDefaultDir); err != nil {
 			statusMsg, err = getStatus(ctx, err, InitialisationFailed, "")
 			return fmt.Errorf("failed to move data to migration area: %w", err)
 		}
@@ -251,40 +252,6 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	statusMsg, err = getStatus(ctx, err, Success, logPath)
 
 	return err
-}
-
-// moveDirContents handles the initial migration move: copy data dir into migrating and move the legacy DB
-// into migrated. If any step fails, it removes the migrating directory and shows a support warning.
-func moveDirContents(ctx context.Context, dataDefaultDir, migratingDefaultDir string) (err error) {
-	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
-	defer func() {
-		if err != nil {
-			// in case of error (including cancellation, delete the migrating folder
-			_ = os.RemoveAll(migratingDefaultDir)
-		}
-	}()
-
-	// 1) Ensure the destination for the DB exists first
-	// Reason: we will move tailpipe.db after copying data; guaranteeing the target avoids partial moves later.
-	if err = os.MkdirAll(migratedDir, 0755); err != nil {
-		return err
-	}
-	// 2) Copy ALL data from data/default -> migration/migrating/default (do not delete source yet)
-	// Reason: copying first keeps the legacy data readable if the process crashes midway.
-	if err = utils.CopyDir(ctx, dataDefaultDir, migratingDefaultDir); err != nil {
-		return err
-	}
-	// 3) Move the DB file from data/default -> migration/migrated/default
-	// Reason: once data copy succeeded, moving tailpipe.db signals the backup exists and clarifies resume semantics.
-	if err = utils.MoveFile(filepath.Join(dataDefaultDir, "tailpipe.db"), filepath.Join(migratedDir, "tailpipe.db")); err != nil {
-		return err
-	}
-	// 4) Empty the original data directory last to emulate an atomic move
-	// Reason: only after successful copy+db move do we clear the source so we never strand users without their legacy data.
-	if err = utils.EmptyDir(dataDefaultDir); err != nil {
-		return err
-	}
-	return nil
 }
 
 // discoverLegacyTablesAndSchemas enumerates legacy DuckDB views and, for each view, its schema.
@@ -411,29 +378,15 @@ func migrateParquetFiles(ctx context.Context, db *database.DuckDb, tableName str
 
 	slog.Info("Successfully committed transaction", "table", tableName, "dir", dirPath, "files", filesInLeaf)
 
-	// On success, move the entire leaf directory from migrating to migrated
-	migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
-	migratedRoot := config.GlobalWorkspaceProfile.GetMigratedDir()
-	rel, err := filepath.Rel(migratingRoot, dirPath)
-	if err != nil {
+	if err := os.RemoveAll(dirPath); err != nil {
+		slog.Error("Failed to remove leaf directory after successful migration", "table", tableName)
 		moveTableDirToFailed(ctx, dirPath)
 		status.OnFilesFailed(filesInLeaf)
-		return err
-	}
-	destDir := filepath.Join(migratedRoot, rel)
-	if err := os.MkdirAll(filepath.Dir(destDir), 0755); err != nil {
-		moveTableDirToFailed(ctx, dirPath)
-		status.OnFilesFailed(filesInLeaf)
-		return err
-	}
-	if err := utils.MoveDirContents(ctx, dirPath, destDir); err != nil {
-		moveTableDirToFailed(ctx, dirPath)
-		status.OnFilesFailed(filesInLeaf)
-		return err
+		return fmt.Errorf("failed to remove leaf directory after migration: %w", err)
 	}
 	_ = os.Remove(dirPath)
 	status.OnFilesMigrated(filesInLeaf)
-	slog.Info("Migrated leaf node", "table", tableName, "source", dirPath, "destination", destDir)
+	slog.Info("Migrated leaf node", "table", tableName, "source", dirPath)
 	return nil
 }
 
