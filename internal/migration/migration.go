@@ -67,10 +67,11 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// if the output for this command is a machine readable format (csv/json) or progress is false,
 	// it is possible/likely that tailpipe is being used in a non interactive way - in this case,
 	// we should not prompt the user, instead return an error
+	msgFormat := "data must be migrated to Ducklake format. Migration is not supported with '%s' : run 'tailpipe query' to migrate your data to DuckLake format"
 	if error_helpers.IsMachineReadableOutput() {
-		return fmt.Errorf("data migration not supported  with output mode '%s': run 'tailpipe query' to migrate your data to DuckLake format", viper.GetString(constants.ArgOutput))
+		return fmt.Errorf(msgFormat, "--output "+viper.GetString(constants.ArgOutput))
 	} else if !viper.GetBool(constants.ArgProgress) {
-		return fmt.Errorf("data migration not supported with '--progress=false': run 'tailpipe query' to migrate your data to DuckLake format")
+		return fmt.Errorf(msgFormat, "--progress=false")
 	}
 
 	// Prompt the user to confirm migration
@@ -275,6 +276,7 @@ func promptUserForMigration(ctx context.Context, dataDir string) (bool, error) {
 		return false, ctx.Err()
 	}
 
+	//nolint: forbidigo // UI output
 	fmt.Printf("We're about to migrate your data to the Ducklake format.\nIf you'd like a backup, your data folder is located at: %s\n\nContinue? [y/N]: ", dataDir)
 
 	// Use goroutine to read input while allowing context cancellation
