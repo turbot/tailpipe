@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"os"
+
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
@@ -62,6 +64,10 @@ func Execute() int {
 	utils.LogTime("cmd.root.Execute start")
 	defer utils.LogTime("cmd.root.Execute end")
 	rootCmd := rootCommand()
+
+	// set the error output to stdout (as it;s common usage to redirect stderr to a file to capture logs
+	rootCmd.SetErr(os.Stdout)
+
 	if err := rootCmd.Execute(); err != nil {
 		exitCode = -1
 	}

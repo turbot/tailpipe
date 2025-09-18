@@ -14,7 +14,8 @@ import (
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
 	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	perror_helpers "github.com/turbot/pipe-fittings/v2/error_helpers"
+
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	pparse "github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/task"
@@ -49,7 +50,7 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// display any warnings
 	ew.ShowWarnings()
 	// check for error
-	error_helpers.FailOnError(ew.Error)
+	perror_helpers.FailOnError(ew.Error)
 
 	// pump in the initial set of logs (AFTER we have loaded the config, which may specify log level)
 	displayStartupLog()
@@ -76,15 +77,17 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// the new metadata model.
 	// start migration
 	err := migration.MigrateDataToDucklake(cmd.Context())
-	if error_helpers.IsContextCancelledError(err) {
-		// suppress Cobra's usage/errors only for this cancelled invocation
-		// Cobra prints usage when a command returns an error. The cancellation returns an error (context cancelled)
-		// from preRun, so Cobra assumes "user error" and shows help.
-		// This conditional block sets cmd.SilenceUsage = true and cmd.SilenceErrors = true only for cancellation,
-		// telling Cobra "don't print usage or re-print the error". Without it, you get the usage dump.
+	if err != nil {
+		// we do not want Cobra usage errors for migration errors - suppress
+
+		// suppress usage and error printing for migration errors
 		cmd.SilenceUsage = true
-		cmd.SilenceErrors = true
+		// for cancelled errors, also silence the error message
+		if perror_helpers.IsCancelledError(err) {
+			cmd.SilenceErrors = true
+		}
 	}
+
 	// return (possibly nil) error from migration
 	return err
 }
@@ -154,7 +157,7 @@ func runScheduledTasks(ctx context.Context, cmd *cobra.Command, args []string) c
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
+func initGlobalConfig(ctx context.Context) perror_helpers.ErrorAndWarnings {
 	utils.LogTime("cmdconfig.initGlobalConfig start")
 	defer utils.LogTime("cmdconfig.initGlobalConfig end")
 
@@ -171,14 +174,14 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
 	// create the required data and internal folder for this workspace if needed
 	err = config.GlobalWorkspaceProfile.EnsureWorkspaceDirs()
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	var cmd = viper.Get(pconstants.ConfigKeyActiveCommand).(*cobra.Command)
@@ -199,7 +202,7 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// NOTE: if this installed the core plugin, the plugin version file will be updated and the updated file returned
 	pluginVersionFile, err := plugin.EnsureCorePlugin(ctx)
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	// load the connection config and HCL options (passing plugin versions

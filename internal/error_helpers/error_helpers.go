@@ -108,14 +108,14 @@ func PrefixError(err error, prefix string) error {
 	return fmt.Errorf("%s: %s\n", prefix, TransformErrorToTailpipe(err).Error())
 }
 
-// isMachineReadableOutput checks if the current output format is machine readable (CSV or JSON)
-func isMachineReadableOutput() bool {
+// IsMachineReadableOutput checks if the current output format is machine readable (CSV or JSON)
+func IsMachineReadableOutput() bool {
 	outputFormat := viper.GetString(constants.ArgOutput)
-	return outputFormat == constants.OutputFormatCSV || outputFormat == constants.OutputFormatJSON
+	return outputFormat == constants.OutputFormatCSV || outputFormat == constants.OutputFormatJSON || outputFormat == constants.OutputFormatLine
 }
 
 func GetWarningOutputStream() io.Writer {
-	if isMachineReadableOutput() {
+	if IsMachineReadableOutput() {
 		// For machine-readable formats, output warnings and errors to stderr
 		return os.Stderr
 	}

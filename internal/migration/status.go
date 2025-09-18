@@ -86,7 +86,6 @@ func (s *MigrationStatus) Finish(outcome string) {
 
 // StatusMessage returns a user-facing status message (with stats) based on current migration status
 func (s *MigrationStatus) StatusMessage() string {
-	migratedDir := config.GlobalWorkspaceProfile.GetMigratedDir()
 	failedDir := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
 	migratingDir := config.GlobalWorkspaceProfile.GetMigratingDir()
 
@@ -95,11 +94,9 @@ func (s *MigrationStatus) StatusMessage() string {
 		return fmt.Sprintf(
 			"DuckLake migration complete.\n"+
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
-				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
-				"- Backup of migrated legacy data: '%s'\n",
+				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n",
 			s.Migrated, s.Total, s.Failed, s.Remaining,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
-			migratedDir,
 		)
 	case "CANCELLED":
 		return fmt.Sprintf(
@@ -122,13 +119,11 @@ func (s *MigrationStatus) StatusMessage() string {
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Failed tables (%d): %s\n"+
-				"- Failed data and legacy DB: '%s'\n"+
-				"- Backup of migrated legacy data: '%s'\n",
+				"- Failed data and legacy DB: '%s'\n",
 			s.Migrated, s.Total, s.Failed, s.Remaining,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
 			len(s.FailedTables), failedList,
 			failedDir,
-			migratedDir,
 		)
 		if len(s.Errors) > 0 {
 			base += fmt.Sprintf("\nErrors: %d error(s) occurred during migration\n", len(s.Errors))
