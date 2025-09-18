@@ -145,7 +145,8 @@ func checkForLegacyDb() (bool, error) {
 
 	// if we are in the middle of a migration, return an error
 	migratingDir := config.GlobalWorkspaceProfile.GetMigratingDir()
-	_, err = os.Stat(migratingDir)
+	migratingDbPath := filepath.Join(migratingDir, "tailpipe.db")
+	_, err = os.Stat(migratingDbPath)
 	migrationInProgress := err == nil
 	if migrationInProgress {
 		return false, fmt.Errorf("a data migration is in progress - run any tailpipe command apart from 'connect' to complete migration")
