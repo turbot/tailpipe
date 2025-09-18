@@ -17,7 +17,7 @@ func getTimeRangesToReorder(ctx context.Context, db *DuckDb, pk *partitionKey, r
 	if reindex {
 		rm, err := newReorderMetadata(ctx, db, pk)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retiever stats for partition key: %w", err)
+			return nil, fmt.Errorf("failed to retrieve stats for partition key: %w", err)
 		}
 
 		// make a single time range
@@ -52,7 +52,7 @@ func getTimeRangesToReorder(ctx context.Context, db *DuckDb, pk *partitionKey, r
 	// get stats for the partition key
 	rm, err := newReorderMetadata(ctx, db, pk)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retiever stats for partition key: %w", err)
+		return nil, fmt.Errorf("failed to retrieve stats for partition key: %w", err)
 	}
 	rm.unorderedRanges = unorderedRanges
 	return rm, nil
