@@ -12,10 +12,10 @@ import (
 
 type MigrationStatus struct {
 	Status          string  `json:"status"`
-	Total           int     `json:"total"`
-	Migrated        int     `json:"migrated"`
-	Failed          int     `json:"failed"`
-	Remaining       int     `json:"remaining"`
+	TotalTables     int     `json:"totaltables"`
+	MigratedTables  int     `json:"migratedtables"`
+	FailedTables    int     `json:"failedtables"`
+	RemainingTables int     `json:"remainingtables"`
 	ProgressPercent float64 `json:"progress_percent"`
 
 	TotalFiles     int `json:"total_files"`
@@ -23,25 +23,35 @@ type MigrationStatus struct {
 	FailedFiles    int `json:"failed_files"`
 	RemainingFiles int `json:"remaining_files"`
 
-	FailedTables []string      `json:"failed_tables,omitempty"`
-	StartTime    time.Time     `json:"start_time"`
-	Duration     time.Duration `json:"duration"`
+	FailedTableNames []string      `json:"failed_table_names,omitempty"`
+	StartTime        time.Time     `json:"start_time"`
+	Duration         time.Duration `json:"duration"`
 
 	Errors []string `json:"errors,omitempty"`
+
+	// update func
+	updateFunc func(st *MigrationStatus)
 }
 
-func NewMigrationStatus(total int) *MigrationStatus {
-	return &MigrationStatus{Total: total, Remaining: total, StartTime: time.Now()}
+func NewMigrationStatus(totalFiles, totalTables int, updateFunc func(st *MigrationStatus)) *MigrationStatus {
+	return &MigrationStatus{
+		TotalTables:     totalTables,
+		RemainingTables: totalTables,
+		TotalFiles:      totalFiles,
+		RemainingFiles:  totalFiles,
+		StartTime:       time.Now(),
+		updateFunc:      updateFunc,
+	}
 }
 
 func (s *MigrationStatus) OnTableMigrated() {
-	s.Migrated++
+	s.MigratedTables++
 	s.update()
 }
 
 func (s *MigrationStatus) OnTableFailed(tableName string) {
-	s.Failed++
-	s.FailedTables = append(s.FailedTables, tableName)
+	s.FailedTables++
+	s.FailedTableNames = append(s.FailedTableNames, tableName)
 	s.update()
 }
 
@@ -50,7 +60,7 @@ func (s *MigrationStatus) OnFilesMigrated(n int) {
 		return
 	}
 	s.MigratedFiles += n
-	s.updateFiles()
+	s.update()
 }
 
 func (s *MigrationStatus) OnFilesFailed(n int) {
@@ -58,7 +68,7 @@ func (s *MigrationStatus) OnFilesFailed(n int) {
 		return
 	}
 	s.FailedFiles += n
-	s.updateFiles()
+	s.update()
 }
 
 func (s *MigrationStatus) AddError(err error) {
@@ -66,17 +76,6 @@ func (s *MigrationStatus) AddError(err error) {
 		return
 	}
 	s.Errors = append(s.Errors, err.Error())
-}
-
-func (s *MigrationStatus) update() {
-	s.Remaining = s.Total - s.Migrated - s.Failed
-	if s.Total > 0 {
-		s.ProgressPercent = float64(s.Migrated) * 100.0 / float64(s.Total)
-	}
-}
-
-func (s *MigrationStatus) updateFiles() {
-	s.RemainingFiles = s.TotalFiles - s.MigratedFiles - s.FailedFiles
 }
 
 func (s *MigrationStatus) Finish(outcome string) {
@@ -95,7 +94,7 @@ func (s *MigrationStatus) StatusMessage() string {
 			"DuckLake migration complete.\n"+
 				"- Tables: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n",
-			s.Migrated, s.Total, s.Failed, s.Remaining,
+			s.MigratedTables, s.TotalTables, s.FailedTables, s.RemainingTables,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
 		)
 	case "CANCELLED":
@@ -105,14 +104,14 @@ func (s *MigrationStatus) StatusMessage() string {
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Legacy DB preserved: '%s/tailpipe.db'\n\n"+
 				"Re-run Tailpipe to resume migrating your data.\n",
-			s.Migrated, s.Total, s.Failed, s.Remaining,
+			s.MigratedTables, s.TotalTables, s.FailedTables, s.RemainingTables,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
 			migratingDir,
 		)
 	case "INCOMPLETE":
 		failedList := "(none)"
-		if len(s.FailedTables) > 0 {
-			failedList = strings.Join(s.FailedTables, ", ")
+		if len(s.FailedTableNames) > 0 {
+			failedList = strings.Join(s.FailedTableNames, ", ")
 		}
 		base := fmt.Sprintf(
 			"DuckLake migration completed with issues.\n"+
@@ -120,9 +119,9 @@ func (s *MigrationStatus) StatusMessage() string {
 				"- Parquet files: %d/%d migrated (failed: %d, remaining: %d)\n"+
 				"- Failed tables (%d): %s\n"+
 				"- Failed data and legacy DB: '%s'\n",
-			s.Migrated, s.Total, s.Failed, s.Remaining,
+			s.MigratedTables, s.TotalTables, s.FailedTables, s.RemainingTables,
 			s.MigratedFiles, s.TotalFiles, s.FailedFiles, s.RemainingFiles,
-			len(s.FailedTables), failedList,
+			len(s.FailedTableNames), failedList,
 			failedDir,
 		)
 		if len(s.Errors) > 0 {
@@ -149,4 +148,17 @@ func (s *MigrationStatus) WriteStatusToFile() error {
 		return err
 	}
 	return os.WriteFile(statsFile, []byte(msg), 0600)
+}
+
+// update recalculates remaining counts and progress percent, and calls the update func if set
+func (s *MigrationStatus) update() {
+	s.RemainingTables = s.TotalTables - s.MigratedTables - s.FailedTables
+	s.RemainingFiles = s.TotalFiles - s.MigratedFiles - s.FailedFiles
+	if s.TotalFiles > 0 {
+		s.ProgressPercent = float64(s.MigratedFiles+s.FailedFiles) * 100.0 / float64(s.TotalFiles)
+	}
+	// call our update func
+	if s.updateFunc != nil {
+		s.updateFunc(s)
+	}
 }
