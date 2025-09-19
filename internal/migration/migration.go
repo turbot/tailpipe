@@ -38,8 +38,23 @@ const (
 // MigrateDataToDucklake performs migration of views from tailpipe.db and associated parquet files
 // into the new DuckLake metadata catalog
 func MigrateDataToDucklake(ctx context.Context) (err error) {
+	// define a status message var - this will be set when we encounter any issues - or when we are successful
+	// this will be printed at the end of the function
 	var statusMsg string
 	var partialMigrated bool
+
+	// if there is a status message, print it out at the end
+	defer func() {
+		if statusMsg != "" {
+			if err != nil || partialMigrated {
+				// if there is an error or a partial migration, show as warning
+				error_helpers.ShowWarning(statusMsg)
+			} else {
+				// show as info if there is no error, or if it is not a partial migration
+				error_helpers.ShowInfo(statusMsg)
+			}
+		}
+	}()
 
 	// Determine source and migration directories
 	dataDefaultDir := config.GlobalWorkspaceProfile.GetDataDir()
@@ -83,34 +98,6 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 		return context.Canceled
 	}
 
-	// Initialize migration status
-	status := NewMigrationStatus(0)
-
-	// add any error to status and write to file before returning
-	defer func() {
-		if err != nil {
-			status.AddError(err)
-			if perr.IsContextCancelledError(ctx.Err()) {
-				// set cancel status and prune the tree
-				_ = onCancelled(status)
-			} else {
-				status.Finish("FAILED")
-			}
-		}
-
-		if statusMsg != "" {
-			if err != nil || partialMigrated {
-				// if there is an error or a partial migration, show as warning
-				error_helpers.ShowWarning(statusMsg)
-			} else {
-				// show as info if there is no error, or if it is not a partial migration
-				error_helpers.ShowInfo(statusMsg)
-			}
-		}
-		// write the status back
-		_ = status.WriteStatusToFile()
-	}()
-
 	logPath := filepath.Join(config.GlobalWorkspaceProfile.GetMigrationDir(), "migration.log")
 
 	// Spinner for migration progress
@@ -120,7 +107,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 		spinner.WithHiddenCursor(true),
 		spinner.WithWriter(os.Stdout),
 	)
-
+	// set suffix and start
 	sp.Suffix = " Migrating data to DuckLake format"
 	sp.Start()
 	defer sp.Stop()
@@ -140,7 +127,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// This returns the list of views and a map of view name to its schema
 	views, schemas, err := discoverLegacyTablesAndSchemas(ctx, discoveryDbPath)
 	if err != nil {
-		statusMsg = getStatus(ctx, InitialisationFailed, "")
+		statusMsg = getStatusMessage(ctx, InitialisationFailed, "")
 		return fmt.Errorf("failed to discover legacy tables: %w", err)
 	}
 
@@ -155,7 +142,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 
 		if err := moveDataToMigrating(ctx, dataDefaultDir, migratingDefaultDir); err != nil {
 			slog.Error("Failed to move data to migrating directory", "error", err)
-			statusMsg = getStatus(ctx, InitialisationFailed, logPath)
+			statusMsg = getStatusMessage(ctx, InitialisationFailed, logPath)
 			return err
 		}
 	}
@@ -171,7 +158,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	baseDir := migratingDefaultDir
 	matchedTableDirs, unmatchedTableDirs, err = findMatchingTableDirs(baseDir, views)
 	if err != nil {
-		statusMsg = getStatus(ctx, MigrationFailed, logPath)
+		statusMsg = getStatusMessage(ctx, MigrationFailed, logPath)
 		return fmt.Errorf("failed to find matching table directories: %w", err)
 	}
 
@@ -179,64 +166,82 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 		sp.Suffix = " Migrating data to DuckLake format: archiving tables without views"
 		// move the unmatched table directories to 'unmigrated'
 		if err = archiveUnmatchedDirs(ctx, unmatchedTableDirs); err != nil {
-			statusMsg = getStatus(ctx, MigrationFailed, logPath)
+			statusMsg = getStatusMessage(ctx, MigrationFailed, logPath)
 			return fmt.Errorf("failed to archive unmatched table directories: %w", err)
 		}
 	}
-	// Initialize status with total tables to migrate
-	status.Total = len(matchedTableDirs)
-	status.update()
 
-	sp.Suffix = " Migrating data to DuckLake format: counting parquet files"
 	// Pre-compute total parquet files across matched directories
+	sp.Suffix = " Migrating data to DuckLake format: counting parquet files"
 	totalFiles, err := countParquetFiles(ctx, matchedTableDirs)
-	if err == nil {
-		status.TotalFiles = totalFiles
-		status.updateFiles()
+	if err != nil {
+		return fmt.Errorf("failed to count parquet files: %w", err)
 	}
 
-	sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format (%d/%d, %0.1f%%) | parquet files (%d/%d)", status.Migrated, status.Total, status.ProgressPercent, status.MigratedFiles, status.TotalFiles)
-
-	updateStatus := func(st *MigrationStatus) {
-		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format (%d/%d, %0.1f%%) | parquet files (%d/%d)", st.Migrated, st.Total, st.ProgressPercent, st.MigratedFiles, st.TotalFiles)
+	// create an update func to update th espinner
+	updateFunc := func(st *MigrationStatus) {
+		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format | tables (%d/%d) | parquet files (%d/%d, %0.1f%%))", st.MigratedTables, st.TotalTables, st.MigratedFiles, st.TotalFiles, st.ProgressPercent)
 	}
+
+	// Initialize migration status, paaing in the file and table count and status update func
+	totalTables := len(matchedTableDirs)
+	status := NewMigrationStatus(totalFiles, totalTables, updateFunc)
+	//  ensure we save the status to file at the end
+	defer func() {
+		// add any error to status and write to file before returning
+		if err != nil {
+			status.AddError(err)
+			if perr.IsContextCancelledError(ctx.Err()) {
+				// set cancel status and prune the tree
+				_ = onCancelled(status)
+			} else {
+				status.Finish("FAILED")
+			}
+		}
+
+		// write the status back
+		_ = status.WriteStatusToFile()
+	}()
+
+	// call initial update on status - this will set the spinner message correctly
+	status.update()
 
 	// STEP 5: Do Migration: Traverse matched table directories, find leaf nodes with parquet files,
 	// and perform INSERT within a transaction. On success, move leaf dir to migrated.
-	err = doMigration(ctx, matchedTableDirs, schemas, status, updateStatus)
+	err = doMigration(ctx, matchedTableDirs, schemas, status)
 	// If cancellation arrived during migration, prefer the CANCELLED outcome and do not
 	// treat it as a failure (which would incorrectly move tailpipe.db to failed)
 	if perr.IsContextCancelledError(ctx.Err()) {
-		statusMsg = getStatus(ctx, MigrationFailed, logPath)
+		statusMsg = getStatusMessage(ctx, MigrationFailed, logPath)
 		return ctx.Err()
 	}
 
 	if err != nil {
-		statusMsg = getStatus(ctx, MigrationFailed, logPath)
+		statusMsg = getStatusMessage(ctx, MigrationFailed, logPath)
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
 	// Post-migration outcomes
 
-	if status.Failed > 0 {
+	if status.FailedTables > 0 {
 		if err := onFailed(status); err != nil {
-			statusMsg = getStatus(ctx, MigrationFailed, logPath)
+			statusMsg = getStatusMessage(ctx, MigrationFailed, logPath)
 			return fmt.Errorf("failed to cleanup after failed migration: %w", err)
 		}
 		partialMigrated = true
-		statusMsg = getStatus(ctx, PartialSuccess, logPath)
+		statusMsg = getStatusMessage(ctx, PartialSuccess, logPath)
 		return err
 
 	}
 
 	// so we are successful - cleanup
 	if err := onSuccessful(status); err != nil {
-		statusMsg = getStatus(ctx, CleanupAfterSuccess, logPath)
+		statusMsg = getStatusMessage(ctx, CleanupAfterSuccess, logPath)
 		return fmt.Errorf("failed to cleanup after successful migration: %w", err)
 	}
 
 	// all good!
-	statusMsg = getStatus(ctx, Success, logPath)
+	statusMsg = getStatusMessage(ctx, Success, logPath)
 
 	return err
 }
@@ -305,9 +310,9 @@ func promptUserForMigration(ctx context.Context, dataDir string) (bool, error) {
 	}
 }
 
-// getStatus returns the appropriate status message based on error type and context
+// getStatusMessage returns the appropriate status message based on error type and context
 // It handles cancellation checking internally and returns the appropriate message
-func getStatus(ctx context.Context, msgType StatusType, logPath string) string {
+func getStatusMessage(ctx context.Context, msgType StatusType, logPath string) string {
 	// Handle cancellation first
 	if perr.IsContextCancelledError(ctx.Err()) {
 		switch msgType {
@@ -502,10 +507,7 @@ func archiveUnmatchedDirs(ctx context.Context, unmatchedTableDirs []string) erro
 }
 
 // doMigration performs the migration of the matched table directories and updates status
-func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema, status *MigrationStatus, onUpdate func(*MigrationStatus)) error {
-	if onUpdate == nil {
-		return fmt.Errorf("onUpdate callback is required")
-	}
+func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[string]*schema.TableSchema, status *MigrationStatus) error {
 	ducklakeDb, err := database.NewDuckDb(database.WithDuckLake())
 	if err != nil {
 		return err
@@ -524,8 +526,6 @@ func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[str
 		} else {
 			status.OnTableMigrated()
 		}
-		// update our status
-		onUpdate(status)
 	}
 	return nil
 }
