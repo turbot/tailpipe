@@ -46,8 +46,6 @@ func CompactDataFiles(ctx context.Context, db *DuckDb, updateFunc func(Compactio
 		return err
 	}
 
-	slog.Info("[SKIPPING] Merging adjacent DuckLake parquet files")
-
 	// so we should now have multiple, time ordered parquet files
 	// now merge the the parquet files in the duckdb database
 	// the will minimise the parquet file count to the optimum
