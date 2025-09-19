@@ -38,6 +38,7 @@ const (
 // MigrateDataToDucklake performs migration of views from tailpipe.db and associated parquet files
 // into the new DuckLake metadata catalog
 func MigrateDataToDucklake(ctx context.Context) (err error) {
+	slog.Info("Starting data migration to DuckLake format")
 	// define a status message var - this will be set when we encounter any issues - or when we are successful
 	// this will be printed at the end of the function
 	var statusMsg string
@@ -82,11 +83,8 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	// if the output for this command is a machine readable format (csv/json) or progress is false,
 	// it is possible/likely that tailpipe is being used in a non interactive way - in this case,
 	// we should not prompt the user, instead return an error
-	msgFormat := "data must be migrated to Ducklake format - migration is not supported with '%s'.\n\nRun 'tailpipe query' to migrate your data to DuckLake format"
-	if error_helpers.IsMachineReadableOutput() {
-		return fmt.Errorf(msgFormat, "--output "+viper.GetString(constants.ArgOutput))
-	} else if viper.IsSet(constants.ArgProgress) && !viper.GetBool(constants.ArgProgress) {
-		return fmt.Errorf(msgFormat, "--progress=false")
+	if err := checkMigrationSupported(); err != nil {
+		return err
 	}
 
 	// Prompt the user to confirm migration
@@ -130,9 +128,6 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 		statusMsg = getStatusMessage(ctx, InitialisationFailed, "")
 		return fmt.Errorf("failed to discover legacy tables: %w", err)
 	}
-
-	slog.Info("Views: ", "views", views)
-	slog.Info("Schemas: ", "schemas", schemas)
 
 	// STEP 3: If this is the first time we are migrating(tables in ~/.tailpipe/data) then move the whole contents of data dir
 	// into ~/.tailpipe/migration/migrating respecting the same folder structure.
@@ -244,6 +239,24 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 	statusMsg = getStatusMessage(ctx, Success, logPath)
 
 	return err
+}
+
+// check if the data migration is supported, based on the current arguments
+// if the output for this command is a machine readable format (csv/json) or progress is false,
+// it is possible/likely that tailpipe is being used in a non interactive way - in this case,
+// we should not prompt the user, instead return an error
+// NOTE: set exit code to
+func checkMigrationSupported() error {
+	if error_helpers.IsMachineReadableOutput() {
+		return &UnsupportedError{
+			Reason: "--output " + viper.GetString(constants.ArgOutput),
+		}
+	} else if viper.IsSet(constants.ArgProgress) && !viper.GetBool(constants.ArgProgress) {
+		return &UnsupportedError{
+			Reason: "--progress=false",
+		}
+	}
+	return nil
 }
 
 // moveDataToMigrating ensures the migration folder exists and handles any existing migrating folder
@@ -430,8 +443,6 @@ func migrateTableDirectory(ctx context.Context, db *database.DuckDb, tableName s
 
 func migrateParquetFiles(ctx context.Context, db *database.DuckDb, tableName string, dirPath string, ts *schema.TableSchema, status *MigrationStatus, parquetFiles []string) error {
 	filesInLeaf := len(parquetFiles)
-	// Placeholder: validate schema (from 'ts') against parquet files if needed
-	slog.Info("Found leaf node with parquet files", "table", tableName, "dir", dirPath, "files", filesInLeaf)
 
 	// Begin transaction
 	tx, err := db.BeginTx(ctx, nil)
@@ -469,7 +480,7 @@ func migrateParquetFiles(ctx context.Context, db *database.DuckDb, tableName str
 		slog.Warn("Cleanup: could not remove migrated leaf directory", "table", tableName, "dir", dirPath, "error", err)
 	}
 	status.OnFilesMigrated(filesInLeaf)
-	slog.Info("Migrated leaf node", "table", tableName, "source", dirPath)
+	slog.Debug("Migrated leaf node", "table", tableName, "source", dirPath)
 	return nil
 }
 

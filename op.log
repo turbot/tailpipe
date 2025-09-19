@@ -1,0 +1,21 @@
+{"time":"2025-09-19T11:39:31.813629+01:00","level":"INFO","msg":"Tailpipe CLI","source":"cli","app version":"0.0.0-dev-v0.7.x.20250919111157","log level":"info"}
+{"time":"2025-09-19T11:39:31.813769+01:00","level":"INFO","msg":"Resource limits","source":"cli","max CLI memory (mb)":0,"max plugin memory (mb)":0,"max temp dir size (mb)":32768}
+{"time":"2025-09-19T11:39:31.813885+01:00","level":"INFO","msg":"No migration needed - no tailpipe.db found in data or migrating directory","source":"cli"}
+{"time":"2025-09-19T11:39:31.813937+01:00","level":"INFO","msg":"Compacting parquet files","source":"cli"}
+{"time":"2025-09-19T11:39:31.81396+01:00","level":"INFO","msg":"Initializing DuckDB connection","source":"cli"}
+{"time":"2025-09-19T11:39:31.819682+01:00","level":"INFO","msg":"install sqlite extension","source":"cli","command":"install sqlite"}
+{"time":"2025-09-19T11:39:31.819889+01:00","level":"INFO","msg":"install ducklake extension","source":"cli","command":"install ducklake;"}
+{"time":"2025-09-19T11:39:31.820009+01:00","level":"INFO","msg":"attach to ducklake database","source":"cli","command":"attach 'ducklake:sqlite:/Users/kai/.tailpipe/data/default/metadata.sqlite' AS tailpipe_ducklake (\n\tdata_path '/Users/kai/.tailpipe/data/default',\n\tmeta_journal_mode 'WAL')"}
+{"time":"2025-09-19T11:39:31.87463+01:00","level":"INFO","msg":"set default catalog to ducklake","source":"cli","command":"use tailpipe_ducklake"}
+{"time":"2025-09-19T11:39:31.885216+01:00","level":"INFO","msg":"Creating backup of DuckLake metadata database","source":"cli","source":"/Users/kai/.tailpipe/data/default/metadata.sqlite","backup":"/Users/kai/.tailpipe/data/default/metadata.sqlite.backup.20250919113931"}
+{"time":"2025-09-19T11:39:31.889899+01:00","level":"INFO","msg":"Successfully created backup of DuckLake metadata database","source":"cli","backup":"/Users/kai/.tailpipe/data/default/metadata.sqlite.backup.20250919113931"}
+{"time":"2025-09-19T11:39:31.890298+01:00","level":"INFO","msg":"Compacting DuckLake data files","source":"cli"}
+{"time":"2025-09-19T11:39:31.903925+01:00","level":"INFO","msg":"Ordering DuckLake data files","source":"cli"}
+{"time":"2025-09-19T11:52:21.872841+01:00","level":"INFO","msg":"Compacted and ordered all partition entries","source":"cli","tp_table":"aws_cost_and_usage_report","tp_partition":"cody_local_med","tp_index":"default","year":"2025","month":"6","input_files":899}
+{"time":"2025-09-19T11:58:12.051011+01:00","level":"INFO","msg":"Compacted and ordered all partition entries","source":"cli","tp_table":"aws_cost_and_usage_report","tp_partition":"cody_local_med","tp_index":"default","year":"2025","month":"7","input_files":898}
+{"time":"2025-09-19T11:58:12.053599+01:00","level":"INFO","msg":"Finished ordering DuckLake data file","source":"cli"}
+{"time":"2025-09-19T11:58:12.053785+01:00","level":"INFO","msg":"Expiring old DuckLake snapshots","source":"cli"}
+{"time":"2025-09-19T11:58:12.306431+01:00","level":"INFO","msg":"DuckLake snapshot expiration complete","source":"cli"}
+{"time":"2025-09-19T11:58:34.441032+01:00","level":"INFO","msg":"Cleaning up expired files in DuckLake","source":"cli"}
+{"time":"2025-09-19T11:58:34.95607+01:00","level":"INFO","msg":"DuckLake expired files cleanup complete","source":"cli"}
+{"time":"2025-09-19T11:58:34.975409+01:00","level":"INFO","msg":"DuckLake compaction complete","source":"cli","source_file_count":3979,"destination_file_count":25}
