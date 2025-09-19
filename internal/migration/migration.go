@@ -180,7 +180,7 @@ func MigrateDataToDucklake(ctx context.Context) (err error) {
 
 	// create an update func to update th espinner
 	updateFunc := func(st *MigrationStatus) {
-		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format | tables (%d/%d) | parquet files (%d/%d, %0.1f%%))", st.MigratedTables, st.TotalTables, st.MigratedFiles, st.TotalFiles, st.ProgressPercent)
+		sp.Suffix = fmt.Sprintf(" Migrating data to DuckLake format | tables (%d/%d) | parquet files (%d/%d, %0.1f%%)", st.MigratedTables, st.TotalTables, st.MigratedFiles, st.TotalFiles, st.ProgressPercent)
 	}
 
 	// Initialize migration status, paaing in the file and table count and status update func
