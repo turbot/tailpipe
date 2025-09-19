@@ -282,7 +282,7 @@ func promptUserForMigration(ctx context.Context, dataDir string) (bool, error) {
 	}
 
 	//nolint: forbidigo // UI output
-	fmt.Printf("We're about to migrate your data to the Ducklake format.\nIf you'd like a backup, your data folder is located at: %s\n\nContinue? [y/N]: ", dataDir)
+	fmt.Printf("This version of Tailpipe requires your data to be migrated to the new Ducklake format.\n\nThis operation is irreversible. If desired, back up your data folder (%s) before proceeding.\n\nContinue? [y/N]: ", dataDir)
 
 	// Use goroutine to read input while allowing context cancellation
 	type result struct {
@@ -326,17 +326,16 @@ func getStatusMessage(ctx context.Context, msgType StatusType, logPath string) s
 	// Handle non-cancellation cases
 	switch msgType {
 	case InitialisationFailed:
-		return "Migration initialisation failed\nMigration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n"
+		return "Migration initialisation failed.\nMigration data cleaned up and all original data files remain unchanged. Migration will automatically resume next time you run Tailpipe.\n"
 	case MigrationFailed:
-		return fmt.Sprintf("Migration failed\nPlease contact tailpipe support. For details, see %s\n", logPath)
+		return fmt.Sprintf("Migration failed.\nFor details, see %s\nPlease contact Turbot support on Slack (#tailpipe).", logPath)
 	case CleanupAfterSuccess:
 		return fmt.Sprintf("Migration succeeded but cleanup failed\nFor details, see %s\n", logPath)
 	case PartialSuccess:
-		// TODO puskar improve this message
-		return fmt.Sprintf("Your data has been migrated to DuckLake with issues.\nFor details, see %s\n", logPath)
+		return fmt.Sprintf("Your data has been migrated to DuckLake, but some files could not be migrated.\nFor details, see %s\nIf you need help, please contact Turbot support on Slack (#tailpipe).", logPath)
 	// success
 	default:
-		return fmt.Sprintf("Your data has been migrated to DuckLake.\nFor details, see %s\n", logPath)
+		return fmt.Sprintf("Your data has been migrated to DuckLake format.\nFor details, see %s\n", logPath)
 	}
 }
 
@@ -464,13 +463,11 @@ func migrateParquetFiles(ctx context.Context, db *database.DuckDb, tableName str
 
 	slog.Info("Successfully committed transaction", "table", tableName, "dir", dirPath, "files", filesInLeaf)
 
+	// Clean up the now-empty source dir. If this fails (e.g., hidden files), log and continue;
+	// do NOT classify as a failed migration, since data has been committed successfully.
 	if err := os.RemoveAll(dirPath); err != nil {
-		slog.Error("Failed to remove leaf directory after successful migration", "table", tableName)
-		moveTableDirToFailed(ctx, dirPath)
-		status.OnFilesFailed(filesInLeaf)
-		return fmt.Errorf("failed to remove leaf directory after migration: %w", err)
+		slog.Warn("Cleanup: could not remove migrated leaf directory", "table", tableName, "dir", dirPath, "error", err)
 	}
-	_ = os.Remove(dirPath)
 	status.OnFilesMigrated(filesInLeaf)
 	slog.Info("Migrated leaf node", "table", tableName, "source", dirPath)
 	return nil
@@ -532,6 +529,10 @@ func doMigration(ctx context.Context, matchedTableDirs []string, schemas map[str
 
 // moveTableDirToFailed moves a table directory from migrating to failed, preserving relative path.
 func moveTableDirToFailed(ctx context.Context, dirPath string) {
+	// If the migration was cancelled, do not classify this table as failed
+	if perr.IsContextCancelledError(ctx.Err()) {
+		return
+	}
 	migratingRoot := config.GlobalWorkspaceProfile.GetMigratingDir()
 	failedRoot := config.GlobalWorkspaceProfile.GetMigrationFailedDir()
 	rel, err := filepath.Rel(migratingRoot, dirPath)
