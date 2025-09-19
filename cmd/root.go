@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/migration"
 )
 
 var exitCode int
@@ -68,8 +70,14 @@ func Execute() int {
 	// set the error output to stdout (as it;s common usage to redirect stderr to a file to capture logs
 	rootCmd.SetErr(os.Stdout)
 
+	// if the error is dues to unsupported migration, set a specific exit code - this will bve picked up by powerpipe
 	if err := rootCmd.Execute(); err != nil {
-		exitCode = -1
+		var unsupportedErr *migration.UnsupportedError
+		if errors.As(err, &unsupportedErr) {
+			exitCode = pconstants.ExitCodeMigrationUnsupported
+		} else {
+			exitCode = 1
+		}
 	}
 	return exitCode
 }
