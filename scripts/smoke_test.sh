@@ -16,7 +16,7 @@ jq --version
 /usr/local/bin/tailpipe query "SELECT 1 as smoke_test" # verify basic query works
 
 # Test connect functionality
-DB_FILE=$(/usr/local/bin/tailpipe connect --output json | jq -r '.database_filepath')
+DB_FILE=$(/usr/local/bin/tailpipe connect --output json | jq -r '.init_script_path')
 
 # Verify the database file exists
 if [ -f "$DB_FILE" ]; then
