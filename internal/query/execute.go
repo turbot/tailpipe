@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/query"
 	"github.com/turbot/pipe-fittings/v2/querydisplay"
 	"github.com/turbot/pipe-fittings/v2/queryresult"
@@ -17,6 +16,7 @@ import (
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 func RunBatchSession(ctx context.Context, args []string, db *database.DuckDb) (int, []error) {
@@ -70,7 +70,7 @@ func ExecuteQuery(ctx context.Context, query string, db *database.DuckDb) (int, 
 	// show output
 	_, rowErrors := querydisplay.ShowOutput(ctx, result)
 	if rowErrors > 0 {
-		// TODO #errors find a way to return the error
+		// TODO #errors find a way to return the error https://github.com/turbot/pipe-fittings/issues/745
 		return rowErrors, fmt.Errorf("query execution failed")
 	}
 	return 0, nil

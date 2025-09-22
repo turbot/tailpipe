@@ -131,7 +131,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 	for _, attr := range attrs {
 		switch attr.Name {
 		case "filter":
-			//try to evaluate expression
+			// try to evaluate expression
 			val, diags := attr.Expr.Value(parseCtx.EvalCtx)
 			res.HandleDecodeDiags(diags)
 			// we failed, possibly as result of dependency error - give up for now
@@ -140,7 +140,7 @@ func decodePartition(block *hcl.Block, parseCtx *ConfigParseContext, resource mo
 			}
 			target.Filter = val.AsString()
 		case "tp_index":
-			//try to evaluate expression
+			// try to evaluate expression
 			val, diags := attr.Expr.Value(parseCtx.EvalCtx)
 			res.HandleDecodeDiags(diags)
 			// we failed, possibly as result of dependency error - give up for now

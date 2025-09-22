@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,10 +10,10 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
 )
@@ -64,17 +64,31 @@ func sourceListCmd() *cobra.Command {
 }
 
 func runSourceListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runSourceListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runSourceListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe source list command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForSourceError(err)
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// Get Resources
 	resources, err := display.ListSourceResources(ctx)
@@ -88,8 +102,8 @@ func runSourceListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -113,17 +127,33 @@ func sourceShowCmd() *cobra.Command {
 }
 
 func runSourceShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	utils.LogTime("runSourceShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runSourceShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe source show command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForSourceError(err)
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// Get Resources
 	resourceName := args[0]
@@ -138,7 +168,18 @@ func runSourceShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
+}
+
+func setExitCodeForSourceError(err error) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	exitCode = 1
 }

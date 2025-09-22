@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -14,8 +15,7 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/installationstate"
 	pociinstaller "github.com/turbot/pipe-fittings/v2/ociinstaller"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
@@ -23,9 +23,11 @@ import (
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/ociinstaller"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -182,10 +184,9 @@ Examples:
 // Show plugin
 func pluginShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:  "show <plugin>",
-		Args: cobra.ExactArgs(1),
-		Run:  runPluginShowCmd,
-		// TODO improve descriptions https://github.com/turbot/tailpipe/issues/111
+		Use:   "show <plugin>",
+		Args:  cobra.ExactArgs(1),
+		Run:   runPluginShowCmd,
 		Short: "Show details of a plugin",
 		Long:  `Show the tables and sources provided by plugin`,
 	}
@@ -236,15 +237,36 @@ var pluginInstallSteps = []string{
 }
 
 func runPluginInstallCmd(cmd *cobra.Command, args []string) {
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
 	ctx := cmd.Context()
 	utils.LogTime("runPluginInstallCmd install")
+	var err error
 	defer func() {
 		utils.LogTime("runPluginInstallCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe plugin install command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPluginError(err, 1)
 		}
 	}()
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// args to 'plugin install' -- one or more plugins to install
 	// plugin names can be simple names for "standard" plugins, constraint suffixed names
@@ -287,7 +309,7 @@ func runPluginInstallCmd(cmd *cobra.Command, args []string) {
 				report := &pplugin.PluginInstallReport{
 					Plugin:         pluginName,
 					Skipped:        true,
-					SkipReason:     pconstants.InstallMessagePluginNotFound,
+					SkipReason:     pconstants.InstallMessagePluginNotDistributedViaHub,
 					IsUpdateReport: false,
 				}
 				reportChannel <- report
@@ -363,15 +385,36 @@ func doPluginInstall(ctx context.Context, bar *uiprogress.Bar, pluginName string
 }
 
 func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
 	ctx := cmd.Context()
 	utils.LogTime("runPluginUpdateCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPluginUpdateCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe plugin update command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPluginError(err, 1)
 		}
 	}()
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// args to 'plugin update' -- one or more plugins to update
 	// These can be simple names for "standard" plugins, constraint suffixed names
@@ -441,6 +484,20 @@ func runPluginUpdateCmd(cmd *cobra.Command, args []string) {
 					return
 				}
 			} else {
+				// Plugin not installed locally. If it's a hub plugin, check if it exists in hub.
+				org, name, constraint := ref.GetOrgNameAndStream()
+				if ref.IsFromTurbotHub() {
+					if _, err := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); err != nil {
+						updateResults = append(updateResults, &pplugin.PluginInstallReport{
+							Skipped:        true,
+							Plugin:         p,
+							SkipReason:     pconstants.InstallMessagePluginNotDistributedViaHub,
+							IsUpdateReport: true,
+						})
+						continue
+					}
+				}
+				// Exists on hub (or not a hub plugin) but not installed locally
 				exitCode = pconstants.ExitCodePluginNotFound
 				updateResults = append(updateResults, &pplugin.PluginInstallReport{
 					Skipped:        true,
@@ -609,19 +666,45 @@ func installPlugin(ctx context.Context, resolvedPlugin pplugin.ResolvedPluginVer
 }
 
 func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
-	// setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 
 	utils.LogTime("runPluginUninstallCmd uninstall")
-
+	var err error
 	defer func() {
 		utils.LogTime("runPluginUninstallCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe plugin uninstall command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPluginError(err, 1)
 		}
 	}()
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// load installation state (needed for hub existence checks)
+	state, err := installationstate.Load()
+	if err != nil {
+		error_helpers.ShowError(ctx, fmt.Errorf("could not load state"))
+		exitCode = pconstants.ExitCodePluginLoadingError
+		return
+	}
 
 	if len(args) == 0 {
 		fmt.Println() //nolint:forbidigo // ui output
@@ -640,6 +723,18 @@ func runPluginUninstallCmd(cmd *cobra.Command, args []string) {
 		if report, err := plugin.Remove(ctx, p); err != nil {
 			if strings.Contains(err.Error(), "not found") {
 				exitCode = pconstants.ExitCodePluginNotFound
+				// check hub existence to tailor message
+				ref := pociinstaller.NewImageRef(p)
+				if ref.IsFromTurbotHub() {
+					org, name, constraint := ref.GetOrgNameAndStream()
+					if _, herr := pplugin.GetLatestPluginVersionByConstraint(ctx, state.InstallationID, org, name, constraint); herr != nil {
+						// Not on hub and not installed locally
+						error_helpers.ShowError(ctx, fmt.Errorf("Failed to uninstall '%s' not found on hub and not installed locally.", p))
+						continue
+					}
+				}
+			} else if error_helpers.IsCancelledError(err) {
+				exitCode = pconstants.ExitCodeOperationCancelled
 			}
 			error_helpers.ShowErrorWithMessage(ctx, err, fmt.Sprintf("Failed to uninstall plugin '%s'", p))
 		} else {
@@ -672,18 +767,36 @@ func resolveUpdatePluginsFromArgs(args []string) ([]string, error) {
 }
 
 func runPluginListCmd(cmd *cobra.Command, _ []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 
 	utils.LogTime("runPluginListCmd list")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
+	var err error
 	defer func() {
 		utils.LogTime("runPluginListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe plugin list command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPluginError(err, pconstants.ExitCodePluginListFailure)
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// Get Resource(s)
 	resources, err := display.ListPlugins(ctx)
@@ -701,31 +814,51 @@ func runPluginListCmd(cmd *cobra.Command, _ []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodePluginListFailure
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
 func runPluginShowCmd(cmd *cobra.Command, args []string) {
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
+
 	// we expect 1 argument, the plugin name
 	if len(args) != 1 {
-		error_helpers.ShowError(cmd.Context(), fmt.Errorf("you need to provide the name of a plugin"))
+		error_helpers.ShowError(ctx, fmt.Errorf("you need to provide the name of a plugin"))
 		exitCode = pconstants.ExitCodeInsufficientOrWrongInputs
 		return
 	}
 
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
-
 	utils.LogTime("runPluginShowCmd start")
+
+	// Clean up plugin temporary directories from previous crashes/interrupted installations
+	filepaths.CleanupPluginTempDirs()
+
+	var err error
 	defer func() {
 		utils.LogTime("runPluginShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe plugin show command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPluginError(err, pconstants.ExitCodePluginShowFailure)
 		}
 	}()
+
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
 
 	// Get Resource(s)
 	resource, err := display.GetPluginResource(ctx, args[0])
@@ -739,7 +872,18 @@ func runPluginShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodePluginListFailure
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
+}
+
+func setExitCodeForPluginError(err error, nonCancelCode int) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	exitCode = nonCancelCode
 }

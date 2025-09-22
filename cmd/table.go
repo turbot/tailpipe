@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,12 +10,13 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/utils"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
+	"github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 func tableCmd() *cobra.Command {
@@ -65,20 +66,39 @@ func tableListCmd() *cobra.Command {
 }
 
 func runTableListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runSourceListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runSourceListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe table list command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForTableError(err)
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resources, err := display.ListTableResources(ctx)
+	resources, err := display.ListTableResources(ctx, db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
@@ -89,8 +109,8 @@ func runTableListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
@@ -115,20 +135,39 @@ func tableShowCmd() *cobra.Command {
 }
 
 func runTableShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runTableShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runTableShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe table show command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForTableError(err)
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resource, err := display.GetTableResource(ctx, args[0])
+	resource, err := display.GetTableResource(ctx, args[0], db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 
@@ -139,7 +178,18 @@ func runTableShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
+}
+
+func setExitCodeForTableError(err error) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	exitCode = 1
 }

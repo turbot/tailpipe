@@ -1,6 +1,6 @@
 OUTPUT_DIR?=/usr/local/bin
 PACKAGE_NAME          := github.com/turbot/tailpipe
-GOLANG_CROSS_VERSION  ?= v1.23.2
+GOLANG_CROSS_VERSION  ?= gcc13-osxcross-20250912194615
 
 # sed 's/[\/_]/-/g': Replaces both slashes (/) and underscores (_) with hyphens (-).
 # sed 's/[^a-zA-Z0-9.-]//g': Removes any character that isn’t alphanumeric, a dot (.), or a hyphen (-).
@@ -23,7 +23,7 @@ release-dry-run:
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
 		-w /go/src/tailpipe \
-		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+		ghcr.io/turbot/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot
 
 .PHONY: release-acceptance
@@ -37,7 +37,7 @@ release-acceptance:
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
 		-w /go/src/tailpipe \
-		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+		ghcr.io/turbot/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		--clean --skip=validate --skip=publish --snapshot --config=.acceptance.goreleaser.yml
 
 .PHONY: release
@@ -56,5 +56,5 @@ release:
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
 		-w /go/src/tailpipe \
-		ghcr.io/goreleaser/goreleaser-cross:${GOLANG_CROSS_VERSION} \
+		ghcr.io/turbot/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		release --clean --skip=validate

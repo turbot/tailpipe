@@ -17,10 +17,10 @@ import (
 	"github.com/spf13/viper"
 	"github.com/turbot/go-kit/helpers"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
 	"github.com/turbot/tailpipe/internal/database"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/metaquery"
 	"github.com/turbot/tailpipe/internal/query"
 )
@@ -48,7 +48,7 @@ type InteractiveClient struct {
 	executionLock sync.Mutex
 	// the schema metadata - this is loaded asynchronously during init
 	//schemaMetadata *db_common.SchemaMetadata
-	tableViews  []string
+	tables      []string
 	highlighter *Highlighter
 	// hidePrompt is used to render a blank as the prompt prefix
 	hidePrompt bool
@@ -79,12 +79,12 @@ func newInteractiveClient(ctx context.Context, db *database.DuckDb) (*Interactiv
 		db:                      db,
 	}
 
-	// initialise the table views for autocomplete
-	tv, err := database.GetTableViews(ctx)
+	// initialise the table list for autocomplete
+	tv, err := database.GetTables(ctx, db)
 	if err != nil {
 		return nil, err
 	}
-	c.tableViews = tv
+	c.tables = tv
 
 	// initialise autocomplete suggestions
 	err = c.initialiseSuggestions(ctx)
@@ -346,7 +346,7 @@ func (c *InteractiveClient) executor(ctx context.Context, line string) {
 func (c *InteractiveClient) executeQuery(ctx context.Context, queryCtx context.Context, resolvedQuery *ResolvedQuery) {
 	_, err := query.ExecuteQuery(queryCtx, resolvedQuery.ExecuteSQL, c.db)
 	if err != nil {
-		error_helpers.ShowError(ctx, error_helpers.HandleCancelError(err))
+		error_helpers.ShowError(ctx, err)
 	}
 }
 
@@ -434,6 +434,7 @@ func (c *InteractiveClient) executeMetaquery(ctx context.Context, query string) 
 		Query:       query,
 		Prompt:      c.interactivePrompt,
 		ClosePrompt: func() { c.afterClose = AfterPromptCloseExit },
+		Db:          c.db,
 	})
 }
 
@@ -478,17 +479,17 @@ func (c *InteractiveClient) queryCompleter(d prompt.Document) []prompt.Suggest {
 		suggestions := c.getFirstWordSuggestions(text)
 		s = append(s, suggestions...)
 	case isDuckDbMetaQuery(text):
-		tableSuggestions := c.getTableSuggestions(lastWord(text))
+		tableSuggestions := c.getTableSuggestions()
 		s = append(s, tableSuggestions...)
 	case metaquery.IsMetaQuery(text):
 		suggestions := metaquery.Complete(&metaquery.CompleterInput{
 			Query:           text,
-			ViewSuggestions: c.getTableSuggestions(lastWord(text)),
+			ViewSuggestions: c.getTableSuggestions(),
 		})
 		s = append(s, suggestions...)
 	default:
 		if queryInfo := getQueryInfo(text); queryInfo.EditingTable {
-			tableSuggestions := c.getTableSuggestions(lastWord(text))
+			tableSuggestions := c.getTableSuggestions()
 			s = append(s, tableSuggestions...)
 		}
 	}
@@ -514,23 +515,15 @@ func (c *InteractiveClient) getFirstWordSuggestions(word string) []prompt.Sugges
 	return s
 }
 
-func (c *InteractiveClient) getTableSuggestions(word string) []prompt.Suggest {
+func (c *InteractiveClient) getTableSuggestions() []prompt.Suggest {
 	var s []prompt.Suggest
 
-	for _, tv := range c.tableViews {
-		s = append(s, prompt.Suggest{Text: tv, Output: tv})
+	for _, tableName := range c.tables {
+		s = append(s, prompt.Suggest{Text: tableName, Output: tableName})
 	}
 
 	return s
 }
-
-//
-//func (c *InteractiveClient) newSuggestion(itemType string, description string, name string) prompt.Suggest {
-//	if description != "" {
-//		itemType += fmt.Sprintf(": %s", description)
-//	}
-//	return prompt.Suggest{Text: name, Output: name, Description: itemType}
-//}
 
 func (c *InteractiveClient) startCancelHandler() chan bool {
 	sigIntChannel := make(chan os.Signal, 1)

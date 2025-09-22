@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/tailpipe/internal/constants"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 // DisplayConfig prints all config set via WorkspaceProfile or HCL options
@@ -51,7 +51,7 @@ func DisplayConfig() {
 		sort.Strings(lines)
 
 		var b strings.Builder
-		b.WriteString("\n================\nSteampipe Config\n================\n\n")
+		b.WriteString("\n================\nTailpipe Config\n================\n\n")
 
 		for _, line := range lines {
 			b.WriteString(line)

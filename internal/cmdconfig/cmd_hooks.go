@@ -13,7 +13,9 @@ import (
 	"github.com/turbot/pipe-fittings/v2/app_specific"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
+	"github.com/turbot/pipe-fittings/v2/contexthelpers"
+	perror_helpers "github.com/turbot/pipe-fittings/v2/error_helpers"
+
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	pparse "github.com/turbot/pipe-fittings/v2/parse"
 	"github.com/turbot/pipe-fittings/v2/task"
@@ -21,8 +23,8 @@ import (
 	"github.com/turbot/pipe-fittings/v2/workspace_profile"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
-	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/logger"
+	"github.com/turbot/tailpipe/internal/migration"
 	"github.com/turbot/tailpipe/internal/parse"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
@@ -47,9 +49,8 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	ew := initGlobalConfig(ctx)
 	// display any warnings
 	ew.ShowWarnings()
-	// TODO #errors sort exit code  https://github.com/turbot/tailpipe/issues/106
 	// check for error
-	error_helpers.FailOnError(ew.Error)
+	perror_helpers.FailOnError(ew.Error)
 
 	// pump in the initial set of logs (AFTER we have loaded the config, which may specify log level)
 	displayStartupLog()
@@ -60,7 +61,35 @@ func preRunHook(cmd *cobra.Command, args []string) error {
 	// set the max memory if specified
 	setMemoryLimit()
 
-	return nil
+	// create cancel context and set back on command
+	baseCtx := cmd.Context()
+	ctx, cancel := context.WithCancel(baseCtx)
+
+	// start the cancel handler to call cancel on interrupt signals
+	contexthelpers.StartCancelHandler(cancel)
+	cmd.SetContext(ctx)
+
+	// migrate legacy data to DuckLake:
+	// Prior to Tailpipe v0.7.0 we stored data as native Parquet files alongside a tailpipe.db
+	// (DuckDB) that defined SQL views. From v0.7.0 onward Tailpipe uses DuckLake, which
+	// introduces a metadata database (metadata.sqlite). We run a one-time migration here to
+	// move existing user data into DuckLake’s layout so it can be queried and managed via
+	// the new metadata model.
+	// start migration
+	err := migration.MigrateDataToDucklake(cmd.Context())
+	if err != nil {
+		// we do not want Cobra usage errors for migration errors - suppress
+
+		// suppress usage and error printing for migration errors
+		cmd.SilenceUsage = true
+		// for cancelled errors, also silence the error message
+		if perror_helpers.IsCancelledError(err) {
+			cmd.SilenceErrors = true
+		}
+	}
+
+	// return (possibly nil) error from migration
+	return err
 }
 
 func displayStartupLog() {
@@ -128,7 +157,7 @@ func runScheduledTasks(ctx context.Context, cmd *cobra.Command, args []string) c
 }
 
 // initConfig reads in config file and ENV variables if set.
-func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
+func initGlobalConfig(ctx context.Context) perror_helpers.ErrorAndWarnings {
 	utils.LogTime("cmdconfig.initGlobalConfig start")
 	defer utils.LogTime("cmdconfig.initGlobalConfig end")
 
@@ -145,20 +174,14 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// load workspace profile from the configured install dir
 	loader, err := cmdconfig.GetWorkspaceProfileLoader[*workspace_profile.TailpipeWorkspaceProfile](parseOpts...)
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	config.GlobalWorkspaceProfile = loader.GetActiveWorkspaceProfile()
 	// create the required data and internal folder for this workspace if needed
 	err = config.GlobalWorkspaceProfile.EnsureWorkspaceDirs()
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
-	}
-
-	// ensure we have a database file for this workspace
-	err = database.EnsureDatabaseFile(ctx)
-	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	var cmd = viper.Get(pconstants.ConfigKeyActiveCommand).(*cobra.Command)
@@ -179,33 +202,17 @@ func initGlobalConfig(ctx context.Context) error_helpers.ErrorAndWarnings {
 	// NOTE: if this installed the core plugin, the plugin version file will be updated and the updated file returned
 	pluginVersionFile, err := plugin.EnsureCorePlugin(ctx)
 	if err != nil {
-		return error_helpers.NewErrorsAndWarning(err)
+		return perror_helpers.NewErrorsAndWarning(err)
 	}
 
 	// load the connection config and HCL options (passing plugin versions
 	tailpipeConfig, loadConfigErrorsAndWarnings := parse.LoadTailpipeConfig(pluginVersionFile)
 
-	if loadConfigErrorsAndWarnings.Error != nil {
-		return loadConfigErrorsAndWarnings
+	if loadConfigErrorsAndWarnings.Error == nil {
+		// store global config
+		config.GlobalConfig = tailpipeConfig
+
 	}
 
-	if loadConfigErrorsAndWarnings.Warnings != nil {
-		for _, warning := range loadConfigErrorsAndWarnings.Warnings {
-			error_helpers.ShowWarning(warning)
-		}
-	}
-	// store global config
-	config.GlobalConfig = tailpipeConfig
-
-	// now validate all config values have appropriate values
-	return validateConfig()
-}
-
-// now validate  config values have appropriate values
-func validateConfig() error_helpers.ErrorAndWarnings {
-	var res = error_helpers.ErrorAndWarnings{}
-
-	// TODO #config validate
-
-	return res
+	return loadConfigErrorsAndWarnings
 }

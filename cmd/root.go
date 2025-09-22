@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -10,8 +11,8 @@ import (
 	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/utils"
-	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/migration"
 )
 
 var exitCode int
@@ -35,7 +36,6 @@ func rootCommand() *cobra.Command {
 
 	rootCmd.SetVersionTemplate("Tailpipe v{{.Version}}\n")
 
-	// TODO #config this will not reflect changes to install-dir - do we need to default in a different way https://github.com/turbot/tailpipe/issues/112
 	defaultConfigPath := filepaths.EnsureConfigDir()
 
 	cmdconfig.
@@ -63,18 +63,21 @@ func rootCommand() *cobra.Command {
 }
 
 func Execute() int {
-	// if diagnostic mode is set, print out config and return
-	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
-		localcmdconfig.DisplayConfig()
-		return 0
-	}
-
-	rootCmd := rootCommand()
 	utils.LogTime("cmd.root.Execute start")
 	defer utils.LogTime("cmd.root.Execute end")
+	rootCmd := rootCommand()
 
+	// set the error output to stdout (as it;s common usage to redirect stderr to a file to capture logs
+	rootCmd.SetErr(os.Stdout)
+
+	// if the error is dues to unsupported migration, set a specific exit code - this will bve picked up by powerpipe
 	if err := rootCmd.Execute(); err != nil {
-		exitCode = -1
+		var unsupportedErr *migration.UnsupportedError
+		if errors.As(err, &unsupportedErr) {
+			exitCode = pconstants.ExitCodeMigrationUnsupported
+		} else {
+			exitCode = 1
+		}
 	}
 	return exitCode
 }

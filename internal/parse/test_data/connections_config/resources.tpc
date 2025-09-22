@@ -1,0 +1,13 @@
+connection "aws" "primary" {
+  profile = "primary"
+  plugin = "aws"
+  region = "us-east-1"
+}
+
+
+partition "aws_alb_connection_log" "aws_alb_connection_log" {
+  source "aws_s3_bucket" {
+    connection = connection.aws.primary
+    bucket = "alb-connection-logs-test-tailpipe"
+  }
+}

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -14,15 +15,16 @@ import (
 	"github.com/turbot/go-kit/helpers"
 	"github.com/turbot/pipe-fittings/v2/cmdconfig"
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/contexthelpers"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"github.com/turbot/pipe-fittings/v2/printers"
+	"github.com/turbot/pipe-fittings/v2/statushooks"
 	"github.com/turbot/pipe-fittings/v2/utils"
+	localcmdconfig "github.com/turbot/tailpipe/internal/cmdconfig"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
+	"github.com/turbot/tailpipe/internal/database"
 	"github.com/turbot/tailpipe/internal/display"
+	error_helpers "github.com/turbot/tailpipe/internal/error_helpers"
 	"github.com/turbot/tailpipe/internal/filepaths"
-	"github.com/turbot/tailpipe/internal/parquet"
 	"github.com/turbot/tailpipe/internal/plugin"
 )
 
@@ -73,20 +75,38 @@ func partitionListCmd() *cobra.Command {
 }
 
 func runPartitionListCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	ctx := cmd.Context()
 	utils.LogTime("runPartitionListCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPartitionListCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("taillpipe partition list command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	resources, err := display.ListPartitionResources(ctx)
+	resources, err := display.ListPartitionResources(ctx, db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resources...)
 
@@ -97,15 +117,15 @@ func runPartitionListCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
 // Show Partition
 func partitionShowCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:   "show",
+		Use:   "show <partition-name>",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionShowCmd,
 		Short: "Show details for a specific partition",
@@ -123,21 +143,53 @@ func partitionShowCmd() *cobra.Command {
 }
 
 func runPartitionShowCmd(cmd *cobra.Command, args []string) {
-	//setup a cancel context and start cancel handler
-	ctx, cancel := context.WithCancel(cmd.Context())
-	contexthelpers.StartCancelHandler(cancel)
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
+	ctx := cmd.Context()
 	utils.LogTime("runPartitionShowCmd start")
+	var err error
 	defer func() {
 		utils.LogTime("runPartitionShowCmd end")
 		if r := recover(); r != nil {
-			error_helpers.ShowError(ctx, helpers.ToError(r))
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("tailpipe partition show command cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+
+	// open a readonly db connection
+	db, err := database.NewDuckDb(database.WithDuckLakeReadonly())
+	error_helpers.FailOnError(err)
+	defer db.Close()
+
 	// Get Resources
-	partitionName := args[0]
-	resource, err := display.GetPartitionResource(partitionName)
+
+	partitions, err := getPartitions(args)
+	error_helpers.FailOnError(err)
+	// if no partitions are found, return an error
+	if len(partitions) == 0 {
+		error_helpers.FailOnError(fmt.Errorf("no partitions found matching %s", args[0]))
+	}
+	// if more than one partition is found, return an error
+	if len(partitions) > 1 {
+		error_helpers.FailOnError(fmt.Errorf("multiple partitions found matching %s, please specify a more specific partition name", args[0]))
+	}
+
+	resource, err := display.GetPartitionResource(cmd.Context(), partitions[0], db)
 	error_helpers.FailOnError(err)
 	printableResource := display.NewPrintableResource(resource)
 
@@ -148,14 +200,14 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	// Print
 	err = printer.PrintResource(ctx, printableResource, cmd.OutOrStdout())
 	if err != nil {
-		error_helpers.ShowError(ctx, err)
-		exitCode = pconstants.ExitCodeUnknownErrorPanic
+		exitCode = pconstants.ExitCodeOutputRenderingFailed
+		return
 	}
 }
 
 func partitionDeleteCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "delete ",
+		Use:   "delete <partition-name>",
 		Args:  cobra.ExactArgs(1),
 		Run:   runPartitionDeleteCmd,
 		Short: "Delete a partition for the specified period",
@@ -171,32 +223,67 @@ func partitionDeleteCmd() *cobra.Command {
 
 	cmdconfig.OnCmd(cmd).
 		AddStringFlag(pconstants.ArgFrom, "", "Specify the start time").
+		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
 		AddBoolFlag(pconstants.ArgForce, false, "Force delete without confirmation")
 
 	return cmd
 }
 
 func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
+	// use the signal-aware/cancelable context created upstream in preRunHook
+	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
+	// cancellation error. Cancellation won't work right now
 	ctx := cmd.Context()
-
+	var err error
 	defer func() {
 		if r := recover(); r != nil {
-			exitCode = pconstants.ExitCodeUnknownErrorPanic
-			error_helpers.FailOnError(helpers.ToError(r))
+			err = helpers.ToError(r)
+		}
+		if err != nil {
+			if error_helpers.IsCancelledError(err) {
+				//nolint:forbidigo // ui output
+				fmt.Println("Partition cancelled.")
+			} else {
+				error_helpers.ShowError(ctx, err)
+			}
+			setExitCodeForPartitionError(err)
 		}
 	}()
 
-	// arg `fromTime` accepts ISO 8601 date(2024-01-01), ISO 8601 datetime(2006-01-02T15:04:05), ISO 8601 datetime with ms(2006-01-02T15:04:05.000),
-	// RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00) and relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
+	// if diagnostic mode is set, print out config and return
+	if _, ok := os.LookupEnv(constants.EnvConfigDump); ok {
+		localcmdconfig.DisplayConfig()
+		return
+	}
+	// args `fromTime` and `ToTime` accepts:
+	// - ISO 8601 date(2024-01-01)
+	// - ISO 8601 datetime(2006-01-02T15:04:05)
+	// - ISO 8601 datetime with ms(2006-01-02T15:04:05.000)
+	// - RFC 3339 datetime with timezone(2006-01-02T15:04:05Z07:00)
+	// - relative time formats(T-2Y, T-10m, T-10W, T-180d, T-9H, T-10M)
 	var fromTime time.Time
-	var fromStr string
+	// toTime defaults to now, but can be set to a specific time
+	toTime := time.Now()
+	// confirm deletion
+	var fromStr, toStr string
+
 	if viper.IsSet(pconstants.ArgFrom) {
 		var err error
 		fromTime, err = parseFromToTime(viper.GetString(pconstants.ArgFrom))
-		error_helpers.FailOnError(err)
+		error_helpers.FailOnErrorWithMessage(err, "invalid from time")
 		fromStr = fmt.Sprintf(" from %s", fromTime.Format(time.DateOnly))
 	}
+	if viper.IsSet(pconstants.ArgTo) {
+		var err error
+		toTime, err = parseFromToTime(viper.GetString(pconstants.ArgTo))
+		error_helpers.FailOnErrorWithMessage(err, "invalid to time")
+	}
+	toStr = fmt.Sprintf(" to %s", toTime.Format(time.DateOnly))
+	if toTime.Before(fromTime) {
+		error_helpers.FailOnError(fmt.Errorf("to time %s cannot be before from time %s", toTime.Format(time.RFC3339), fromTime.Format(time.RFC3339)))
+	}
 
+	// retrieve the partition
 	partitionName := args[0]
 	partition, ok := config.GlobalConfig.Partitions[partitionName]
 	if !ok {
@@ -204,16 +291,37 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	}
 
 	if !viper.GetBool(pconstants.ArgForce) {
-		// confirm deletion
-		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s?", partitionName, fromStr)
+		msg := fmt.Sprintf("Are you sure you want to delete partition %s%s%s?", partitionName, fromStr, toStr)
 		if !utils.UserConfirmationWithDefault(msg, true) {
 			fmt.Println("Deletion cancelled") //nolint:forbidigo//expected output
 			return
 		}
 	}
-
-	filesDeleted, err := parquet.DeleteParquetFiles(partition, fromTime)
+	db, err := database.NewDuckDb(database.WithDuckLake())
 	error_helpers.FailOnError(err)
+	defer db.Close()
+
+	// Create backup before deletion
+	slog.Info("Creating backup before partition deletion", "partition", partitionName)
+	if err := database.BackupDucklakeMetadata(); err != nil {
+		slog.Warn("Failed to create backup before partition deletion", "error", err)
+		// Continue with deletion - backup failure should not prevent deletion
+	}
+
+	// show spinner while deleting the partition
+	spinner := statushooks.NewStatusSpinnerHook()
+	spinner.SetStatus(fmt.Sprintf("Deleting partition %s", partition.TableName))
+	spinner.Show()
+	rowsDeleted, err := database.DeletePartition(ctx, partition, fromTime, toTime, db)
+	spinner.Hide()
+	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			exitCode = pconstants.ExitCodeOperationCancelled
+		} else {
+			exitCode = 1
+		}
+		error_helpers.FailOnError(err)
+	}
 
 	// build the collection state path
 	collectionStatePath := partition.CollectionStatePath(config.GlobalWorkspaceProfile.GetCollectionDir())
@@ -222,6 +330,7 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 	if fromTime.IsZero() {
 		err := os.Remove(collectionStatePath)
 		if err != nil && !os.IsNotExist(err) {
+			exitCode = 1
 			error_helpers.FailOnError(fmt.Errorf("failed to delete collection state file: %s", err.Error()))
 		}
 	} else {
@@ -230,24 +339,43 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 		pluginManager := plugin.NewPluginManager()
 		defer pluginManager.Close()
 		err = pluginManager.UpdateCollectionState(ctx, partition, fromTime, collectionStatePath)
-		error_helpers.FailOnError(err)
+		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				exitCode = pconstants.ExitCodeOperationCancelled
+			} else {
+				exitCode = 1
+			}
+			error_helpers.FailOnError(err)
+		}
 	}
 
 	// now prune the collection folders
 	err = filepaths.PruneTree(config.GlobalWorkspaceProfile.GetCollectionDir())
 	if err != nil {
-		slog.Warn("DeleteParquetFiles failed to prune empty collection folders", "error", err)
+		slog.Warn("DeletePartition failed to prune empty collection folders", "error", err)
 	}
 
-	msg := buildStatusMessage(filesDeleted, partitionName, fromStr)
+	msg := buildStatusMessage(rowsDeleted, partitionName, fromStr)
 	fmt.Println(msg) //nolint:forbidigo//expected output
 }
 
-func buildStatusMessage(filesDeleted int, partition string, fromStr string) interface{} {
-	var deletedStr = " (no parquet files deleted)"
-	if filesDeleted > 0 {
-		deletedStr = fmt.Sprintf(" (deleted %d parquet %s)", filesDeleted, utils.Pluralize("file", filesDeleted))
+func buildStatusMessage(rowsDeleted int, partition string, fromStr string) interface{} {
+	var deletedStr = " (nothing deleted)"
+	if rowsDeleted > 0 {
+		deletedStr = fmt.Sprintf(" (deleted %d %s)", rowsDeleted, utils.Pluralize("rows", rowsDeleted))
 	}
 
 	return fmt.Sprintf("\nDeleted partition '%s'%s%s.\n", partition, fromStr, deletedStr)
+}
+
+func setExitCodeForPartitionError(err error) {
+	if exitCode != 0 || err == nil {
+		return
+	}
+	if error_helpers.IsCancelledError(err) {
+		exitCode = pconstants.ExitCodeOperationCancelled
+		return
+	}
+	// no dedicated partition exit code; use generic nonzero failure
+	exitCode = 1
 }

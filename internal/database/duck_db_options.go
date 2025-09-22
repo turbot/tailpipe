@@ -38,3 +38,22 @@ func WithMaxMemoryMb(maxMemoryMb int) DuckDbOpt {
 		d.maxMemoryMb = maxMemoryMb
 	}
 }
+
+// WithDuckLake enables the DuckLake extension for DuckDB.
+func WithDuckLake() DuckDbOpt {
+	return func(d *DuckDb) {
+		d.ducklakeEnabled = true
+	}
+}
+
+// WithDuckLakeReadonly enables the DuckLake extension in read-only mode.
+// filters is an optional list of SQL filter expressions - if specified, a view will be created for each table in the database
+// and the filters will be applied to the view.
+// If no filters are specified, the ducklake attachment will be set as the default catalog so the tables can be accessed directly
+func WithDuckLakeReadonly(filters ...string) DuckDbOpt {
+	return func(d *DuckDb) {
+		d.ducklakeEnabled = true
+		d.duckLakeReadOnly = true
+		d.viewFilters = filters
+	}
+}

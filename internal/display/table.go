@@ -3,14 +3,13 @@ package display
 import (
 	"context"
 	"fmt"
-	"path"
 	"slices"
 	"strings"
 
 	"github.com/turbot/go-kit/types"
 	"github.com/turbot/pipe-fittings/v2/printers"
 	"github.com/turbot/pipe-fittings/v2/sanitize"
-	sdkconstants "github.com/turbot/tailpipe-plugin-sdk/constants"
+	"github.com/turbot/tailpipe-plugin-sdk/helpers"
 	"github.com/turbot/tailpipe-plugin-sdk/schema"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -29,7 +28,7 @@ type TableResource struct {
 }
 
 // tableResourceFromConfigTable creates a TableResource (display item) from a config.Table (custom table)
-func tableResourceFromConfigTable(tableName string, configTable *config.Table) (*TableResource, error) {
+func tableResourceFromConfigTable(ctx context.Context, tableName string, configTable *config.Table, db *database.DuckDb) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(configTable.Columns))
 	for i, c := range configTable.Columns {
 		cols[i] = TableColumnResource{
@@ -47,7 +46,7 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 	}
 
 	table.setPartitions()
-	err := table.setFileInformation()
+	err := table.setFileInformation(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set file information for table '%s': %w", tableName, err)
 	}
@@ -56,7 +55,7 @@ func tableResourceFromConfigTable(tableName string, configTable *config.Table) (
 }
 
 // tableResourceFromSchemaTable creates a TableResource (display item) from a schema.TableSchema (defined table)
-func tableResourceFromSchemaTable(tableName string, pluginName string, schemaTable *schema.TableSchema) (*TableResource, error) {
+func tableResourceFromSchemaTable(ctx context.Context, tableName string, pluginName string, schemaTable *schema.TableSchema, db *database.DuckDb) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(schemaTable.Columns))
 	for i, c := range schemaTable.Columns {
 		cols[i] = TableColumnResource{
@@ -74,7 +73,7 @@ func tableResourceFromSchemaTable(tableName string, pluginName string, schemaTab
 	}
 
 	table.setPartitions()
-	err := table.setFileInformation()
+	err := table.setFileInformation(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set file information for table '%s': %w", tableName, err)
 	}
@@ -91,8 +90,9 @@ type TableColumnResource struct {
 
 // TableResourceFiles represents the file information and a row count for a table resource
 type TableResourceFiles struct {
-	FileMetadata
-	RowCount int64 `json:"row_count,omitempty"`
+	FileSize  int64 `json:"file_size"`
+	FileCount int64 `json:"file_count"`
+	RowCount  int64 `json:"row_count,omitempty"`
 }
 
 // GetShowData implements the printers.Showable interface
@@ -123,7 +123,7 @@ func (r *TableResource) GetListData() *printers.RowData {
 	return res
 }
 
-func ListTableResources(ctx context.Context) ([]*TableResource, error) {
+func ListTableResources(ctx context.Context, db *database.DuckDb) ([]*TableResource, error) {
 	var res []*TableResource
 	tables := make(map[string]*TableResource)
 
@@ -136,25 +136,25 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 		return nil, fmt.Errorf("unable to obtain plugin list: %w", err)
 	}
 
-	for _, p := range plugins {
-		desc, err := pluginManager.Describe(ctx, p.Name)
+	for _, partition := range plugins {
+		desc, err := pluginManager.Describe(ctx, partition.Name)
 		if err != nil {
 			return nil, fmt.Errorf("unable to obtain plugin details: %w", err)
 		}
 
-		for t, s := range desc.Schemas {
-			table, err := tableResourceFromSchemaTable(t, p.Name, s)
+		for tableName, schema := range desc.Schemas {
+			table, err := tableResourceFromSchemaTable(ctx, tableName, partition.Name, schema, db)
 			if err != nil {
 				return nil, err
 			}
 
-			tables[t] = table
+			tables[tableName] = table
 		}
 	}
 
 	// custom tables - these take precedence over plugin defined tables, so overwrite any duplicates in map
 	for tableName, tableDef := range config.GlobalConfig.CustomTables {
-		table, err := tableResourceFromConfigTable(tableName, tableDef)
+		table, err := tableResourceFromConfigTable(ctx, tableName, tableDef, db)
 		if err != nil {
 			return nil, err
 		}
@@ -170,10 +170,10 @@ func ListTableResources(ctx context.Context) ([]*TableResource, error) {
 	return res, nil
 }
 
-func GetTableResource(ctx context.Context, tableName string) (*TableResource, error) {
+func GetTableResource(ctx context.Context, tableName string, db *database.DuckDb) (*TableResource, error) {
 	// custom table takes precedence over plugin defined table, check there first
 	if customTable, ok := config.GlobalConfig.CustomTables[tableName]; ok {
-		table, err := tableResourceFromConfigTable(tableName, customTable)
+		table, err := tableResourceFromConfigTable(ctx, tableName, customTable, db)
 		return table, err
 	}
 
@@ -194,7 +194,7 @@ func GetTableResource(ctx context.Context, tableName string) (*TableResource, er
 	}
 
 	if tableSchema, ok := desc.Schemas[tableName]; ok {
-		return tableResourceFromSchemaTable(tableName, pluginName, tableSchema)
+		return tableResourceFromSchemaTable(ctx, tableName, pluginName, tableSchema, db)
 	} else {
 		return nil, fmt.Errorf("table %s not found", tableName)
 	}
@@ -210,22 +210,16 @@ func (r *TableResource) setPartitions() {
 	slices.Sort(r.Partitions)
 }
 
-func (r *TableResource) setFileInformation() error {
-	metadata, err := getFileMetadata(path.Join(config.GlobalWorkspaceProfile.GetDataDir(), fmt.Sprintf("%s=%s", sdkconstants.TpTable, r.Name)))
+func (r *TableResource) setFileInformation(ctx context.Context, db *database.DuckDb) error {
+	// Get file metadata using shared function
+	metadata, err := database.GetTableFileMetadata(ctx, r.Name, db)
 	if err != nil {
 		return fmt.Errorf("unable to obtain file metadata: %w", err)
 	}
 
-	r.Local.FileMetadata = metadata
-
-	if metadata.FileCount > 0 {
-		var rc int64
-		rc, err = database.GetRowCount(context.Background(), r.Name, nil)
-		if err != nil {
-			return fmt.Errorf("unable to obtain row count: %w", err)
-		}
-		r.Local.RowCount = rc
-	}
+	r.Local.FileSize = metadata.FileSize
+	r.Local.FileCount = metadata.FileCount
+	r.Local.RowCount = metadata.RowCount
 
 	return nil
 }
@@ -235,24 +229,21 @@ func (r *TableResource) getColumnsRenderFunc() printers.RenderFunc {
 		var lines []string
 		lines = append(lines, "") // blank line before column details
 
-		cols := r.Columns
-		// TODO: #graza we utilize similar behaviour in the view creation but only on string, can we combine these into a single func?
-		tpPrefix := "tp_"
-		slices.SortFunc(cols, func(a, b TableColumnResource) int {
-			isPrefixedA, isPrefixedB := strings.HasPrefix(a.ColumnName, tpPrefix), strings.HasPrefix(b.ColumnName, tpPrefix)
-			switch {
-			case isPrefixedA && !isPrefixedB:
-				return 1 // a > b
-			case !isPrefixedA && isPrefixedB:
-				return -1 // a < b
-			default:
-				return strings.Compare(a.ColumnName, b.ColumnName) // standard alphabetical sort
-			}
-		})
+		// Extract column names and build map in a single loop
+		columnNames := make([]string, len(r.Columns))
+		columnMap := make(map[string]TableColumnResource)
+		for i, col := range r.Columns {
+			columnNames[i] = col.ColumnName
+			columnMap[col.ColumnName] = col
+		}
+		// sort column names alphabetically, with tp fields at the end
+		sortedColumnNames := helpers.SortColumnsAlphabetically(columnNames)
 
-		for _, c := range r.Columns {
+		// Build lines in sorted order
+		for _, colName := range sortedColumnNames {
+			col := columnMap[colName]
 			// type is forced to lowercase, this should be the case for our tables/plugins but this provides consistency for custom tables, etc
-			line := fmt.Sprintf("  %s: %s", c.ColumnName, strings.ToLower(c.Type))
+			line := fmt.Sprintf("  %s: %s", col.ColumnName, strings.ToLower(col.Type))
 			lines = append(lines, line)
 		}
 

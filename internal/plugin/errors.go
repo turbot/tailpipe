@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"errors"
-	"github.com/turbot/pipe-fittings/v2/error_helpers"
 	"strings"
 )
 
@@ -13,8 +12,6 @@ func cleanupPluginError(err error) error {
 	if err == nil {
 		return nil
 	}
-	// transform to a context
-	err = error_helpers.HandleCancelError(err)
 
 	errString := strings.TrimSpace(err.Error())
 
