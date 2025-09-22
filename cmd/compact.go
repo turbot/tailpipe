@@ -77,6 +77,12 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	patterns, err := database.GetPartitionPatternsForArgs(maps.Keys(config.GlobalConfig.Partitions), args...)
 	error_helpers.FailOnErrorWithMessage(err, "failed to get partition patterns")
 
+	// Create backup of metadata database before starting compaction
+	if err := database.BackupDucklakeMetadata(); err != nil {
+		slog.Warn("Failed to backup metadata database", "error", err)
+		// Continue with compaction - backup failure shouldn't block the operation
+	}
+
 	// do the compaction
 
 	status, err := doCompaction(ctx, db, patterns)

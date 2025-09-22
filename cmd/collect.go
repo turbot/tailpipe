@@ -124,6 +124,13 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 		partitionNames = append(partitionNames, partition.FullName)
 	}
 	slog.Info("Starting collection", "partition(s)", partitionNames, "from", fromTime, "to", toTime)
+
+	// Create backup of metadata database before starting collection
+	if err := database.BackupDucklakeMetadata(); err != nil {
+		slog.Warn("Failed to backup metadata database", "error", err)
+		// Continue with collection - backup failure shouldn't block the operation
+	}
+
 	// now we have the partitions, we can start collecting
 
 	// start the plugin manager

@@ -1,3 +1,30 @@
+## v0.7.0 [2025-09-22]
+
+### _Major Changes_
+* Replace native Parquet conversion with a **DuckLake database backend**. ([#546](https://github.com/turbot/tailpipe/issues/546)) 
+  - DuckLake is DuckDB’s new lakehouse format: data remains in Parquet files, but metadata is efficiently tracked in a
+    separate DuckDB database.
+  - DuckLake supports function-based partitioning, which allows data to be partitioned by year and month. This enables
+    efficient file pruning on `tp_timestamp` without needing a separate `tp_date` filter. A `tp_date` column will still
+    be present for compatibility, but it is no longer required for efficient query filtering.
+  - Existing data will be **automatically migrated** the next time Tailpipe runs. Migration does **not**
+    occur if progress output is disabled (`--progress=false`) or when using machine-readable output (`json`, `line`,
+    `csv`).
+
+* The `connect` command now returns the path to an **initialisation SQL script** instead of the database path. ([#550](https://github.com/turbot/tailpipe/issues/550))
+  - The script sets up DuckDB with required extensions, attaches the Tailpipe database, and defines views with optional
+    filters.
+  - You can pass the generated script to DuckDB using the `--init` argument to immediately configure the session. For
+    example:
+    ```sh
+    duckdb --init $(tailpipe connect)
+    ```
+    **Note:** To ensure compatibility with DuckLake features, make sure you’re using DuckDB version 1.4.0 or later.
+
+### _Bug Fixes_
+* Include partitions for local plugins in the `tailpipe plugin list` command. ([#538](https://github.com/turbot/tailpipe/issues/538))
+
+
 ## v0.6.2 [2025-07-24]
 _Bug fixes_
 * Fix issue where `--to` was not respected for zero granularity data. ([#483](https://github.com/turbot/tailpipe/issues/483))

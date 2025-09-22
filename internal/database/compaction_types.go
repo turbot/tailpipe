@@ -17,7 +17,7 @@ func getTimeRangesToReorder(ctx context.Context, db *DuckDb, pk *partitionKey, r
 	if reindex {
 		rm, err := newReorderMetadata(ctx, db, pk)
 		if err != nil {
-			return nil, fmt.Errorf("failed to retiever stats for partition key: %w", err)
+			return nil, fmt.Errorf("failed to retrieve stats for partition key: %w", err)
 		}
 
 		// make a single time range
@@ -52,7 +52,7 @@ func getTimeRangesToReorder(ctx context.Context, db *DuckDb, pk *partitionKey, r
 	// get stats for the partition key
 	rm, err := newReorderMetadata(ctx, db, pk)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retiever stats for partition key: %w", err)
+		return nil, fmt.Errorf("failed to retrieve stats for partition key: %w", err)
 	}
 	rm.unorderedRanges = unorderedRanges
 	return rm, nil
@@ -77,7 +77,7 @@ func getFileRangesForPartitionKey(ctx context.Context, db *DuckDb, pk *partition
 	  on df.data_file_id = fpv4.data_file_id and fpv4.partition_key_index = 3
 	join __ducklake_metadata_tailpipe_ducklake.ducklake_table t
 	  on df.table_id = t.table_id
-	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_column_statistics fcs
+	join __ducklake_metadata_tailpipe_ducklake.ducklake_file_column_stats fcs
 	  on df.data_file_id = fcs.data_file_id
 	  and df.table_id = fcs.table_id
 	join __ducklake_metadata_tailpipe_ducklake.ducklake_column c
