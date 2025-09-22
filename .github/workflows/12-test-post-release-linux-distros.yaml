@@ -209,13 +209,13 @@ jobs:
         run: |
           # Check if all jobs succeeded
           UBUNTU_24_RESULT="${{ needs.smoke_test_ubuntu_24.result }}"
-          CENTOS_9_RESULT="${{ needs.smoke_test_centos_10.result }}"
+          CENTOS_10_RESULT="${{ needs.smoke_test_centos_10.result }}"
           AMAZONLINUX_RESULT="${{ needs.smoke_test_amazonlinux.result }}"
           ARM64_RESULT="${{ needs.smoke_test_linux_arm64.result }}"
 
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
-          if [ "$UBUNTU_24_RESULT" = "success" ] && [ "$CENTOS_9_RESULT" = "success" ] && [ "$AMAZONLINUX_RESULT" = "success" ] && [ "$ARM64_RESULT" = "success" ]; then
+          if [ "$UBUNTU_24_RESULT" = "success" ] && [ "$CENTOS_10_RESULT" = "success" ] && [ "$AMAZONLINUX_RESULT" = "success" ] && [ "$ARM64_RESULT" = "success" ]; then
             MESSAGE="✅ Tailpipe ${{ env.VERSION }} smoke tests passed!\n\n🔗 View details: $WORKFLOW_URL"
           else
             MESSAGE="❌ Tailpipe ${{ env.VERSION }} smoke tests failed!\n\n🔗 View details: $WORKFLOW_URL"
