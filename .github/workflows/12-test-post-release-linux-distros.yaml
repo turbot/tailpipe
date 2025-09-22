@@ -62,8 +62,8 @@ jobs:
           docker stop ubuntu-24-test
           docker rm ubuntu-24-test
 
-  smoke_test_centos_9:
-    name: Smoke test (CentOS Stream 9, x86_64)
+  smoke_test_centos_10:
+    name: Smoke test (CentOS Stream 10, x86_64)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -84,29 +84,29 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
 
-      - name: Pull CentOS Stream 9 image
-        run: docker pull quay.io/centos/centos:stream9
+      - name: Pull CentOS Stream 10 image
+        run: docker pull quay.io/centos/centos:stream10
 
-      - name: Create and Start CentOS stream9 Container
+      - name: Create and Start CentOS stream10 Container
         run: |
-          docker run -d --name centos-stream9-test -v ${{ github.workspace }}/artifacts:/artifacts -v ${{ github.workspace }}/scripts:/scripts quay.io/centos/centos:stream9 tail -f /dev/null
+          docker run -d --name centos-stream10-test -v ${{ github.workspace }}/artifacts:/artifacts -v ${{ github.workspace }}/scripts:/scripts quay.io/centos/centos:stream10 tail -f /dev/null
 
       - name: Get runner/container info
         run: |
-          docker exec centos-stream9-test /scripts/linux_container_info.sh
+          docker exec centos-stream10-test /scripts/linux_container_info.sh
 
       - name: Install dependencies and setup environment
         run: |
-          docker exec centos-stream9-test /scripts/prepare_centos_container.sh
+          docker exec centos-stream10-test /scripts/prepare_centos_container.sh
 
       - name: Run smoke tests
         run: |
-          docker exec centos-stream9-test /scripts/smoke_test.sh
+          docker exec centos-stream10-test /scripts/smoke_test.sh
 
       - name: Stop and Remove Container
         run: |
-          docker stop centos-stream9-test
-          docker rm centos-stream9-test
+          docker stop centos-stream10-test
+          docker rm centos-stream10-test
 
   smoke_test_amazonlinux:
     name: Smoke test (Amazon Linux 2023, x86_64)
@@ -199,7 +199,7 @@ jobs:
     needs:
       [
         smoke_test_ubuntu_24,
-        smoke_test_centos_9,
+        smoke_test_centos_10,
         smoke_test_amazonlinux,
         smoke_test_linux_arm64,
       ]
@@ -209,7 +209,7 @@ jobs:
         run: |
           # Check if all jobs succeeded
           UBUNTU_24_RESULT="${{ needs.smoke_test_ubuntu_24.result }}"
-          CENTOS_9_RESULT="${{ needs.smoke_test_centos_9.result }}"
+          CENTOS_9_RESULT="${{ needs.smoke_test_centos_10.result }}"
           AMAZONLINUX_RESULT="${{ needs.smoke_test_amazonlinux.result }}"
           ARM64_RESULT="${{ needs.smoke_test_linux_arm64.result }}"
 
