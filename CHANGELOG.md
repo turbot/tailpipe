@@ -11,6 +11,8 @@
     occur if progress output is disabled (`--progress=false`) or when using machine-readable output (`json`, `line`,
     `csv`).
 
+  **Note:** For CentOS/RHEL users, the minimum supported version is now **CentOS Stream 10 / RHEL 10** due to `libstdc++` library compatibility.
+
 * The `connect` command now returns the path to an **initialisation SQL script** instead of the database path. ([#550](https://github.com/turbot/tailpipe/issues/550))
   - The script sets up DuckDB with required extensions, attaches the Tailpipe database, and defines views with optional
     filters.
@@ -19,7 +21,7 @@
     ```sh
     duckdb --init $(tailpipe connect)
     ```
-    **Note:** To ensure compatibility with DuckLake features, make sure you’re using DuckDB version 1.4.0 or later.
+    **Note:** The minimum supported DuckDB version is 1.4.0.
 
 ### _Bug Fixes_
 * Include partitions for local plugins in the `tailpipe plugin list` command. ([#538](https://github.com/turbot/tailpipe/issues/538))
