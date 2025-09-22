@@ -18,7 +18,8 @@
     example:
     ```sh
     duckdb --init $(tailpipe connect)
-    ```  
+    ```
+    **Note:** To ensure compatibility with DuckLake features, make sure you’re using DuckDB version 1.4.0 or later.
 
 ### _Bug Fixes_
 * Include partitions for local plugins in the `tailpipe plugin list` command. ([#538](https://github.com/turbot/tailpipe/issues/538))
