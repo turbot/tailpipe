@@ -1,26 +1,6 @@
 version: 2
 
 builds:
-  - id: tailpipe-linux-arm64
-    binary: tailpipe
-    goos:
-      - linux
-    goarch:
-      - arm64
-
-    env:
-      - CC=aarch64-linux-gnu-gcc
-      - CXX=aarch64-linux-gnu-g++
-
-    # Custom ldflags.
-    #
-    # Default: '-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser'
-    # Templates: allowed
-    ldflags:
-      # Go Releaser analyzes your Git repository and identifies the most recent Git tag (typically the highest version number) as the version for your release.
-      # This is how it determines the value of {{.Version}}.
-      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
-
   - id: tailpipe-linux-amd64
     binary: tailpipe
     goos:
@@ -31,9 +11,33 @@ builds:
     env:
       - CC=x86_64-linux-gnu-gcc
       - CXX=x86_64-linux-gnu-g++
+      - CGO_ENABLED=1
+      - GOFLAGS=
+      - CGO_LDFLAGS=
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+    tags: []
+
+  - id: tailpipe-linux-arm64
+    binary: tailpipe
+    goos:
+      - linux
+    goarch:
+      - arm64
+
+    env:
+      - CC=gcc
+      - CXX=g++
+      - CGO_ENABLED=1
+      - GOFLAGS=
+      - CGO_LDFLAGS=
+
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+    tags: []
 
   - id: tailpipe-darwin-arm64
     binary: tailpipe

@@ -1,6 +1,6 @@
 OUTPUT_DIR?=/usr/local/bin
 PACKAGE_NAME          := github.com/turbot/tailpipe
-GOLANG_CROSS_VERSION  ?= gcc13-osxcross-20250912194615
+GOLANG_CROSS_VERSION  ?= gcc13-osxcross-20251003164010
 
 # sed 's/[\/_]/-/g': Replaces both slashes (/) and underscores (_) with hyphens (-).
 # sed 's/[^a-zA-Z0-9.-]//g': Removes any character that isn’t alphanumeric, a dot (.), or a hyphen (-).
