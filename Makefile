@@ -1,6 +1,6 @@
 OUTPUT_DIR?=/usr/local/bin
 PACKAGE_NAME          := github.com/turbot/tailpipe
-GOLANG_CROSS_VERSION  ?= gcc13-osxcross-20251003164010
+GOLANG_CROSS_VERSION  ?= gcc13-osxcross-20251006091953
 
 # sed 's/[\/_]/-/g': Replaces both slashes (/) and underscores (_) with hyphens (-).
 # sed 's/[^a-zA-Z0-9.-]//g': Removes any character that isn’t alphanumeric, a dot (.), or a hyphen (-).
@@ -52,7 +52,6 @@ release:
 		-e CGO_ENABLED=1 \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v $(shell which docker):/usr/bin/docker:ro \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
