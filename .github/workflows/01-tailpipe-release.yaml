@@ -110,6 +110,11 @@ jobs:
           token: ${{ secrets.GH_ACCESS_TOKEN }}
           ref: main
 
+      - name: Enable QEMU (run arm64 image on amd64 host)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
       - name: Set up Docker
         uses: docker/setup-buildx-action@v3
 

@@ -48,6 +48,7 @@ release:
 	fi
 	docker run \
 		--rm \
+		--platform=linux/arm64 \
 		-e CGO_ENABLED=1 \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \
