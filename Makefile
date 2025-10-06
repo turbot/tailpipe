@@ -32,7 +32,7 @@ release-acceptance:
 		--rm \
 		--platform=linux/arm64 \
 		-e CGO_ENABLED=1 \
-		-e DOCKER=/usr/local/bin/docker \
+		-e DOCKER=/usr/bin/docker \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
@@ -52,7 +52,7 @@ release:
 		--rm \
 		--platform=linux/arm64 \
 		-e CGO_ENABLED=1 \
-		-e DOCKER=/usr/local/bin/docker \
+		-e DOCKER=/usr/bin/docker \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \
 		-v `pwd`:/go/src/tailpipe \
