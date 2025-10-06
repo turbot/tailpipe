@@ -154,12 +154,6 @@ jobs:
           cd tailpipe
           echo 'GITHUB_TOKEN=${{secrets.GH_ACCESS_TOKEN}}' > .release-env
 
-      - name: Verify the pulled image actually contain the docker CLI
-        run: |
-          docker run --rm --platform=linux/arm64 --entrypoint sh \
-          ghcr.io/turbot/goreleaser-cross:gcc13-osxcross-20251006102018 \
-          -lc 'ls -l /usr/bin/docker /usr/local/bin/docker; which docker; echo $PATH'
-
       - name: Release publish
         run: |-
           cd tailpipe
