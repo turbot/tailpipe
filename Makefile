@@ -32,7 +32,6 @@ release-acceptance:
 		--rm \
 		-e CGO_ENABLED=1 \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v /usr/bin/docker:/usr/bin/docker:ro \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
@@ -52,7 +51,6 @@ release:
 		-e CGO_ENABLED=1 \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v /usr/bin/docker:/usr/bin/docker:ro \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
