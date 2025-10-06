@@ -110,6 +110,9 @@ jobs:
           token: ${{ secrets.GH_ACCESS_TOKEN }}
           ref: main
 
+      - name: Set up Docker
+        uses: docker/setup-buildx
+
       - name: Calculate version
         id: calculate_version
         run: |
