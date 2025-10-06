@@ -52,11 +52,11 @@ release:
 		-e CGO_ENABLED=1 \
 		--env-file .release-env \
 		-v /var/run/docker.sock:/var/run/docker.sock \
-		-v /usr/bin/docker:/usr/bin/docker:ro \
 		-v `pwd`:/go/src/tailpipe \
 		-v `pwd`/../pipe-fittings:/go/src/pipe-fittings \
 		-v `pwd`/../tailpipe-plugin-sdk:/go/src/tailpipe-plugin-sdk \
 		-v `pwd`/../tailpipe-plugin-core:/go/src/tailpipe-plugin-core \
+		-v "$(command -v docker)":/usr/bin/docker:ro \
 		-w /go/src/tailpipe \
 		ghcr.io/turbot/goreleaser-cross:${GOLANG_CROSS_VERSION} \
 		release --clean --skip=validate
