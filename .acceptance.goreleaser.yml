@@ -12,9 +12,14 @@ builds:
     env:
       - CC=x86_64-linux-gnu-gcc
       - CXX=x86_64-linux-gnu-g++
+      - CGO_ENABLED=1
+      - GOFLAGS=
+      - CGO_LDFLAGS=
 
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.date={{.Date}} -X main.commit={{.Commit}} -X main.builtBy=goreleaser
+
+    tags: []
 
 archives:
   - id: homebrew
