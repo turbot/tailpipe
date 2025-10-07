@@ -67,7 +67,7 @@ jobs:
   build_and_release:
     name: Build and Release Tailpipe
     needs: [ensure_branch_in_homebrew]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: validate
         if: github.ref == 'refs/heads/develop'
@@ -109,6 +109,20 @@ jobs:
           path: tailpipe-plugin-core
           token: ${{ secrets.GH_ACCESS_TOKEN }}
           ref: main
+
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Docker (if needed)
+        run: |
+          if ! command -v docker &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y docker.io
+          fi
+
+      - name: Verify Docker installation
+        run: |
+          docker --version
 
       - name: Calculate version
         id: calculate_version
