@@ -1,3 +1,7 @@
+## v0.7.1 [2025-10-07]
+_Bug Fixes_
+- Build: Restored CentOS/RHEL 9 compatibility by pinning the build image to an older libstdc++/GCC baseline. Previous build linked against newer GLIBCXX symbols, causing Tailpipe to fail on CentOS/RHEL 9.
+
 ## v0.7.0 [2025-09-22]
 
 ### _Major Changes_
