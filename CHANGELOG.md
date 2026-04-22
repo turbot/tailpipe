@@ -1,3 +1,10 @@
+## v0.7.3 [2026-04-22]
+_Bug fixes_
+* Fix `tailpipe plugin install` failing with an opaque `403 Forbidden` when stale GHCR credentials are present in `~/.docker/config.json` (e.g. from a prior `docker login`). Now retries the OCI pull anonymously when stored credentials are rejected. ([pipe-fittings#792](https://github.com/turbot/pipe-fittings/pull/792))
+
+_Dependencies_
+* Bump `pipe-fittings/v2` from v2.7.0 to v2.9.1.
+
 ## v0.7.2 [2025-12-15]
 _Dependencies_
 * Upgrade `containerd` and `crypto` packages to remediate high and moderate vulnerabilities.
