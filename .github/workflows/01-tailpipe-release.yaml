@@ -21,6 +21,9 @@ on:
         required: true
         type: boolean
 
+permissions:
+  contents: write
+
 env:
   TAILPIPE_UPDATE_CHECK: false
   GH_TOKEN: ${{ secrets.GH_ACCESS_TOKEN }}
