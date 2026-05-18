@@ -1,73 +1,87 @@
+version: "2"
 linters:
-  disable-all: true
+  default: none
   enable:
-    # default rules
-    - errcheck
-    - gosimple
-    - govet
-    - ineffassign
-    - staticcheck
-    - typecheck
-    - unused
-    # other rules
     - asasalint
     - asciicheck
     - bidichk
     - depguard
     - durationcheck
+    - errcheck
     - forbidigo
-    - gocritic
     - gocheckcompilerdirectives
+    - gocritic
     - gosec
+    - govet
+    - ineffassign
     - makezero
     - nilerr
     - nolintlint
     - reassign
     - sqlclosecheck
+    - staticcheck
     - unconvert
-
-linters-settings:
-  nolintlint:
-    require-explanation: true
-    require-specific: true
-
-  forbidigo:
-    forbid:
-      - "^(fmt\\.Print(|f|ln)|print|println)$"
-      - "^(fmt\\.Fprint(|f|ln)|print|println)$"
-      - '^zap\.Error$'
-      - '^grpc\.(Header|Trailer)$' # easy to misuse and create a data race
-
-  gocritic:
-    disabled-checks:
-      - ifElseChain       # style
-      - singleCaseSwitch  # style & it's actually not a bad idea to use single case switch in some cases
-      - assignOp          # style
-      - commentFormatting # style
-
-  depguard:
+    - unused
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: go.uber.org/zap
+              desc: do not use Uber zap directly, use the fplog package instead
+            - pkg: github.com/pkg/errors
+              desc: Should be replaced by standard lib errors package
+    forbidigo:
+      forbid:
+        - pattern: ^(fmt\.Print(|f|ln)|print|println)$
+        - pattern: ^(fmt\.Fprint(|f|ln)|print|println)$
+        - pattern: ^zap\.Error$
+        - pattern: ^grpc\.(Header|Trailer)$
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+        - assignOp
+        - commentFormatting
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    staticcheck:
+      checks:
+        - "all"
+        - "-ST*"    # stylecheck: not previously enabled (merged into staticcheck in v2)
+        - "-QF*"    # quickfix suggestions: not previously enabled (merged into staticcheck in v2)
+    gosec:
+      excludes:
+        - G101      # false positives on non-credential string constants
+        - G118      # added in golangci-lint v2.11 gosec ruleset; not enforced by the previously pinned version
+        - G122      # added in golangci-lint v2.11 gosec ruleset; not enforced by the previously pinned version
+        - G602      # false positives on range loops and safe slice access
+        - G706      # false positives on logging config/environment values
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      # Name of a rule.
-      main:
-        # List of file globs that will match this list of settings to compare against.
-        # Default: $all
-        # files:
-        #   - "!**/*_a _file.go"
-        # List of allowed packages.
-        # allow:
-        #   - $gostd
-        #   - github.com/OpenPeeDeeP
-        # Packages that are not allowed where the value is a suggestion.
-        deny:
-          - pkg: "go.uber.org/zap"
-            desc: do not use Uber zap directly, use the fplog package instead
-          - pkg: "github.com/pkg/errors"
-            desc: Should be replaced by standard lib errors package
-
-run:
-  timeout: 5m
-
-issues:
-  exclude-dirs:
-    - "tests/acceptance"
-    - "test_apps"
+      # The newer gosec ruleset no longer flags some conversions an
+      # existing //nolint:gosec directive suppressed, so nolintlint sees
+      # the directive as unused. Keep the source directive (other gosec
+      # versions still need it) and ignore the unused-directive report.
+      - linters: [nolintlint]
+        text: 'unused for linter "gosec"'
+    paths:
+      - tests/acceptance
+      - test_apps
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
