@@ -53,10 +53,8 @@ linters:
         - "-QF*"    # quickfix suggestions: not previously enabled (merged into staticcheck in v2)
     gosec:
       excludes:
-        - G101      # false positives on non-credential string constants
         - G118      # added in golangci-lint v2.11 gosec ruleset; not enforced by the previously pinned version
         - G122      # added in golangci-lint v2.11 gosec ruleset; not enforced by the previously pinned version
-        - G602      # false positives on range loops and safe slice access
         - G706      # false positives on logging config/environment values
   exclusions:
     generated: lax
