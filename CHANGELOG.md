@@ -1,3 +1,8 @@
+## v0.7.4 [2026-05-19]
+_Dependencies_
+* Bump `github.com/jackc/pgx/v5` to v5.9.2 to remediate CVE-2026-41889 ([GHSA-j88v-2chj-qfwx](https://github.com/advisories/GHSA-j88v-2chj-qfwx)).
+* Update Go to 1.26.1.
+
 ## v0.7.3 [2026-04-22]
 _Bug fixes_
 * Fix `tailpipe plugin install` failing with an opaque `403 Forbidden` when stale GHCR credentials are present in `~/.docker/config.json` (e.g. from a prior `docker login`). Now retries the OCI pull anonymously when stored credentials are rejected. ([pipe-fittings#792](https://github.com/turbot/pipe-fittings/pull/792))
