@@ -43,6 +43,9 @@ linters:
         - singleCaseSwitch
         - assignOp
         - commentFormatting
+    govet:
+      disable:
+        - inline      # false positives under golangci-lint v2.12.2 (e.g. "cannot inline: type parameter inference")
     nolintlint:
       require-explanation: true
       require-specific: true
