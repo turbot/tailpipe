@@ -1,3 +1,17 @@
+## v0.7.4 [2026-05-19]
+_Dependencies_
+* Bump `pgx/v5` from v5.6.0 to v5.9.2 to remediate CVE-2026-41889.
+* Bump Go from 1.24.0 to 1.26.1.
+* Bump `go-jose/go-jose/v4` from v4.1.3 to v4.1.4.
+* Bump `go.opentelemetry.io/otel/sdk` (and `otel`, `otel/metric`, `otel/sdk/metric`, `otel/trace`) from v1.40.0 to v1.43.0.
+
+## v0.7.3 [2026-04-22]
+_Bug fixes_
+* Fix `tailpipe plugin install` failing with an opaque `403 Forbidden` when stale GHCR credentials are present in `~/.docker/config.json` (e.g. from a prior `docker login`). Now retries the OCI pull anonymously when stored credentials are rejected. ([pipe-fittings#792](https://github.com/turbot/pipe-fittings/pull/792))
+
+_Dependencies_
+* Bump `pipe-fittings/v2` from v2.7.0 to v2.9.1.
+
 ## v0.7.2 [2025-12-15]
 _Dependencies_
 * Upgrade `containerd` and `crypto` packages to remediate high and moderate vulnerabilities.
