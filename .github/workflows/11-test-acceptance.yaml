@@ -9,6 +9,9 @@ on:
   workflow_dispatch:
   pull_request:
 
+permissions:
+  contents: read
+
 env:
   TAILPIPE_UPDATE_CHECK: false
   SPIPETOOLS_TOKEN: ${{ secrets.SPIPETOOLS_TOKEN }}
