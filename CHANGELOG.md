@@ -1,3 +1,7 @@
+## v0.7.5 [2026-10-22]
+_Dependencies_
+* Bump Go from 1.26.1 to 1.26.10, which rejects certificate chains through the compromised eMudhra intermediate CAs ([golang/go#82345](https://github.com/golang/go/issues/82345)).
+
 ## v0.7.4 [2026-05-19]
 _Dependencies_
 * Bump `pgx/v5` from v5.6.0 to v5.9.2 to remediate CVE-2026-41889.
