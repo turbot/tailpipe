@@ -1,3 +1,12 @@
+## v0.7.6 [2026-11-01]
+_Dependencies_
+* Bump `github.com/klauspost/compress` from v1.18.0 to v1.18.7 to remediate CVE-2026-63209.
+* Bump `github.com/go-jose/go-jose/v4` from v4.1.4 to v4.1.6 to remediate CVE-2026-116587.
+
+## v0.7.5 [2026-10-22]
+_Dependencies_
+* Bump Go from 1.26.1 to 1.26.10, which rejects certificate chains through the compromised eMudhra intermediate CAs ([golang/go#82345](https://github.com/golang/go/issues/82345)).
+
 ## v0.7.4 [2026-05-19]
 _Dependencies_
 * Bump `pgx/v5` from v5.6.0 to v5.9.2 to remediate CVE-2026-41889.
