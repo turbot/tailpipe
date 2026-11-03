@@ -1,0 +1,47 @@
+# What a change to tailpipe must run and show before an agent's PR counts as done.
+#
+# Left out on purpose:
+# - The acceptance suite: tests/acceptance/run-local.sh runs whichever `tailpipe` is on PATH,
+#   not this checkout, and installs plugins from the public registry. CI runs it against the
+#   build it makes.
+# Note: `go test ./...` leaves untracked plugins/ folders under internal/parse/test_data.
+
+ci_is_proof: false
+
+never_run:
+  # Releases and published artifacts
+  - gh workflow run
+  - gh release
+  - git tag
+  - goreleaser
+  - docker push
+  - make release*
+  # Installs into /usr/local/bin, outside the checkout
+  - make build
+  - scripts/install.sh
+  # Changes the machine it runs on, or installs from the live site
+  - scripts/prepare_*
+  - scripts/smoke_test.sh
+
+checks:
+  build: {run: "go build ./...", cost: 1}
+  unit: {run: "go test -count=1 ./...", cost: 1}
+  lint:
+    run: 'd=$(mktemp -d) && GOBIN="$d" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0 && "$d/golangci-lint" run --timeout=10m'
+    cost: 1
+
+kinds:
+  go:
+    paths: ["**/*.go", "go.mod", "go.sum", "cmd/**", "internal/**", ".golangci.yml"]
+    checks: [build, unit, lint]
+    show: [test]
+  acceptance:
+    paths: ["tests/**"]
+    checks: [build]
+    show: [test]
+  workflows:
+    paths: [".github/**", ".goreleaser.yml", ".acceptance.goreleaser.yml", "Makefile", "scripts/**", ".gitignore", ".gitmodules"]
+    show: [none]
+  docs:
+    paths: ["**/*.md", ".claude/**", ".cursor/**", ".cursor.bak/**", "LICENSE"]
+    show: [none]
