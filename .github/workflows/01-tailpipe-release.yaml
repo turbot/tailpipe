@@ -297,7 +297,7 @@ jobs:
         run: |
           git fetch --all
           gh pr merge $VERSION --squash --delete-branch
-          git push origin --delete bump-brew
+          git push origin --delete tailpipe-brew
 
   trigger_smoke_tests:
     name: Trigger smoke tests
