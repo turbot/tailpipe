@@ -43,5 +43,5 @@ kinds:
     paths: [".github/**", ".goreleaser.yml", ".acceptance.goreleaser.yml", "Makefile", "scripts/**", ".gitignore", ".gitmodules"]
     show: [none]
   docs:
-    paths: ["**/*.md", ".claude/**", ".cursor/**", ".cursor.bak/**", "LICENSE"]
+    paths: ["**/*.md", ".claude/**", ".cursor/**", ".cursor.bak", "LICENSE"]
     show: [none]
