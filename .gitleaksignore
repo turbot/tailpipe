@@ -1,0 +1,12 @@
+# Gitleaks allowlist, in the file:rule:line form the secret scan reads.
+#
+# Each entry covers one file, rule and line, in any commit: a new finding of the same rule at
+# that line of a file still in the tree would not be reported. The entries are for history the
+# scan reads.
+#
+# AWS credential (access key ending X5FT, with its secret key and session token) committed in
+# cmd/collect.go in f5641a65174c on 2024-08-01 and removed from it in 8fcc445. It is an ASIA
+# temporary STS credential, which expires within 36 hours at most, so it has been invalid since
+# August 2024. Confirmed dead on 2026-11-11; no call was made with it.
+cmd/collect.go:aws-access-token:59
+cmd/collect.go:generic-api-key:60
