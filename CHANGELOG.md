@@ -1,3 +1,13 @@
+## v0.7.7 [2026-11-13]
+_Dependencies_
+* Bump `github.com/containerd/containerd` from v1.7.29 to v1.7.36.
+* Bump `github.com/go-git/go-git/v5` from v5.16.5 to v5.19.2.
+* Bump `github.com/hashicorp/go-getter` from v1.7.9 to v1.8.6.
+* Bump `google.golang.org/grpc` from v1.79.3 to v1.83.2.
+* Bump `golang.org/x/crypto` from v0.46.0 to v0.55.0 and `golang.org/x/net` from v0.48.0 to v0.58.0.
+* Bump `go.opentelemetry.io/otel/sdk` from v1.43.0 to v1.45.0.
+* Bump `oras.land/oras-go/v2` from v2.5.0 to v2.6.2.
+
 ## v0.7.6 [2026-11-01]
 _Dependencies_
 * Bump `github.com/klauspost/compress` from v1.18.0 to v1.18.7 to remediate CVE-2026-63209.
