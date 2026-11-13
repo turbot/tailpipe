@@ -1,0 +1,19 @@
+{
+  "warm": "git submodule update --init --recursive && go mod download",
+  "warmProbe": "tests/acceptance/lib/bats",
+  "platforms": ["darwin", "linux"],
+  "tools": ["go"],
+  "secrets": {},
+  "chores": {
+    "security-audit": {
+      "when": "mon week 3",
+      "areas": [
+        "plugin installs from the OCI registry (internal/ociinstaller, internal/plugin)",
+        "collection: reading sources and writing partitions to disk (internal/collector)",
+        "DuckDB access and queries run against collected data (internal/database, internal/query)",
+        "config parsing, including connections and credentials (internal/parse, internal/config)",
+        "database migrations on upgrade (internal/migration)"
+      ]
+    }
+  }
+}

@@ -1,3 +1,22 @@
+## v0.7.7 [2026-11-13]
+_Dependencies_
+* Bump `github.com/containerd/containerd` from v1.7.29 to v1.7.36.
+* Bump `github.com/go-git/go-git/v5` from v5.16.5 to v5.19.2.
+* Bump `github.com/hashicorp/go-getter` from v1.7.9 to v1.8.6.
+* Bump `google.golang.org/grpc` from v1.79.3 to v1.83.2.
+* Bump `golang.org/x/crypto` from v0.46.0 to v0.55.0 and `golang.org/x/net` from v0.48.0 to v0.58.0.
+* Bump `go.opentelemetry.io/otel/sdk` from v1.43.0 to v1.45.0.
+* Bump `oras.land/oras-go/v2` from v2.5.0 to v2.6.2.
+
+## v0.7.6 [2026-11-01]
+_Dependencies_
+* Bump `github.com/klauspost/compress` from v1.18.0 to v1.18.7 to remediate CVE-2026-63209.
+* Bump `github.com/go-jose/go-jose/v4` from v4.1.4 to v4.1.6 to remediate CVE-2026-116587.
+
+## v0.7.5 [2026-10-22]
+_Dependencies_
+* Bump Go from 1.26.1 to 1.26.10, which rejects certificate chains through the compromised eMudhra intermediate CAs ([golang/go#82345](https://github.com/golang/go/issues/82345)).
+
 ## v0.7.4 [2026-05-19]
 _Dependencies_
 * Bump `pgx/v5` from v5.6.0 to v5.9.2 to remediate CVE-2026-41889.
