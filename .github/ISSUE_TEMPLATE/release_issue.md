@@ -13,20 +13,16 @@ labels: release
 
 ### Pre-release checks
 
-- [ ] All PR acceptance test pass in `tailpipe`
+- [ ] The release PR's page shows its checks passed and what changes
 - [ ] Update check is working
-- [ ] Tailpipe Changelog updated and reviewed
 
 ### Release Tailpipe
 
-- [ ] Merge the release PR
-- [ ] Trigger the `01 - Tailpipe: Release` workflow. This will create the release build.
+- [ ] A pipelings release approver approves the release PR and merges it. The merge builds, tags, publishes the GitHub Release with its notes, updates Homebrew, starts the Linux distro test and merges `main` back into `develop`.
 
 ### Post-release checks
 
-- [ ] Update Changelog in the Release page (copy and paste from CHANGELOG.md)
 - [ ] Test Linux install script
 - [ ] Test Homebrew install
-- [ ] Release branch merged to `develop`
 - [ ] Raise Changelog update to `tailpipe.io`, get it reviewed.
 - [ ] Merge Changelog update to `tailpipe.io`.
