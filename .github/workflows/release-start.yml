@@ -15,7 +15,7 @@ jobs:
     if: ${{ github.event.schedule == '0 9 * * 2' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop') }}
     permissions:
       contents: read        # check out this repository with the workflow's own token
-      pull-requests: write  # list the open pull requests, and let the called workflow's remind job comment on one
+      pull-requests: read   # list the open pull requests and read a release:now one
       checks: read          # read the full check on a commit: its check runs
       statuses: read        # ... and its commit statuses
       issues: write         # file the prep job here

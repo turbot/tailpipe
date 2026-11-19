@@ -22,7 +22,6 @@ jobs:
       runner: ubuntu-24.04-arm
       platform: linux/arm64
       build-image: ghcr.io/turbot/goreleaser-cross:gcc13-osxcross-20251006102018
-      siblings: turbot/pipe-fittings@develop, turbot/tailpipe-plugin-sdk@develop, turbot/tailpipe-plugin-core@main
   tag:
     needs: ship
     if: ${{ always() }}
@@ -60,3 +59,19 @@ jobs:
       archive: '{name}.{os}.{arch}.tar.gz'
     secrets:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+  # The install test on four Linux distros (Ubuntu, CentOS, Amazon Linux, arm64), against the published Release, with its
+  # result in Slack, as every release has run it. A dispatch by the job's token is allowed to start a run.
+  distros:
+    needs: [ship, tag]
+    if: ${{ !cancelled() && needs.tag.result == 'success' && needs.ship.outputs.release == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write        # start the distro test
+    steps:
+      - name: Start the post-release distro test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.ship.outputs.tag }}
+        run: gh workflow run 12-test-post-release-linux-distros.yaml --repo "$GITHUB_REPOSITORY" --ref develop -f version="$TAG"
