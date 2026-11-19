@@ -18,11 +18,10 @@ labels: release
 
 ### Release Tailpipe
 
-- [ ] A pipelings release approver approves the release PR and merges it. The merge builds, tags, publishes the GitHub Release with its notes, updates Homebrew, starts the Linux distro test and merges `main` back into `develop`.
+- [ ] A pipelings release approver approves the release PR and merges it. The merge builds, tags, publishes the GitHub Release with its notes, updates Homebrew, writes the changelog page on tailpipe.io, starts the Linux distro test and merges `main` back into `develop`.
 
 ### Post-release checks
 
 - [ ] Test Linux install script
 - [ ] Test Homebrew install
-- [ ] Raise Changelog update to `tailpipe.io`, get it reviewed.
-- [ ] Merge Changelog update to `tailpipe.io`.
+- [ ] Check the changelog page is live on tailpipe.io
