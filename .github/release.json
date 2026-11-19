@@ -1,0 +1,25 @@
+{
+  "product": "Tailpipe",
+  "notShipped": [
+    ".claude/",
+    ".cursor/",
+    ".cursor.bak",
+    ".github/",
+    "tests/",
+    "**/*_test.go",
+    ".acceptance.goreleaser.yml",
+    ".golangci.yml",
+    ".gitignore",
+    ".gitleaksignore",
+    ".gitmodules",
+    "README.md",
+    "scripts/linux_container_info.sh",
+    "scripts/prepare_*.sh",
+    "scripts/smoke_test.sh"
+  ],
+  "start": {
+    "branches": [{ "name": "develop", "cadence": "weekly" }],
+    "tagPrefix": "v",
+    "approvers": ["turbot/pipelings-release-approvers"]
+  }
+}

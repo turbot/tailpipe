@@ -1,0 +1,50 @@
+# Cuts a Tailpipe release and opens its PR: the cut, then the PR (no bot opens release PRs for this repo).
+# Run by hand on develop, naming the commit the prep job read and its prep file.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: The full commit id the prep job read
+        required: true
+      prep-run:
+        description: The run id of the prep job (its artifact `prep` holds prep.json)
+        required: false
+      prep-file:
+        description: Or a path in this repo to a prep file, read on this branch
+        required: false
+      reship:
+        description: A re-ship of a version whose release PR merged and whose ship run failed (X.Y.Z). Give no prep-run or prep-file
+        required: false
+      fixes:
+        description: Only with reship. The merge commits on develop of the fixes it takes, space-separated
+        required: false
+
+permissions: {}
+
+jobs:
+  cut:
+    if: github.ref == 'refs/heads/develop'
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: read
+      id-token: write
+    uses: turbot/shipyard-workflows/.github/workflows/cut.yml@v0
+    with:
+      commit: ${{ inputs.commit }}
+      prep-run: ${{ inputs.prep-run }}
+      prep-file: ${{ inputs.prep-file }}
+      reship: ${{ inputs.reship }}
+      fixes: ${{ inputs.fixes }}
+  open:
+    needs: cut
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: write
+      id-token: write
+    uses: turbot/shipyard-workflows/.github/workflows/open-release-pr.yml@v0
+    with:
+      record-workflow: release-pr.yml

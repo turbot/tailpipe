@@ -1,0 +1,62 @@
+# Ships a Tailpipe release on the merge of its release PR: builds it, publishes the files with the tag, then writes the Homebrew
+# formula. Each job waits for the one before, so the formula never points at files that are not on the Release yet.
+name: Ship
+
+on:
+  push:
+    branches: [main, 'main-*']
+
+permissions: {}
+
+jobs:
+  ship:
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    uses: turbot/shipyard-workflows/.github/workflows/go-cli-ship.yml@v0
+    with:
+      automation-logins: github-actions[bot]
+      goreleaser-config: .goreleaser.yml
+      # Its linux-arm64 CGO binary links only on an arm machine, as its own release runs today.
+      runner: ubuntu-24.04-arm
+      platform: linux/arm64
+      build-image: ghcr.io/turbot/goreleaser-cross:gcc13-osxcross-20251006102018
+      siblings: turbot/pipe-fittings@develop, turbot/tailpipe-plugin-sdk@develop, turbot/tailpipe-plugin-core@main
+  tag:
+    needs: ship
+    if: ${{ always() }}
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
+      id-token: write
+    uses: turbot/shipyard-workflows/.github/workflows/tag.yml@v0
+    with:
+      ship-result: ${{ needs.ship.result }}
+      automation-logins: github-actions[bot]
+      product: Tailpipe
+      assets: release-assets
+    secrets:
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+  homebrew:
+    # After the tag job has finished, pass or fail: a merge-back that needs a person must not hold the formula back, and the job
+    # refuses by itself when the Release is not published. Never for a build that failed or a push that is no release.
+    needs: [ship, tag]
+    if: ${{ !cancelled() && needs.ship.result == 'success' && needs.ship.outputs.release == 'true' }}
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    uses: turbot/shipyard-workflows/.github/workflows/homebrew.yml@v0
+    with:
+      automation-logins: github-actions[bot]
+      tap: turbot/homebrew-tap
+      formula: tailpipe
+      versioned: true
+      desc: Open source SIEM for instant log insights, powered by DuckDB. Analyze millions of events in seconds, right from your terminal.
+      homepage: https://tailpipe.io/
+      license: AGPL-3.0
+      archive: '{name}.{os}.{arch}.tar.gz'
+    secrets:
+      RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
