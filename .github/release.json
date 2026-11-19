@@ -21,5 +21,17 @@
     "branches": [{ "name": "develop", "cadence": "weekly" }],
     "tagPrefix": "v",
     "approvers": ["turbot/pipelings-release-approvers"]
+  },
+  "announce": {
+    "page": {
+      "repo": "turbot/tailpipe.io",
+      "path": "content/changelog/tailpipe-v{version}.md",
+      "frontMatter": {
+        "title": "{title}",
+        "publishedAt": "{date}",
+        "permalink": "tailpipe-cli-v{dashed}",
+        "tags": "cli"
+      }
+    }
   }
 }
