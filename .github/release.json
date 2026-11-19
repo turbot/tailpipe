@@ -22,6 +22,7 @@
     "tagPrefix": "v",
     "approvers": ["turbot/pipelings-release-approvers"]
   },
+  "ask": { "channel": "#tailpipe" },
   "announce": {
     "page": {
       "repo": "turbot/tailpipe.io",
