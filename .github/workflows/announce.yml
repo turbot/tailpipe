@@ -13,9 +13,10 @@
 #   Ship's tag job (the Pipelings release App) pushes vX.Y.Z ──► this run
 #
 # A tag that the App pushes starts this workflow by itself. A tag pushed with a
-# job's own token would start nothing. The filter `v*.*.*` takes release tags
-# only, and Shipyard skips any tag that is not a release tag. To run it again, use "Run workflow" with the tag: each step
-# reads what an earlier run did, so a second run does only what is left.
+# job's own token would start nothing. The filter `v*.*.*` takes any tag shaped
+# like a version (v0.7.1-rc.0 too), and Shipyard skips any tag that is not a
+# release tag. To run it again, use "Run workflow" with the tag: each step reads
+# what an earlier run did, so a second run does only what is left.
 #
 # The Slack token is the org secret SHIPYARD_SLACK_BOT_TOKEN, shared by the
 # repos on Shipyard and visible only to the repos on its list. tailpipe keeps no
@@ -26,12 +27,11 @@
 # It needs no environment: Shipyard's announce job names none, so the secret of
 # an environment would never reach it.
 #
-# A failure never fails the release: the tag exists before this starts. An
-# output that fails (the #releases line or the "Live in" comments) files a Bug
-# in this repo, and the run stays green; a later run that works closes the Bug.
-# A failed read of the release files a Bug too. A run goes red and files no
-# Bug only when it cannot run at all: a missing Slack token, a tag that is no
-# release, a bad input, or a Bug it could not file.
+# A failure never fails the release: the tag exists before this starts. If the
+# "Live in" comments fail, the run files a Bug in this repo and stays green; a
+# later run that works closes the Bug. A failed read of the release files a Bug
+# too. A run goes red and files no Bug only when it cannot run at all: a tag
+# that is no release, a bad input, or a Bug it could not file.
 #
 # The job grants what Shipyard's job asks for, and nothing more:
 #   contents read        the release notes and config at the merge commit
