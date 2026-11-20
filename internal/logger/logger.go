@@ -51,7 +51,7 @@ func logOutput() io.Writer {
 	}
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600) //nolint:gosec // path is set by the user, to a file they want written
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "could not open %s %q, logging to stderr: %s\n", tpconstants.EnvLogFile, path, err)
+		_, _ = os.Stderr.WriteString(fmt.Sprintf("could not open %s %q, logging to stderr: %s\n", tpconstants.EnvLogFile, path, err))
 		return os.Stderr
 	}
 	return f

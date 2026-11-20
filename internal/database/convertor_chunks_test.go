@@ -36,13 +36,13 @@ func TestConverter_LastChunkAddedWhileProcessorFinishing(t *testing.T) {
 
 		var wg sync.WaitGroup
 		start := make(chan struct{})
-		for a := 0; a < adders; a++ {
+		for a := int32(0); a < adders; a++ {
 			wg.Add(1)
-			go func(a int) {
+			go func(a int32) {
 				defer wg.Done()
 				<-start
-				for c := 0; c < perAdder; c++ {
-					if err := w.AddChunk("exec", int32(a*perAdder+c)); err != nil {
+				for c := int32(0); c < perAdder; c++ {
+					if err := w.AddChunk("exec", a*perAdder+c); err != nil {
 						t.Errorf("AddChunk failed: %v", err)
 					}
 				}
