@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/turbot/tailpipe/internal/config"
@@ -138,4 +141,69 @@ func Test_getSyntheticPartition_Logging(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testPartition(table, name string, unconfigured bool) *config.Partition {
+	p := &config.Partition{TableName: table, Unconfigured: unconfigured}
+	p.ShortName = name
+	p.UnqualifiedName = table + "." + name
+	return p
+}
+
+func Test_partitionNotFoundError(t *testing.T) {
+	unconfigured := map[string]*config.Partition{
+		"aws_cloudtrail_log.removed": testPartition("aws_cloudtrail_log", "removed", true),
+	}
+	load := func() (map[string]*config.Partition, error) { return unconfigured, nil }
+
+	t.Run("an unconfigured partition is said to be unconfigured", func(t *testing.T) {
+		err := partitionNotFoundError("aws_cloudtrail_log.removed", load)
+		if err == nil || !strings.Contains(err.Error(), "aws_cloudtrail_log.removed is not configured") {
+			t.Fatalf("expected a 'not configured' error, got: %v", err)
+		}
+		if strings.Contains(err.Error(), "not found") {
+			t.Errorf("error should not say the partition was not found: %v", err)
+		}
+	})
+	t.Run("an unknown partition is not found", func(t *testing.T) {
+		err := partitionNotFoundError("aws_cloudtrail_log.unknown", load)
+		if err == nil || err.Error() != "partition not found: aws_cloudtrail_log.unknown" {
+			t.Fatalf("expected a 'not found' error, got: %v", err)
+		}
+	})
+	t.Run("a database error falls back to not found", func(t *testing.T) {
+		err := partitionNotFoundError("aws_cloudtrail_log.removed", func() (map[string]*config.Partition, error) {
+			return nil, errors.New("database is locked")
+		})
+		if err == nil || err.Error() != "partition not found: aws_cloudtrail_log.removed" {
+			t.Fatalf("expected a 'not found' error, got: %v", err)
+		}
+	})
+}
+
+func Test_resolvePartitionArgs(t *testing.T) {
+	partitions := map[string]*config.Partition{
+		"aws_cloudtrail_log.kept":    testPartition("aws_cloudtrail_log", "kept", false),
+		"aws_cloudtrail_log.removed": testPartition("aws_cloudtrail_log", "removed", true),
+	}
+	notFound := func(arg string) error { return fmt.Errorf("nf: %s", arg) }
+
+	t.Run("an unconfigured partition can be resolved by name", func(t *testing.T) {
+		got, err := resolvePartitionArgs(partitions, []string{"aws_cloudtrail_log.removed"}, notFound)
+		if err != nil || len(got) != 1 || !got[0].Unconfigured {
+			t.Fatalf("expected the unconfigured partition, got %v, %v", got, err)
+		}
+	})
+	t.Run("a table arg resolves to configured and unconfigured partitions", func(t *testing.T) {
+		got, err := resolvePartitionArgs(partitions, []string{"aws_cloudtrail_log"}, notFound)
+		if err != nil || len(got) != 2 {
+			t.Fatalf("expected both partitions, got %v, %v", got, err)
+		}
+	})
+	t.Run("an arg matching nothing uses the not found error", func(t *testing.T) {
+		_, err := resolvePartitionArgs(partitions, []string{"aws_cloudtrail_log.nope"}, notFound)
+		if err == nil || err.Error() != "nf: aws_cloudtrail_log.nope" {
+			t.Fatalf("expected the not found error, got %v", err)
+		}
+	})
 }
