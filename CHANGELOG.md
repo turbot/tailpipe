@@ -1,3 +1,14 @@
+## [0.7.8] - 2026-11-20
+
+### Security
+
+- Bump `go.opentelemetry.io/otel/sdk` (and `otel`, `otel/metric`, `otel/sdk/metric`, `otel/trace`) from v1.45.0 to v1.47.0 to fix GHSA-q7gw-24fr-5p69 (CVE-2026-128085), and `golang.org/x/sys` from v0.47.0 to v0.48.0. (#656)
+- Bump Go from 1.26.10 to 1.26.11, `golang.org/x/net` from v0.58.0 to v0.60.0 and `github.com/klauspost/compress` from v1.18.7 to v1.20.2, to fix CVE-2026-97054, CVE-2026-97032, CVE-2026-78663, CVE-2026-78669, CVE-2026-78660, CVE-2026-78659 and CVE-2026-116591. (#661)
+
+### Internal
+
+- Each release now gets release notes on GitHub, and the same release updates Homebrew and the tailpipe.io changelog page. (#658)
+
 ## v0.7.7 [2026-11-13]
 _Dependencies_
 * Bump `github.com/containerd/containerd` from v1.7.29 to v1.7.36.
