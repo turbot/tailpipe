@@ -10,6 +10,7 @@ import (
 	pf "github.com/turbot/pipe-fittings/v2/filepaths"
 	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/constants"
 )
 
 // newTestDb returns an in-memory database which owns its extension and temp directories
@@ -66,15 +67,17 @@ func addFile(t *testing.T, db *DuckDb, fileID, tableID int, partition, index str
 	}
 }
 
-func configuredPartitions(names ...[2]string) map[string]*config.Partition {
-	res := make(map[string]*config.Partition)
-	for _, n := range names {
+// testConfig returns a config with the given plugin versions and the given configured (table, partition) pairs
+func testConfig(versions map[string]*versionfile.InstalledVersion, partitions ...[2]string) *config.TailpipeConfig {
+	cfg := config.NewTailpipeConfig()
+	cfg.PluginVersions = versions
+	for _, n := range partitions {
 		p := &config.Partition{TableName: n[0]}
 		p.ShortName = n[1]
 		p.UnqualifiedName = n[0] + "." + n[1]
-		res[p.UnqualifiedName] = p
+		cfg.Partitions[p.UnqualifiedName] = p
 	}
-	return res
+	return cfg
 }
 
 func TestGetUnconfiguredPartitions(t *testing.T) {
@@ -91,7 +94,7 @@ func TestGetUnconfiguredPartitions(t *testing.T) {
 		// a second file in the same partition must not repeat it
 		addFile(t, db, 3, 1, "removed", "default", nil)
 
-		got, err := GetUnconfiguredPartitions(ctx, db, configuredPartitions([2]string{"aws_cloudtrail_log", "kept"}), versions)
+		got, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions, [2]string{"aws_cloudtrail_log", "kept"}))
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 
@@ -111,7 +114,7 @@ func TestGetUnconfiguredPartitions(t *testing.T) {
 		addTable(t, db, 1, "aws_cloudtrail_log")
 		addFile(t, db, 1, 1, "kept", "default", nil)
 
-		got, err := GetUnconfiguredPartitions(ctx, db, configuredPartitions([2]string{"aws_cloudtrail_log", "kept"}), versions)
+		got, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions, [2]string{"aws_cloudtrail_log", "kept"}))
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
@@ -121,7 +124,7 @@ func TestGetUnconfiguredPartitions(t *testing.T) {
 		addTable(t, db, 1, "aws_cloudtrail_log")
 		addFile(t, db, 1, 1, "deleted", "default", 7)
 
-		got, err := GetUnconfiguredPartitions(ctx, db, nil, versions)
+		got, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions))
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
@@ -131,7 +134,7 @@ func TestGetUnconfiguredPartitions(t *testing.T) {
 		addTable(t, db, 1, "aws_cloudtrail_log")
 		addFile(t, db, 1, 1, "kept", "other_name", nil)
 
-		got, err := GetUnconfiguredPartitions(ctx, db, configuredPartitions([2]string{"aws_cloudtrail_log", "kept"}), versions)
+		got, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions, [2]string{"aws_cloudtrail_log", "kept"}))
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
@@ -143,15 +146,29 @@ func TestGetUnconfiguredPartitions(t *testing.T) {
 		addFile(t, db, 1, 1, "p1", "default", nil)
 		addFile(t, db, 2, 2, "p1", "default", nil)
 
-		got, err := GetUnconfiguredPartitions(ctx, db, configuredPartitions([2]string{"aws_cloudtrail_log", "p1"}), versions)
+		got, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions, [2]string{"aws_cloudtrail_log", "p1"}))
 		require.NoError(t, err)
 		require.Len(t, got, 1)
 		require.NotNil(t, got["gcp_audit_log.p1"])
 	})
 
+	t.Run("a partition of a custom table is a core plugin partition", func(t *testing.T) {
+		db := newMetadataTestDb(t)
+		addTable(t, db, 1, "my_logs")
+		addFile(t, db, 1, 1, "removed", "default", nil)
+
+		cfg := testConfig(versions)
+		cfg.CustomTables["my_logs"] = &config.Table{}
+		got, err := GetUnconfiguredPartitions(ctx, db, cfg)
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		require.Equal(t, constants.CorePluginInstallStream(), got["my_logs.removed"].Plugin.Alias)
+		require.NotNil(t, got["my_logs.removed"].CustomTable)
+	})
+
 	t.Run("no data at all", func(t *testing.T) {
 		db := newMetadataTestDb(t)
-		got, err := GetUnconfiguredPartitions(ctx, db, nil, versions)
+		got, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions))
 		require.NoError(t, err)
 		require.Empty(t, got)
 	})
@@ -160,7 +177,7 @@ func TestGetUnconfiguredPartitions(t *testing.T) {
 		// no metadata catalog attached
 		db := newTestDb(t)
 
-		_, err := GetUnconfiguredPartitions(ctx, db, nil, versions)
+		_, err := GetUnconfiguredPartitions(ctx, db, testConfig(versions))
 		require.Error(t, err)
 	})
 }
@@ -170,12 +187,12 @@ func TestGetAllPartitions(t *testing.T) {
 	addTable(t, db, 1, "aws_cloudtrail_log")
 	addFile(t, db, 1, 1, "removed", "default", nil)
 
-	configured := configuredPartitions([2]string{"aws_cloudtrail_log", "kept"})
-	got, err := GetAllPartitions(context.Background(), db, configured, nil)
+	cfg := testConfig(nil, [2]string{"aws_cloudtrail_log", "kept"})
+	got, err := GetAllPartitions(context.Background(), db, cfg)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	require.False(t, got["aws_cloudtrail_log.kept"].Unconfigured)
 	require.True(t, got["aws_cloudtrail_log.removed"].Unconfigured)
 	// the configured map is not modified
-	require.Len(t, configured, 1)
+	require.Len(t, cfg.Partitions, 1)
 }

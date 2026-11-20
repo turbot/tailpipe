@@ -178,7 +178,7 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 
 	// Get Resources
 	// include partitions which have data but are no longer in the config
-	allPartitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	allPartitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig)
 	error_helpers.FailOnError(err)
 	partitions, err := resolvePartitionArgs(allPartitions, args, func(arg string) error { return fmt.Errorf("partition not found: %s", arg) })
 	error_helpers.FailOnError(err)
@@ -370,7 +370,7 @@ func findPartitionToDelete(ctx context.Context, partitionName string) (*config.P
 		return partition, nil
 	}
 
-	unconfigured, err := database.ReadUnconfiguredPartitions(ctx, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	unconfigured, err := database.ReadUnconfiguredPartitions(ctx, config.GlobalConfig)
 	if err != nil {
 		return nil, fmt.Errorf("partition %s not found in the config and the database could not be read: %w", partitionName, err)
 	}

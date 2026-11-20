@@ -8,11 +8,19 @@ import (
 	"github.com/turbot/tailpipe/internal/config"
 )
 
+func cfgWith(versions map[string]*versionfile.InstalledVersion) *config.TailpipeConfig {
+	cfg := config.NewTailpipeConfig()
+	if versions != nil {
+		cfg.PluginVersions = versions
+	}
+	return cfg
+}
+
 func TestNewPartitionResource_Configured(t *testing.T) {
 	versions := map[string]*versionfile.InstalledVersion{
 		"hub.tailpipe.io/plugins/turbot/aws@latest": {Metadata: map[string][]string{"tables": {"aws_cloudtrail_log"}}},
 	}
-	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", versions)
+	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", cfgWith(versions))
 
 	res := NewPartitionResource(removed)
 	require.False(t, res.Configured)
@@ -37,10 +45,10 @@ func TestPluginSetPartitions_IncludesUnconfigured(t *testing.T) {
 	versions := map[string]*versionfile.InstalledVersion{
 		pluginName: {Metadata: map[string][]string{"tables": {"aws_cloudtrail_log"}}},
 	}
-	kept := config.NewUnconfiguredPartition("aws_cloudtrail_log", "kept", versions)
+	kept := config.NewUnconfiguredPartition("aws_cloudtrail_log", "kept", cfgWith(versions))
 	kept.Unconfigured = false
-	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", versions)
-	other := config.NewUnconfiguredPartition("gcp_audit_log", "removed", versions)
+	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", cfgWith(versions))
+	other := config.NewUnconfiguredPartition("gcp_audit_log", "removed", cfgWith(versions))
 	partitions := []*config.Partition{kept, removed, other}
 
 	t.Run("plugin list", func(t *testing.T) {
@@ -56,10 +64,10 @@ func TestPluginSetPartitions_IncludesUnconfigured(t *testing.T) {
 }
 
 func TestTableSetPartitions_IncludesUnconfigured(t *testing.T) {
-	kept := config.NewUnconfiguredPartition("aws_cloudtrail_log", "kept", nil)
+	kept := config.NewUnconfiguredPartition("aws_cloudtrail_log", "kept", cfgWith(nil))
 	kept.Unconfigured = false
-	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", nil)
-	other := config.NewUnconfiguredPartition("gcp_audit_log", "removed", nil)
+	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", cfgWith(nil))
+	other := config.NewUnconfiguredPartition("gcp_audit_log", "removed", cfgWith(nil))
 
 	r := &TableResource{Name: "aws_cloudtrail_log"}
 	r.setPartitions([]*config.Partition{removed, other, kept})

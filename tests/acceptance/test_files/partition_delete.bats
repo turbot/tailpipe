@@ -103,11 +103,18 @@ EOF
   assert_failure
   assert_output --partial "is not configured"
 
-  # a full delete removes it
+  # the partition has a collection state file (the chaos source does not write one, so make one)
+  local state_dir=$TAILPIPE_INSTALL_DIR/internal/collection/default
+  local state_file=$state_dir/collection_state_chaos_all_columns_removed_test.json
+  mkdir -p $state_dir
+  echo '{}' > $state_file
+
+  # a full delete removes its rows and its collection state
   run tailpipe partition delete chaos_all_columns.removed_test --force
   echo $output
   assert_success
   assert_output --partial "deleted 20 rows"
+  assert [ ! -e $state_file ]
 
   # it no longer appears anywhere
   run tailpipe partition list --output json

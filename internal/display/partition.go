@@ -98,7 +98,7 @@ func allPartitions(ctx context.Context) []*config.Partition {
 		res = append(res, p)
 	}
 
-	unconfigured, err := database.ReadUnconfiguredPartitions(ctx, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	unconfigured, err := database.ReadUnconfiguredPartitions(ctx, config.GlobalConfig)
 	if err != nil {
 		slog.Warn("failed to read unconfigured partitions", "error", err)
 		error_helpers.ShowWarning(fmt.Sprintf("could not read the partitions in the database, so partitions no longer in the configuration are not shown: %s", err.Error()))
@@ -112,7 +112,7 @@ func allPartitions(ctx context.Context) []*config.Partition {
 
 // allPartitionsFromDb returns the configured partitions plus any which have data in db but are no longer configured
 func allPartitionsFromDb(ctx context.Context, db *database.DuckDb) ([]*config.Partition, error) {
-	partitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	partitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error listing partitions: %w", err)
 	}

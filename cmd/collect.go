@@ -217,7 +217,7 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 	// we have no database connection - if an arg is not found, open one to see whether it is an unconfigured partition
 	return resolvePartitionArgs(tailpipeConfig.Partitions, args, func(arg string) error {
 		return partitionNotFoundError(arg, func() (map[string]*config.Partition, error) {
-			return database.ReadUnconfiguredPartitions(context.Background(), tailpipeConfig.Partitions, tailpipeConfig.PluginVersions)
+			return database.ReadUnconfiguredPartitions(context.Background(), tailpipeConfig)
 		})
 	})
 }

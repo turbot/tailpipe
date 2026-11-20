@@ -6,7 +6,6 @@ import (
 	"os"
 
 	pconstants "github.com/turbot/pipe-fittings/v2/constants"
-	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe/internal/config"
 )
 
@@ -48,8 +47,8 @@ order by t.table_name, fpv.partition_value`, pconstants.DuckLakeMetadataCatalog)
 }
 
 // GetUnconfiguredPartitions returns the partitions which have data in the database but are not in the given
-// configured partitions, keyed by unqualified name (<table>.<partition>).
-func GetUnconfiguredPartitions(ctx context.Context, db *DuckDb, configured map[string]*config.Partition, versions map[string]*versionfile.InstalledVersion) (map[string]*config.Partition, error) {
+// config, keyed by unqualified name (<table>.<partition>).
+func GetUnconfiguredPartitions(ctx context.Context, db *DuckDb, cfg *config.TailpipeConfig) (map[string]*config.Partition, error) {
 	withData, err := getPartitionsWithData(ctx, db)
 	if err != nil {
 		return nil, err
@@ -58,23 +57,23 @@ func GetUnconfiguredPartitions(ctx context.Context, db *DuckDb, configured map[s
 	res := make(map[string]*config.Partition)
 	for _, pt := range withData {
 		name := fmt.Sprintf("%s.%s", pt.table, pt.partition)
-		if _, ok := configured[name]; ok {
+		if _, ok := cfg.Partitions[name]; ok {
 			continue
 		}
-		res[name] = config.NewUnconfiguredPartition(pt.table, pt.partition, versions)
+		res[name] = config.NewUnconfiguredPartition(pt.table, pt.partition, cfg)
 	}
 	return res, nil
 }
 
 // GetAllPartitions returns the configured partitions together with the unconfigured ones found in the database,
 // keyed by unqualified name
-func GetAllPartitions(ctx context.Context, db *DuckDb, configured map[string]*config.Partition, versions map[string]*versionfile.InstalledVersion) (map[string]*config.Partition, error) {
-	unconfigured, err := GetUnconfiguredPartitions(ctx, db, configured, versions)
+func GetAllPartitions(ctx context.Context, db *DuckDb, cfg *config.TailpipeConfig) (map[string]*config.Partition, error) {
+	unconfigured, err := GetUnconfiguredPartitions(ctx, db, cfg)
 	if err != nil {
 		return nil, err
 	}
-	res := make(map[string]*config.Partition, len(configured)+len(unconfigured))
-	for k, v := range configured {
+	res := make(map[string]*config.Partition, len(cfg.Partitions)+len(unconfigured))
+	for k, v := range cfg.Partitions {
 		res[k] = v
 	}
 	for k, v := range unconfigured {
@@ -86,7 +85,7 @@ func GetAllPartitions(ctx context.Context, db *DuckDb, configured map[string]*co
 // ReadUnconfiguredPartitions is GetUnconfiguredPartitions for a caller which has no database connection:
 // it opens a read only one for the call. If there is no DuckLake database there is no data, so it returns nothing
 // rather than creating one.
-func ReadUnconfiguredPartitions(ctx context.Context, configured map[string]*config.Partition, versions map[string]*versionfile.InstalledVersion) (map[string]*config.Partition, error) {
+func ReadUnconfiguredPartitions(ctx context.Context, cfg *config.TailpipeConfig) (map[string]*config.Partition, error) {
 	if _, err := os.Stat(config.GlobalWorkspaceProfile.GetDucklakeDbPath()); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -98,5 +97,5 @@ func ReadUnconfiguredPartitions(ctx context.Context, configured map[string]*conf
 		return nil, err
 	}
 	defer db.Close()
-	return GetUnconfiguredPartitions(ctx, db, configured, versions)
+	return GetUnconfiguredPartitions(ctx, db, cfg)
 }
