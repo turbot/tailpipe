@@ -54,3 +54,14 @@ func TestPluginSetPartitions_IncludesUnconfigured(t *testing.T) {
 		require.Equal(t, []string{"aws_cloudtrail_log.kept", "aws_cloudtrail_log.removed"}, r.Partitions)
 	})
 }
+
+func TestTableSetPartitions_IncludesUnconfigured(t *testing.T) {
+	kept := config.NewUnconfiguredPartition("aws_cloudtrail_log", "kept", nil)
+	kept.Unconfigured = false
+	removed := config.NewUnconfiguredPartition("aws_cloudtrail_log", "removed", nil)
+	other := config.NewUnconfiguredPartition("gcp_audit_log", "removed", nil)
+
+	r := &TableResource{Name: "aws_cloudtrail_log"}
+	r.setPartitions([]*config.Partition{removed, other, kept})
+	require.Equal(t, []string{"kept", "removed"}, r.Partitions)
+}

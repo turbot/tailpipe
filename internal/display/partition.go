@@ -66,9 +66,9 @@ func ListPartitionResources(ctx context.Context, db *database.DuckDb) ([]*Partit
 	var res []*PartitionResource
 
 	// add in the partitions which exist in the database but not in the config
-	partitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	partitions, err := allPartitionsFromDb(ctx, db)
 	if err != nil {
-		return nil, fmt.Errorf("error listing partitions: %w", err)
+		return nil, err
 	}
 
 	for _, p := range partitions {
@@ -108,6 +108,19 @@ func allPartitions(ctx context.Context) []*config.Partition {
 		res = append(res, p)
 	}
 	return res
+}
+
+// allPartitionsFromDb returns the configured partitions plus any which have data in db but are no longer configured
+func allPartitionsFromDb(ctx context.Context, db *database.DuckDb) ([]*config.Partition, error) {
+	partitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	if err != nil {
+		return nil, fmt.Errorf("error listing partitions: %w", err)
+	}
+	res := make([]*config.Partition, 0, len(partitions))
+	for _, p := range partitions {
+		res = append(res, p)
+	}
+	return res, nil
 }
 
 func configuredText(configured bool) string {
