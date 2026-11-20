@@ -1,8 +1,13 @@
 {
   "warm": "git submodule update --init --recursive && go mod download",
   "warmProbe": "tests/acceptance/lib/bats",
-  "platforms": ["darwin", "linux"],
-  "tools": ["go"],
+  "platforms": [
+    "darwin",
+    "linux"
+  ],
+  "tools": [
+    "go"
+  ],
   "secrets": {},
   "chores": {
     "security-audit": {
@@ -13,7 +18,17 @@
         "DuckDB access and queries run against collected data (internal/database, internal/query)",
         "config parsing, including connections and credentials (internal/parse, internal/config)",
         "database migrations on upgrade (internal/migration)"
-      ]
+      ],
+      "off": true
+    },
+    "secret-scan": {
+      "off": true
+    },
+    "dependencies": {
+      "off": true
+    },
+    "dependabot-cant-fix": {
+      "off": true
     }
   }
 }
