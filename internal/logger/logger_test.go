@@ -70,3 +70,24 @@ func TestTailpipeLogger_LevelOffWritesNothingToFile(t *testing.T) {
 		t.Fatal("log file created although logging is off")
 	}
 }
+
+// with a log file and no level, the file gets debug entries; an explicit level still wins
+func TestTailpipeLogger_LogFileWithoutLevelLogsDebug(t *testing.T) {
+	app_specific.SetAppSpecificEnvVarKeys("TAILPIPE_")
+	logFile := filepath.Join(t.TempDir(), "tailpipe.log")
+	t.Setenv(app_specific.EnvLogLevel, "")
+	t.Setenv(constants.EnvLogFile, logFile)
+	TailpipeLogger().Debug("debug entry")
+
+	b, err := os.ReadFile(logFile)
+	if err != nil || !strings.Contains(string(b), "debug entry") {
+		t.Fatalf("expected a debug entry in the log file, got %q (err %v)", b, err)
+	}
+
+	t.Setenv(app_specific.EnvLogLevel, "error")
+	TailpipeLogger().Debug("hidden debug entry")
+	b, _ = os.ReadFile(logFile)
+	if strings.Contains(string(b), "hidden debug entry") {
+		t.Fatalf("debug entry logged although the level is error: %q", b)
+	}
+}

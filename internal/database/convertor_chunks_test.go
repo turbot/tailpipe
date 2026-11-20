@@ -22,8 +22,9 @@ func newTestChunkConverter(t *testing.T) *Converter {
 	return w
 }
 
-// A chunk added just as the processor finds its queue empty must still be converted, so that
-// WaitForConversions returns. Before the fix the chunk was left in the queue and the wait never ended.
+// Many chunks added concurrently while processors start and finish must all be converted, so that
+// WaitForConversions returns, and the wait group must never go negative (it panics if it does).
+// The exact lost-chunk timing is forced by TestConverter_ChunkAddedAsProcessorFindsQueueEmpty.
 func TestConverter_LastChunkAddedWhileProcessorFinishing(t *testing.T) {
 	const (
 		iterations = 100
@@ -82,6 +83,13 @@ func TestConverter_ChunkAddedAfterIdle(t *testing.T) {
 // Forces the exact timing of the bug: a chunk is added after the processor has found its queue empty but
 // before it has released the process lock, so AddChunk cannot start a processor of its own.
 func TestConverter_ChunkAddedAsProcessorFindsQueueEmpty(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		chunkAddedAsProcessorFindsQueueEmpty(t, i)
+	}
+}
+
+func chunkAddedAsProcessorFindsQueueEmpty(t *testing.T, iteration int) {
+	t.Helper()
 	w := newTestChunkConverter(t)
 
 	added := make(chan struct{})
@@ -104,15 +112,15 @@ func TestConverter_ChunkAddedAsProcessorFindsQueueEmpty(t *testing.T) {
 	select {
 	case <-added:
 	case <-time.After(5 * time.Second):
-		t.Fatal("processor never reached the end of its queue")
+		t.Fatalf("iteration %d: processor never reached the end of its queue", iteration)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := w.WaitForConversions(ctx); err != nil {
-		t.Fatalf("the last chunk was never converted: %v", err)
+		t.Fatalf("iteration %d: the last chunk was never converted: %v", iteration, err)
 	}
 	if w.hasScheduledChunks() {
-		t.Fatal("chunks left scheduled after WaitForConversions")
+		t.Fatalf("iteration %d: chunks left scheduled after WaitForConversions", iteration)
 	}
 }

@@ -18,7 +18,7 @@ func Initialize() {
 }
 
 // TailpipeLogger returns a logger that sanitizes log entries and writes them to stderr,
-// or to the file named by TAILPIPE_LOG_FILE if that is set
+// or to the file named by TAILPIPE_LOG_FILE if that is set (at debug level, unless TAILPIPE_LOG_LEVEL says otherwise)
 func TailpipeLogger() *slog.Logger {
 	level := getLogLevel()
 	if level == constants.LogLevelOff {
@@ -59,6 +59,11 @@ func logOutput() io.Writer {
 
 func getLogLevel() slog.Leveler {
 	levelEnv := os.Getenv(app_specific.EnvLogLevel)
+	// a log file with no level set logs at debug: the file is where a person (or CI) looks for detail, and this
+	// avoids setting TAILPIPE_LOG_LEVEL, which the plugins read as well
+	if levelEnv == "" && os.Getenv(tpconstants.EnvLogFile) != "" {
+		return slog.LevelDebug
+	}
 
 	switch strings.ToLower(levelEnv) {
 	case "debug":

@@ -150,7 +150,7 @@ jobs:
         continue-on-error: true
         env:
           # tailpipe's debug log goes to a file, not stderr, so it does not end up in the output the tests check
-          TAILPIPE_LOG_LEVEL: DEBUG
+          # (TAILPIPE_LOG_LEVEL is left unset on purpose: the plugins read it too and log to stderr)
           TAILPIPE_LOG_FILE: ${{ runner.temp }}/tailpipe-debug.log
         run: |
           chmod +x $GITHUB_WORKSPACE/tailpipe/tests/acceptance/run.sh
