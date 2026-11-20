@@ -20,24 +20,36 @@ import (
 // this is called when a chunk is added but will continue processing any further chunks added while we were processing
 func (w *Converter) processAllChunks() {
 	// note we ALREADY HAVE THE PROCESS LOCK - be sure to release it when we are done
-	defer w.processLock.Unlock()
-
-	// so we have the process lock AND the schedule lock
-	// move the scheduled chunks to the chunks to process
-	// (scheduledChunks may be empty, in which case we will break out of the loop)
-	chunksToProcess := w.getChunksToProcess()
-	for len(chunksToProcess) > 0 {
-		err := w.processChunks(chunksToProcess)
-		if err != nil {
-			slog.Error("Error processing chunks", "error", err)
-			// call add job errors and carry on
-			w.addJobErrors(err)
+	for {
+		// move the scheduled chunks to the chunks to process
+		// (scheduledChunks may be empty, in which case we will break out of the loop)
+		chunksToProcess := w.getChunksToProcess()
+		for len(chunksToProcess) > 0 {
+			err := w.processChunks(chunksToProcess)
+			if err != nil {
+				slog.Error("Error processing chunks", "error", err)
+				// call add job errors and carry on
+				w.addJobErrors(err)
+			}
+			//- get next batch of chunks
+			chunksToProcess = w.getChunksToProcess()
 		}
-		//- get next batch of chunks
-		chunksToProcess = w.getChunksToProcess()
+
+		// if we get here, we have processed all scheduled chunks (but more may come later)
+		if w.onQueueEmpty != nil {
+			w.onQueueEmpty()
+		}
+		w.processLock.Unlock()
+
+		// a chunk may have been scheduled after we found the queue empty but before we released the lock:
+		// its AddChunk would have failed to take the process lock and left it for us, so check again.
+		// If there is one, take the lock back and keep going - if we cannot take it, a processor that has started
+		// since will handle the chunk
+		if !w.hasScheduledChunks() || !w.processLock.TryLock() {
+			break
+		}
 	}
 
-	// if we get here, we have processed all scheduled chunks (but more may come later
 	log.Print("BatchProcessor: all scheduled chunks processed for execution")
 }
 
