@@ -177,8 +177,10 @@ func runPartitionShowCmd(cmd *cobra.Command, args []string) {
 	defer db.Close()
 
 	// Get Resources
-
-	partitions, err := getPartitions(args)
+	// include partitions which have data but are no longer in the config
+	allPartitions, err := database.GetAllPartitions(ctx, db, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	error_helpers.FailOnError(err)
+	partitions, err := resolvePartitionArgs(allPartitions, args, func(arg string) error { return fmt.Errorf("partition not found: %s", arg) })
 	error_helpers.FailOnError(err)
 	// if no partitions are found, return an error
 	if len(partitions) == 0 {
@@ -285,9 +287,12 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 
 	// retrieve the partition
 	partitionName := args[0]
-	partition, ok := config.GlobalConfig.Partitions[partitionName]
-	if !ok {
-		error_helpers.FailOnError(fmt.Errorf("partition %s not found", partitionName))
+	// NOTE: a partition which has data but has been removed from the config can still be deleted
+	partition, err := findPartitionToDelete(ctx, partitionName)
+	error_helpers.FailOnError(err)
+	if partition.Unconfigured && viper.IsSet(pconstants.ArgFrom) {
+		// updating the collection state for a partial delete needs the partition's source, which is in the config
+		error_helpers.FailOnError(fmt.Errorf("partition %s is not configured, so it can only be deleted in full: remove the --%s argument", partitionName, pconstants.ArgFrom))
 	}
 
 	if !viper.GetBool(pconstants.ArgForce) {
@@ -357,6 +362,22 @@ func runPartitionDeleteCmd(cmd *cobra.Command, args []string) {
 
 	msg := buildStatusMessage(rowsDeleted, partitionName, fromStr)
 	fmt.Println(msg) //nolint:forbidigo//expected output
+}
+
+// findPartitionToDelete finds the named partition in the config, or failing that, in the database
+func findPartitionToDelete(ctx context.Context, partitionName string) (*config.Partition, error) {
+	if partition, ok := config.GlobalConfig.Partitions[partitionName]; ok {
+		return partition, nil
+	}
+
+	unconfigured, err := database.ReadUnconfiguredPartitions(ctx, config.GlobalConfig.Partitions, config.GlobalConfig.PluginVersions)
+	if err != nil {
+		return nil, fmt.Errorf("partition %s not found in the config and the database could not be read: %w", partitionName, err)
+	}
+	if partition, ok := unconfigured[partitionName]; ok {
+		return partition, nil
+	}
+	return nil, fmt.Errorf("partition %s not found", partitionName)
 }
 
 func buildStatusMessage(rowsDeleted int, partition string, fromStr string) interface{} {

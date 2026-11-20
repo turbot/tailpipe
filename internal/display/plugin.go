@@ -27,8 +27,8 @@ func (r *PluginListDetails) GetListData() *printers.RowData {
 	return res
 }
 
-func (r *PluginListDetails) setPartitions() {
-	for _, partition := range config.GlobalConfig.Partitions {
+func (r *PluginListDetails) setPartitions(partitions []*config.Partition) {
+	for _, partition := range partitions {
 		if partition.Plugin.Plugin == r.Name || isLocalPluginPartition(r, partition.Plugin.Alias) {
 			r.Partitions = append(r.Partitions, strings.TrimPrefix(partition.FullName, "partition."))
 		}
@@ -57,12 +57,15 @@ func ListPlugins(ctx context.Context) ([]*PluginListDetails, error) {
 		return nil, fmt.Errorf("unable to obtain plugin list: %w", err)
 	}
 
+	// include partitions which have data but are no longer in the config
+	partitions := allPartitions(ctx)
+
 	for _, p := range basicInfo {
 		d := &PluginListDetails{
 			Name:    p.Name,
 			Version: p.Version.String(),
 		}
-		d.setPartitions()
+		d.setPartitions(partitions)
 
 		res = append(res, d)
 	}
@@ -125,13 +128,13 @@ func GetPluginResource(ctx context.Context, name string) (*PluginResource, error
 		FormatPresets: formatPresets,
 	}
 
-	pr.setPartitions()
+	pr.setPartitions(allPartitions(ctx))
 
 	return pr, nil
 }
 
-func (r *PluginResource) setPartitions() {
-	for _, partition := range config.GlobalConfig.Partitions {
+func (r *PluginResource) setPartitions(partitions []*config.Partition) {
+	for _, partition := range partitions {
 		if partition.Plugin.Plugin == r.Name {
 			r.Partitions = append(r.Partitions, strings.TrimPrefix(partition.FullName, "partition."))
 		}
