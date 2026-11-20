@@ -1,5 +1,7 @@
 version: 2
 
+project_name: tailpipe
+
 builds:
   - id: tailpipe-linux-amd64
     binary: tailpipe
@@ -96,19 +98,3 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
-
-brews:
-  - ids:
-      - homebrew
-    name: tailpipe@{{ .Major }}.{{ .Minor }}.{{ .Patch }}
-    repository:
-      owner: turbot
-      name: homebrew-tap
-      branch: tailpipe-brew
-    directory: Formula
-    url_template: "https://github.com/turbot/tailpipe/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
-    homepage: "https://tailpipe.io/"
-    description: "Open source SIEM for instant log insights, powered by DuckDB. Analyze millions of events in seconds, right from your terminal."
-    skip_upload: auto
-    install: |-
-      bin.install "tailpipe"

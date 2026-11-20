@@ -1,0 +1,70 @@
+# Tells people a Tailpipe release is live: calls Shipyard's announce,
+# published in turbot/shipyard-workflows, at v0 like the other Shipyard calls
+# (release.yml). Shipyard runs no code from this repo. It reads
+# the release from GitHub (the tag, the merged release PR, and the release
+# notes at the merge commit), and then:
+#   - comments `Live in <tag> (release PR #<n>).` once on each issue that a PR
+#     of the release closes.
+#   - closes this repo's open prep jobs (issues labelled agent:release) that
+#     the release shipped. A failure there is a warning, never a failed run.
+# It posts no #releases line: Tailpipe has a changelog page (ship.yml's page
+# job), and the site's own feed posts that.
+#
+#   Ship's tag job (the Pipelings release App) pushes vX.Y.Z ──► this run
+#
+# A tag that the App pushes starts this workflow by itself. A tag pushed with a
+# job's own token would start nothing. The filter `v*.*.*` takes any tag shaped
+# like a version (v0.7.1-rc.0 too), and Shipyard skips any tag that is not a
+# release tag. To run it again, use "Run workflow" with the tag: each step reads
+# what an earlier run did, so a second run does only what is left.
+#
+# The Slack token is the org secret SHIPYARD_SLACK_BOT_TOKEN, shared by the
+# repos on Shipyard and visible only to the repos on its list. tailpipe keeps no
+# copy. The Slack bot has only chat:write, and is only in #releases and the
+# channels Shipyard's Slack ask posts in (tailpipe's is #tailpipe), so a
+# leaked token can post there and read nothing. Here only Shipyard's post
+# step sees it.
+# It needs no environment: Shipyard's announce job names none, so the secret of
+# an environment would never reach it.
+#
+# A failure never fails the release: the tag exists before this starts. If the
+# "Live in" comments fail, the run files a Bug in this repo and stays green; a
+# later run that works closes the Bug. A failed read of the release files a Bug
+# too. A run goes red and files no Bug only when it cannot run at all: a tag
+# that is no release, a bad input, or a Bug it could not file.
+#
+# The job grants what Shipyard's job asks for, and nothing more:
+#   contents read        the release notes and config at the merge commit
+#   pull-requests write  the note on the release PR (read gets a 403)
+#   issues write         the "Live in" comments, the Bug, and closing the
+#                        prep jobs the release shipped
+#   id-token write       Shipyard learns its own commit, from a token with
+#                        audience shipyard, which no AWS role accepts
+
+name: Announce
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to announce, such as v0.1.27
+        required: true
+
+permissions: {}
+
+jobs:
+  announce:
+    name: announce
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    uses: turbot/shipyard-workflows/.github/workflows/announce.yml@v0
+    with:
+      tag: ${{ inputs.tag || github.ref_name }}
+      automation-logins: github-actions[bot]
+    secrets:
+      slack-token: ${{ secrets.SHIPYARD_SLACK_BOT_TOKEN }}

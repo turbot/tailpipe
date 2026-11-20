@@ -1,0 +1,38 @@
+{
+  "product": "Tailpipe",
+  "notShipped": [
+    ".claude/",
+    ".cursor/",
+    ".cursor.bak",
+    ".github/",
+    "tests/",
+    "**/*_test.go",
+    ".acceptance.goreleaser.yml",
+    ".golangci.yml",
+    ".gitignore",
+    ".gitleaksignore",
+    ".gitmodules",
+    "README.md",
+    "scripts/linux_container_info.sh",
+    "scripts/prepare_*.sh",
+    "scripts/smoke_test.sh"
+  ],
+  "start": {
+    "branches": [{ "name": "develop", "cadence": "weekly" }],
+    "tagPrefix": "v",
+    "approvers": ["turbot/pipelings-release-approvers"]
+  },
+  "ask": { "channel": "#tailpipe" },
+  "announce": {
+    "page": {
+      "repo": "turbot/tailpipe.io",
+      "path": "content/changelog/tailpipe-v{version}.md",
+      "frontMatter": {
+        "title": "{title}",
+        "publishedAt": "{date}",
+        "permalink": "tailpipe-cli-v{dashed}",
+        "tags": "cli"
+      }
+    }
+  }
+}
