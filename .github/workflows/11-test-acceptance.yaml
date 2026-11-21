@@ -151,7 +151,8 @@ jobs:
         run: |
           # The tests run tailpipe through a wrapper that writes its stderr to a log file, at debug level, so a failed or
           # hung run can be investigated. The log holds tailpipe's own log and the plugins' (tailpipe passes their stderr
-          # on), and stays out of the output the tests check: bats merges stderr into it.
+          # on), and stays out of the output the tests check: bats merges stderr into it. At debug level the chaos plugin logs
+          # each row, so a 100,000-row collect takes about 30 seconds longer and writes about 160 MB of log.
           real_tailpipe=$(command -v tailpipe)
           debug_log="$RUNNER_TEMP/tailpipe-debug.log"
           mkdir -p "$RUNNER_TEMP/tailpipe-wrapper"
