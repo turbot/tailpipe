@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -213,6 +214,17 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 		return maps.Values(tailpipeConfig.Partitions), nil
 	}
 
+	// we have no database connection - if an arg is not found, open one to see whether it is an unconfigured partition
+	return resolvePartitionArgs(tailpipeConfig.Partitions, args, func(arg string) error {
+		return partitionNotFoundError(arg, func() (map[string]*config.Partition, error) {
+			return database.ReadUnconfiguredPartitions(context.Background(), tailpipeConfig)
+		})
+	})
+}
+
+// resolvePartitionArgs resolves the provided args to the partitions in partitionMap which they match.
+// notFound builds the error for an arg which matches no partition.
+func resolvePartitionArgs(partitionMap map[string]*config.Partition, args []string, notFound func(arg string) error) ([]*config.Partition, error) {
 	var errorList []error
 	var partitions []*config.Partition
 
@@ -222,14 +234,14 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 			continue
 		}
 
-		partitionNames, err := database.GetPartitionsForArg(tailpipeConfig.Partitions, arg)
+		partitionNames, err := database.GetPartitionsForArg(partitionMap, arg)
 		if err != nil {
 			errorList = append(errorList, err)
 		} else if len(partitionNames) == 0 {
-			errorList = append(errorList, fmt.Errorf("partition not found: %s", arg))
+			errorList = append(errorList, notFound(arg))
 		} else {
 			for _, partitionName := range partitionNames {
-				partitions = append(partitions, tailpipeConfig.Partitions[partitionName])
+				partitions = append(partitions, partitionMap[partitionName])
 			}
 		}
 	}
@@ -240,6 +252,26 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 	}
 
 	return partitions, nil
+}
+
+// partitionNotFoundError returns the error for a partition arg which matches no configured partition.
+// If the arg matches partitions which have collected data but have been removed from the config (as loaded
+// by loadUnconfigured), the error says so, rather than saying the partition does not exist.
+func partitionNotFoundError(arg string, loadUnconfigured func() (map[string]*config.Partition, error)) error {
+	notFound := fmt.Errorf("partition not found: %s", arg)
+
+	unconfigured, err := loadUnconfigured()
+	if err != nil {
+		// we cannot tell - fall back to the plain error
+		slog.Warn("failed to read unconfigured partitions", "error", err)
+		return notFound
+	}
+	names, err := database.GetPartitionsForArg(unconfigured, arg)
+	if err != nil || len(names) == 0 {
+		return notFound
+	}
+	sort.Strings(names)
+	return fmt.Errorf("partition %s is not configured: it has collected data but is no longer in the configuration. Add its partition block back to collect it, or run 'tailpipe partition delete %s' to remove its data", strings.Join(names, ", "), names[0])
 }
 
 // formatErrorsWithCount returns an error summarizing a list of errors with a count and indented lines

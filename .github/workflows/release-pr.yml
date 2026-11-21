@@ -57,4 +57,7 @@ jobs:
       results-run: ${{ github.run_id }}
       review: ${{ github.event_name == 'pull_request_review' }}
       ignore-checks: record / record
-      required-check-workflows: 10-test-lint.yaml
+      # Every workflow behind a check develop requires that can run by hand (Test Linting; Build is the goreleaser job of the acceptance workflow), as main must.
+      required-check-workflows: 10-test-lint.yaml,11-test-acceptance.yaml
+      # The release PR is opened with the job's token, so no workflow_run starts the ask: the record starts it once it says SHIP.
+      ask-workflow: ask.yml

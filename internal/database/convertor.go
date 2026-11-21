@@ -76,6 +76,9 @@ type Converter struct {
 
 	// the DuckDB database connection - this must have a ducklake attachment
 	db *DuckDb
+
+	// test hook: called by the chunk processor when it finds the queue empty, just before it releases the process lock
+	onQueueEmpty func()
 }
 
 func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *DuckDb) (*Converter, error) {
@@ -119,24 +122,39 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 		return fmt.Errorf("failed to infer schema: %w", err)
 	}
 
+	// increment the wait group to track the scheduled chunk
+	// NOTE: this must happen BEFORE the chunk is scheduled - once it is scheduled a running processor may
+	// process it and decrement the wait group, which must never go below zero
+	w.wg.Add(1)
+
 	// lock the schedule lock to ensure that we can safely add to the scheduled scheduledChunks
 	w.scheduleLock.Lock()
 	// add to scheduled scheduledChunks
 	w.scheduledChunks = append(w.scheduledChunks, chunk)
 	w.scheduleLock.Unlock()
 
-	// increment the wait group to track the scheduled chunk
-	w.wg.Add(1)
+	// start a processor if none is running
+	w.startProcessorIfIdle()
 
-	// ok try to lock the process lock - that will fail if another process is running
+	return nil
+}
+
+// startProcessorIfIdle starts processAllChunks if no processor is running
+func (w *Converter) startProcessorIfIdle() {
+	// try to lock the process lock - that will fail if another process is running
 	if w.processLock.TryLock() {
-		// and process = we now have the process lock
+		// we now have the process lock
 		// NOTE: process chunks will keep processing as long as there are scheduledChunks to process, including
 		// scheduledChunks that were scheduled while we were processing
 		go w.processAllChunks()
 	}
+}
 
-	return nil
+// hasScheduledChunks returns whether any chunks are waiting to be processed
+func (w *Converter) hasScheduledChunks() bool {
+	w.scheduleLock.Lock()
+	defer w.scheduleLock.Unlock()
+	return len(w.scheduledChunks) > 0
 }
 
 // getChunksToProcess returns the chunks to process, up to a maximum of maxChunksToProcess

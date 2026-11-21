@@ -28,7 +28,7 @@ type TableResource struct {
 }
 
 // tableResourceFromConfigTable creates a TableResource (display item) from a config.Table (custom table)
-func tableResourceFromConfigTable(ctx context.Context, tableName string, configTable *config.Table, db *database.DuckDb) (*TableResource, error) {
+func tableResourceFromConfigTable(ctx context.Context, tableName string, configTable *config.Table, partitions []*config.Partition, db *database.DuckDb) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(configTable.Columns))
 	for i, c := range configTable.Columns {
 		cols[i] = TableColumnResource{
@@ -45,7 +45,7 @@ func tableResourceFromConfigTable(ctx context.Context, tableName string, configT
 		Columns:     cols,
 	}
 
-	table.setPartitions()
+	table.setPartitions(partitions)
 	err := table.setFileInformation(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set file information for table '%s': %w", tableName, err)
@@ -55,7 +55,7 @@ func tableResourceFromConfigTable(ctx context.Context, tableName string, configT
 }
 
 // tableResourceFromSchemaTable creates a TableResource (display item) from a schema.TableSchema (defined table)
-func tableResourceFromSchemaTable(ctx context.Context, tableName string, pluginName string, schemaTable *schema.TableSchema, db *database.DuckDb) (*TableResource, error) {
+func tableResourceFromSchemaTable(ctx context.Context, tableName string, pluginName string, schemaTable *schema.TableSchema, partitions []*config.Partition, db *database.DuckDb) (*TableResource, error) {
 	cols := make([]TableColumnResource, len(schemaTable.Columns))
 	for i, c := range schemaTable.Columns {
 		cols[i] = TableColumnResource{
@@ -72,7 +72,7 @@ func tableResourceFromSchemaTable(ctx context.Context, tableName string, pluginN
 		Columns:     cols,
 	}
 
-	table.setPartitions()
+	table.setPartitions(partitions)
 	err := table.setFileInformation(ctx, db)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set file information for table '%s': %w", tableName, err)
@@ -127,6 +127,12 @@ func ListTableResources(ctx context.Context, db *database.DuckDb) ([]*TableResou
 	var res []*TableResource
 	tables := make(map[string]*TableResource)
 
+	// the partitions of each table include any which have data but are no longer in the config
+	partitions, err := allPartitionsFromDb(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+
 	// get plugin defined tables first
 	pluginManager := plugin.NewPluginManager()
 	defer pluginManager.Close()
@@ -143,7 +149,7 @@ func ListTableResources(ctx context.Context, db *database.DuckDb) ([]*TableResou
 		}
 
 		for tableName, schema := range desc.Schemas {
-			table, err := tableResourceFromSchemaTable(ctx, tableName, partition.Name, schema, db)
+			table, err := tableResourceFromSchemaTable(ctx, tableName, partition.Name, schema, partitions, db)
 			if err != nil {
 				return nil, err
 			}
@@ -154,7 +160,7 @@ func ListTableResources(ctx context.Context, db *database.DuckDb) ([]*TableResou
 
 	// custom tables - these take precedence over plugin defined tables, so overwrite any duplicates in map
 	for tableName, tableDef := range config.GlobalConfig.CustomTables {
-		table, err := tableResourceFromConfigTable(ctx, tableName, tableDef, db)
+		table, err := tableResourceFromConfigTable(ctx, tableName, tableDef, partitions, db)
 		if err != nil {
 			return nil, err
 		}
@@ -171,9 +177,15 @@ func ListTableResources(ctx context.Context, db *database.DuckDb) ([]*TableResou
 }
 
 func GetTableResource(ctx context.Context, tableName string, db *database.DuckDb) (*TableResource, error) {
+	// the partitions of the table include any which have data but are no longer in the config
+	partitions, err := allPartitionsFromDb(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+
 	// custom table takes precedence over plugin defined table, check there first
 	if customTable, ok := config.GlobalConfig.CustomTables[tableName]; ok {
-		table, err := tableResourceFromConfigTable(ctx, tableName, customTable, db)
+		table, err := tableResourceFromConfigTable(ctx, tableName, customTable, partitions, db)
 		return table, err
 	}
 
@@ -194,14 +206,14 @@ func GetTableResource(ctx context.Context, tableName string, db *database.DuckDb
 	}
 
 	if tableSchema, ok := desc.Schemas[tableName]; ok {
-		return tableResourceFromSchemaTable(ctx, tableName, pluginName, tableSchema, db)
+		return tableResourceFromSchemaTable(ctx, tableName, pluginName, tableSchema, partitions, db)
 	} else {
 		return nil, fmt.Errorf("table %s not found", tableName)
 	}
 }
 
-func (r *TableResource) setPartitions() {
-	for _, partition := range config.GlobalConfig.Partitions {
+func (r *TableResource) setPartitions(partitions []*config.Partition) {
+	for _, partition := range partitions {
 		if partition.TableName == r.Name {
 			r.Partitions = append(r.Partitions, partition.ShortName)
 		}

@@ -56,6 +56,30 @@ type Partition struct {
 
 	// if this is a synthetic partition for testing, this will be non-null
 	SyntheticMetadata *SyntheticMetadata
+
+	// Unconfigured is true for a partition which has collected data but is no longer in the configuration.
+	// Such a partition is built from the database, so it has a table, a name and a plugin and nothing else
+	Unconfigured bool
+}
+
+// NewUnconfiguredPartition builds the stand-in for a partition which has data in the database but no
+// partition block in the configuration. It carries enough to list the partition and to delete its data,
+// not enough to collect it: it has no source.
+func NewUnconfiguredPartition(tableName, partitionName string, cfg *TailpipeConfig) *Partition {
+	p := &Partition{
+		TableName:    tableName,
+		Unconfigured: true,
+	}
+	// find the plugin as InitPartitions does for a configured partition: the core plugin for a custom table
+	if customTable, isCustom := cfg.CustomTables[tableName]; isCustom {
+		p.CustomTable = customTable
+	}
+	p.Plugin = plugin.NewPlugin(p.InferPluginName(&versionfile.PluginVersionFile{Plugins: cfg.PluginVersions}))
+	p.ShortName = partitionName
+	p.UnqualifiedName = fmt.Sprintf("%s.%s", tableName, partitionName)
+	p.FullName = fmt.Sprintf("partition.%s", p.UnqualifiedName)
+	p.BlockType = schema.BlockTypePartition
+	return p
 }
 
 func NewPartition(block *hcl.Block, fullName string) (modconfig.HclResource, hcl.Diagnostics) {

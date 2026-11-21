@@ -1,3 +1,18 @@
+## [0.8.0] - 2026-11-21
+
+### Security
+
+- govulncheck now reports no vulnerabilities affecting Tailpipe: containerd v1.7.36, with its four unfixed advisories (GO-2026-6791, GO-2026-5622, GO-2026-5338, GO-2026-5064), is no longer a dependency. (#672)
+
+### What's new
+
+- Partitions removed from the configuration but still holding data now appear in `partition list`, `partition show`, `table` and `plugin` list and show, and can be removed with `partition delete`. (#675)
+
+### Bug fixes
+
+- Tailpipe now starts normally when the core plugin is installed but missing from the plugin versions record: it reinstalls the plugin and repairs the record, where before it crashed. (#671)
+- `tailpipe collect` now completes when its last rows arrive while earlier rows are still being saved, where it could hang before, and it stays idle after each partition finishes instead of keeping a CPU core busy. (#676)
+
 ## [0.7.8] - 2026-11-20
 
 ### Security
