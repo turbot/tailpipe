@@ -581,25 +581,16 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 		// find the version of the core plugin from the pluginVersions
 		// NOTE: use the prefixed name to index the pluginVersions map
 		fullName := constants.CorePluginFullName()
-		installedVersion := pluginVersions.Plugins[fullName].Version
-
-		// if installed version is 'local', that will do
-		if installedVersion == "local" {
-			return pluginVersions, nil
-		}
-
-		// compare the version(using semver) with the min version
-		satisfy, err := versionSatisfyVersionConstraint(installedVersion, corePluginRequiredConstraint)
+		upToDate, updateAction, err := corePluginSatisfiesConstraint(pluginVersions, fullName, corePluginRequiredConstraint)
 		if err != nil {
 			return nil, err
 		}
 		// if satisfied - we are done
-		if satisfy {
+		if upToDate {
 			return pluginVersions, nil
 		}
-
-		// so an update is required - set action to updating and fall through to installation
-		action = "Updating"
+		// so an install or update is required - fall through to installation
+		action = updateAction
 	}
 	// install the core plugin
 	if err = installCorePlugin(ctx, state, action, corePluginStream); err != nil {
@@ -608,6 +599,33 @@ func EnsureCorePlugin(ctx context.Context) (*versionfile.PluginVersionFile, erro
 
 	// now reload the version file as there may be new metadata for the cor plugin
 	return loadPluginVersionFile(ctx)
+}
+
+// corePluginSatisfiesConstraint checks whether the core plugin recorded in the versions record satisfies the
+// required version constraint. If it does not, it returns the action to take ("Installing" or "Updating").
+//
+// If the core plugin has no entry in the versions record (for example after a manual copy, an interrupted
+// install or a damaged record), it is treated as not installed, so that it is reinstalled and the record repaired.
+func corePluginSatisfiesConstraint(pluginVersions *versionfile.PluginVersionFile, fullName, requiredConstraint string) (satisfied bool, action string, err error) {
+	installed := pluginVersions.Plugins[fullName]
+	if installed == nil {
+		return false, "Installing", nil
+	}
+
+	// if installed version is 'local', that will do
+	if installed.Version == "local" {
+		return true, "", nil
+	}
+
+	// compare the version (using semver) with the min version
+	satisfied, err = versionSatisfyVersionConstraint(installed.Version, requiredConstraint)
+	if err != nil {
+		return false, "", err
+	}
+	if satisfied {
+		return true, "", nil
+	}
+	return false, "Updating", nil
 }
 
 func loadPluginVersionFile(ctx context.Context) (*versionfile.PluginVersionFile, error) {
