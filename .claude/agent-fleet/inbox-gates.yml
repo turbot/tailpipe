@@ -40,7 +40,7 @@ kinds:
     checks: [build]
     show: [test]
   workflows:
-    paths: [".github/**", ".goreleaser.yml", ".acceptance.goreleaser.yml", "Makefile", "scripts/**", ".gitignore", ".gitmodules"]
+    paths: [".github/**", ".goreleaser.yml", ".acceptance.goreleaser.yml", "Makefile", "scripts/**", ".gitignore", ".gitmodules", ".gitleaksignore"]
     show: [none]
   docs:
     paths: ["**/*.md", ".claude/**", ".cursor/**", ".cursor.bak", "LICENSE"]
