@@ -203,7 +203,8 @@ EOF
   assert_output --partial "Error: failed to get partition config: partition not found: chaos_all_columns.non_matching_*"
 
   # Verify that no data was collected
-  run tailpipe query "select count(*) as count from chaos_all_columns" --output csv
+  # (table output, so the warning is on stdout: the acceptance job sends tailpipe's stderr to its debug log)
+  run tailpipe query "select count(*) as count from chaos_all_columns"
   echo $output
 
   # Should show warning that no data has been collected
