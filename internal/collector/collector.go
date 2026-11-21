@@ -398,7 +398,12 @@ func (c *Collector) listenToEvents(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case e := <-c.Events:
+		case e, ok := <-c.Events:
+			// Close closes the channel when the partition is done - stop listening, otherwise every receive
+			// returns immediately with a nil event and this loop keeps a CPU core busy until the process exits
+			if !ok {
+				return
+			}
 			c.handlePluginEvent(ctx, e)
 		}
 	}
