@@ -114,6 +114,13 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 func (c *Collector) Close() {
 	close(c.Events)
 
+	// stop the parquet convertor, and wait for it to finish any conversion running, BEFORE removing the
+	// collection temp dir: it reads the JSONL files in that dir, so removing them from under it (as happens
+	// when a collect is cancelled) makes it report "file does not exist" errors
+	if c.parquetConvertor != nil {
+		c.parquetConvertor.Close()
+	}
+
 	// if inbox path is empty, remove it (ignore errors)
 	_ = os.Remove(c.sourcePath)
 

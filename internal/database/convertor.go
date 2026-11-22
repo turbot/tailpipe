@@ -77,8 +77,17 @@ type Converter struct {
 	// the DuckDB database connection - this must have a ducklake attachment
 	db *DuckDb
 
+	// the context for the collection: when it is cancelled (Ctrl+C, or the collector closing) no further chunks are
+	// converted, and any conversion running is interrupted
+	ctx context.Context
+	// cancels ctx - called by Close
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+
 	// test hook: called by the chunk processor when it finds the queue empty, just before it releases the process lock
 	onQueueEmpty func()
+	// test hook: called by the chunk processor before it converts a batch of chunks
+	onBatchStart func()
 }
 
 func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *DuckDb) (*Converter, error) {
@@ -97,6 +106,8 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 		tableSchema:     tableSchema,
 		statusFunc:      statusFunc,
 		db:              db,
+		ctx:             ctx,
+		cancel:          cancel,
 	}
 
 	// done
@@ -108,6 +119,12 @@ func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executi
 // signal the scheduler that `scheduledChunks are available
 func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	var err error
+
+	// if the collection has been cancelled the chunk will never be converted - do not schedule it
+	// (the files it refers to may already have been removed)
+	if w.cancelled() {
+		return nil
+	}
 
 	// wait on the schemaWg to ensure that schema inference is complete before processing the chunk
 	w.schemaWg.Wait()
@@ -137,6 +154,34 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	w.startProcessorIfIdle()
 
 	return nil
+}
+
+// context returns the collection context (context.Background if none was set)
+func (w *Converter) context() context.Context {
+	if w.ctx == nil {
+		return context.Background()
+	}
+	return w.ctx
+}
+
+// cancelled returns whether the collection has been cancelled (or the converter closed)
+func (w *Converter) cancelled() bool {
+	return w.context().Err() != nil
+}
+
+// Close stops the converter: it cancels the collection context, so no further chunks are converted and any
+// conversion running is interrupted, and then waits for the chunk processor to finish.
+// The caller can then safely remove the files the converter reads from.
+// The converter cannot be used again once closed.
+func (w *Converter) Close() {
+	w.closeOnce.Do(func() {
+		if w.cancel != nil {
+			w.cancel()
+		}
+		// the chunk processor holds the process lock for as long as it is running, so taking the lock waits for it
+		// to stop. NOTE: we never release it, which also stops a processor being started for a chunk added after this
+		w.processLock.Lock()
+	})
 }
 
 // startProcessorIfIdle starts processAllChunks if no processor is running

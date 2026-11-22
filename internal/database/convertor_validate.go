@@ -21,12 +21,16 @@ func (w *Converter) validateRows(jsonlFilePaths []string) error {
 	// if we have no columns to validate, biuld a  validation query to return the number of invalid rows and the columns with nulls
 	validationQuery := w.buildValidationQuery(requiredColumns)
 
-	row := w.db.QueryRow(validationQuery)
+	row := w.db.QueryRowContext(w.context(), validationQuery)
 	var failedRowCount int64
 	var columnsWithNullsInterface []interface{}
 
 	err := row.Scan(&failedRowCount, &columnsWithNullsInterface)
 	if err != nil {
+		// if the collection was cancelled, the query was interrupted - this is not a conversion problem
+		if w.cancelled() {
+			return err
+		}
 		return handleConversionError("row validation query failed", err, jsonlFilePaths...)
 	}
 
@@ -105,6 +109,6 @@ func (w *Converter) deleteInvalidRows(requiredColumns []string) error {
 	whereClause := w.buildNullCheckQuery(requiredColumns)
 	query := fmt.Sprintf("delete from temp_data where %s;", whereClause)
 
-	_, err := w.db.Exec(query)
+	_, err := w.db.ExecContext(w.context(), query)
 	return err
 }

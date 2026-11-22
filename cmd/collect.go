@@ -141,11 +141,18 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	// collect each partition serially
 	var errList []error
 
-	for _, partition := range partitions {
+	for i, partition := range partitions {
 		// do the collection
 		err = collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
 		if err != nil {
 			errList = append(errList, err)
+		}
+		// if the collection was cancelled, do not start collecting the remaining partitions
+		if ctx.Err() != nil && i < len(partitions)-1 {
+			if err == nil {
+				errList = append(errList, ctx.Err())
+			}
+			break
 		}
 	}
 

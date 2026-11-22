@@ -26,7 +26,9 @@ func (w *Converter) processAllChunks() {
 		chunksToProcess := w.getChunksToProcess()
 		for len(chunksToProcess) > 0 {
 			err := w.processChunks(chunksToProcess)
-			if err != nil {
+			// if the collection was cancelled the failure is just the conversion being stopped (or the files
+			// having been removed) - it is not an error to report
+			if err != nil && !w.cancelled() {
 				slog.Error("Error processing chunks", "error", err)
 				// call add job errors and carry on
 				w.addJobErrors(err)
@@ -60,6 +62,15 @@ func (w *Converter) processChunks(chunksToProcess []int32) error {
 	defer func() {
 		w.wg.Add(len(chunksToProcess) * -1)
 	}()
+
+	if w.onBatchStart != nil {
+		w.onBatchStart()
+	}
+
+	// if the collection has been cancelled, do not convert: the chunk files are about to be (or have been) removed
+	if err := w.context().Err(); err != nil {
+		return err
+	}
 
 	// build a list of filenames to process
 	filenamesToProcess, err := w.chunkNumbersToFilenames(chunksToProcess)
@@ -207,8 +218,12 @@ create temp table temp_data as
   %s
 `, selectQuery))
 
-	_, err := w.db.Exec(queryBuilder.String())
+	_, err := w.db.ExecContext(w.context(), queryBuilder.String())
 	if err != nil {
+		// if the collection was cancelled, the query was interrupted - this is not a conversion problem
+		if w.cancelled() {
+			return err
+		}
 		// if the error is a schema change error, determine whether the schema of these chunks is
 		// different to the inferred schema
 		// w.handleSchemaChangeError either returns a schema change error or the original error
@@ -240,7 +255,7 @@ func (w *Converter) insertIntoDucklake(targetTable string) (int64, error) {
 	`, targetTable, columns, columns)
 
 	// Execute the insert statement
-	result, err := w.db.Exec(insertQuery)
+	result, err := w.db.ExecContext(w.context(), insertQuery)
 	if err != nil {
 		slog.Error(fmt.Sprintf("failed to insert data into DuckLake table db %p", w.db.DB), "table", targetTable, "error", err, "db", w.db.DB)
 		// It's helpful to wrap the error with context about what failed.
