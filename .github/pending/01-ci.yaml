@@ -1,0 +1,39 @@
+# The one gate for a pull request's checks. It runs the test workflows and its `ci` job passes only when they all did.
+# Branch protection requires `ci` (and the changelog line), so adding, renaming or splitting a test job never changes the rule.
+# A test workflow called from here no longer runs on `pull_request` itself, so each runs once per PR.
+name: "01 - CI"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    uses: ./.github/workflows/10-test-lint.yaml
+    secrets: inherit
+
+  acceptance:
+    uses: ./.github/workflows/11-test-acceptance.yaml
+    secrets: inherit
+
+  ci:
+    name: ci
+    # Always runs, so a failed or cancelled job reports as `ci` failing, not as a skipped (passing) gate.
+    if: ${{ always() }}
+    needs: [lint, acceptance]
+    runs-on: ubuntu-latest
+    steps:
+      # A job skipped on purpose (a path filter) has the result `skipped` and passes.
+      - name: Fail when a needed job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Needed jobs: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::a needed job ended as $result"; exit 1 ;;
+            esac
+          done
