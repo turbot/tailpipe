@@ -2,6 +2,7 @@ package collector
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -114,4 +115,36 @@ func TestClose_WaitsForTheListener(t *testing.T) {
 	if c.execution.state != ExecutionState_STARTED {
 		t.Fatalf("Close returned before the listener handled the buffered event, state = %v", c.execution.state)
 	}
+}
+
+// Ctrl+C with a plugin error still buffered: the cancelled wait has already recorded its result, and the
+// listener then reports the error too. Close, which waits for the listener, must still return.
+func TestClose_DoesNotHangOnAnErrorBufferedAtCancel(t *testing.T) {
+	dir := t.TempDir()
+	c := &Collector{
+		Events:            make(chan events.Event, 10),
+		execution:         &execution{completionChan: make(chan error, 1)},
+		collectionTempDir: dir + "/collection",
+		sourcePath:        dir + "/collection/jsonl",
+	}
+	c.Events <- events.NewCompletedEvent("exec", 0, 0, errors.New("plugin failed"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	// the wait for completion ends on the cancel first, as collectPartition's does
+	if err := c.WaitForCompletion(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("WaitForCompletion = %v, want context canceled", err)
+	}
+	c.listener.Add(1)
+	go func() {
+		defer c.listener.Done()
+		c.listenToEvents(ctx)
+	}()
+
+	closed := make(chan struct{})
+	go func() {
+		c.Close()
+		close(closed)
+	}()
+	waitForReturn(t, closed, "Close to return")
 }
