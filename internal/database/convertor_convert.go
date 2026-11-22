@@ -116,7 +116,7 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 
 	// copy the data from the jsonl file to a temp table
 	if err := w.copyChunkToTempTable(filenames); err != nil {
-		// copyChunkToTempTable returns a conversion error
+		// (copyChunkToTempTable returns a conversion error, except for an empty path list)
 		return err
 	}
 

@@ -33,6 +33,16 @@ func runFilterConversion(t *testing.T, filter string, rows int) filterTestResult
 // runConversion is runFilterConversion, optionally without creating the target table (so the insert fails)
 func runConversion(t *testing.T, filter string, rows int, createTable bool) filterTestResult {
 	t.Helper()
+	var sb strings.Builder
+	for i := 1; i <= rows; i++ {
+		sb.WriteString(`{"id": ` + string(rune('0'+i)) + "}\n")
+	}
+	return runConversionRows(t, filter, sb.String(), createTable)
+}
+
+// runConversionRows converts one chunk with the given JSONL content
+func runConversionRows(t *testing.T, filter, jsonl string, createTable bool) filterTestResult {
+	t.Helper()
 
 	sqlDb, err := sql.Open("duckdb", "")
 	if err != nil {
@@ -44,12 +54,8 @@ func runConversion(t *testing.T, filter string, rows int, createTable bool) filt
 
 	// write a chunk of JSONL, one row per line
 	sourceDir := t.TempDir()
-	var sb strings.Builder
-	for i := 1; i <= rows; i++ {
-		sb.WriteString(`{"id": ` + string(rune('0'+i)) + "}\n")
-	}
 	chunkFile := filepath.Join(sourceDir, table.ExecutionIdToJsonlFileName("exec", 0))
-	if err := os.WriteFile(chunkFile, []byte(sb.String()), 0600); err != nil {
+	if err := os.WriteFile(chunkFile, []byte(jsonl), 0600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,5 +182,31 @@ func TestConverter_InsertFailureCountsRows(t *testing.T) {
 	}
 	if res.failedRows != 5 || res.rowCount != 0 {
 		t.Errorf("expected 5 failed rows and 0 saved, got failed=%d saved=%d", res.failedRows, res.rowCount)
+	}
+}
+
+// a chunk with a row failing validation and then a failed insert reports the whole chunk as errors, and shows
+// both errors
+func TestConverter_ValidationFailureThenInsertFailure(t *testing.T) {
+	res := runConversionRows(t, "", `{"id": 1}`+"\n"+`{"id": null}`+"\n"+`{"id": 3}`+"\n"+`{"id": 4}`+"\n"+`{"id": 5}`+"\n", false)
+
+	if len(res.errs) != 1 {
+		t.Fatalf("expected one error reported, got %d: %v", len(res.errs), res.errs)
+	}
+	msg := res.errs[0].Error()
+	if !strings.Contains(msg, "failed validation") || !strings.Contains(msg, "failed to insert rows") {
+		t.Errorf("expected both the validation and the insert error, got: %s", msg)
+	}
+	if res.failedRows != 5 || res.rowCount != 0 {
+		t.Errorf("expected 5 failed rows and 0 saved, got failed=%d saved=%d", res.failedRows, res.rowCount)
+	}
+}
+
+// the happy side of the same: a row failing validation, with a good insert, is only that row's error
+func TestConverter_ValidationFailureOnly(t *testing.T) {
+	res := runConversionRows(t, "", `{"id": 1}`+"\n"+`{"id": null}`+"\n"+`{"id": 3}`+"\n", true)
+
+	if res.failedRows != 1 || res.rowCount != 2 || res.savedRows != 2 {
+		t.Errorf("expected 1 failed and 2 saved, got failed=%d reported=%d table=%d", res.failedRows, res.rowCount, res.savedRows)
 	}
 }
