@@ -149,10 +149,41 @@ jobs:
         timeout-minutes: 15
         continue-on-error: true
         run: |
+          # The tests run tailpipe through a wrapper that writes its stderr to a log file, at debug level, so a failed or
+          # hung run can be investigated. The log holds tailpipe's own log and the plugins' (tailpipe passes their stderr
+          # on), and stays out of the output the tests check: bats merges stderr into it. At debug level the chaos plugin logs
+          # each row, so a 100,000-row collect takes about 30 seconds longer and writes about 160 MB of log.
+          real_tailpipe=$(command -v tailpipe)
+          debug_log="$RUNNER_TEMP/tailpipe-debug.log"
+          mkdir -p "$RUNNER_TEMP/tailpipe-wrapper"
+          cat > "$RUNNER_TEMP/tailpipe-wrapper/tailpipe" <<EOF
+          #!/bin/sh
+          printf '=== tailpipe %s\n' "\$*" >> "$debug_log"
+          TAILPIPE_LOG_LEVEL="\${TAILPIPE_LOG_LEVEL:-debug}" exec "$real_tailpipe" "\$@" 2>> "$debug_log"
+          EOF
+          chmod +x "$RUNNER_TEMP/tailpipe-wrapper/tailpipe"
+          export PATH="$RUNNER_TEMP/tailpipe-wrapper:$PATH"
+
           chmod +x $GITHUB_WORKSPACE/tailpipe/tests/acceptance/run.sh
           $GITHUB_WORKSPACE/tailpipe/tests/acceptance/run.sh ${{ matrix.test_block }}.bats
           echo "exit_code=$(echo $?)" >> $GITHUB_OUTPUT
           echo ">> here"
+
+      - name: Show the size of the tailpipe debug log
+        if: ${{ !cancelled() }}
+        run: |
+          ls -l "$RUNNER_TEMP/tailpipe-debug.log" || true
+          grep -c '^=== tailpipe ' "$RUNNER_TEMP/tailpipe-debug.log" || true
+
+      # Keep the debug log when the suite fails or times out (`outcome` is the step's result before continue-on-error)
+      - name: Upload tailpipe debug log
+        if: ${{ !cancelled() && steps.run-test-suite.outcome == 'failure' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tailpipe-debug-log-${{ matrix.test_block }}
+          path: ${{ runner.temp }}/tailpipe-debug.log
+          if-no-files-found: warn
+          retention-days: 14
 
       # This job checks whether the test suite has passed or not.
       # Since the exit_code is set only when the bats test suite pass,
