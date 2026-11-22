@@ -7,7 +7,10 @@ on:
       - main
       - "v*"
   workflow_dispatch:
-  # Pull requests run it through 01-ci.yaml, so it runs once.
+  # A pull request to any branch but main runs it through 01-ci.yaml; one to main (a release PR) runs it here.
+  pull_request:
+    branches:
+      - main
   workflow_call:
 
 permissions:

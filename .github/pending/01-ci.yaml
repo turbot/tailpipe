@@ -1,10 +1,13 @@
 # The one gate for a pull request's checks. It runs the test workflows and its `ci` job passes only when they all did.
 # Branch protection requires `ci` (and the changelog line), so adding, renaming or splitting a test job never changes the rule.
-# A test workflow called from here no longer runs on `pull_request` itself, so each runs once per PR.
+# A test workflow called from here no longer runs on `pull_request` itself, so each runs once per PR. A release PR (into main)
+# is left as it was: the test workflows still run on it directly, and release-pr.yml dispatches them by name.
 name: "01 - CI"
 
 on:
   pull_request:
+    branches-ignore:
+      - main
 
 permissions:
   contents: read

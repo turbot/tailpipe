@@ -1,6 +1,6 @@
 name: "11 - Test: Acceptance"
 on:
-  # Pull requests run it through 01-ci.yaml, so it runs once.
+  # A pull request to any branch but main runs it through 01-ci.yaml; one to main (a release PR) runs it here.
   workflow_call:
   push:
     tags:
@@ -8,6 +8,9 @@ on:
     branches:
       - main
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
