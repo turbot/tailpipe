@@ -116,7 +116,7 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 
 	// copy the data from the jsonl file to a temp table
 	if err := w.copyChunkToTempTable(filenames); err != nil {
-		// copyChunkToTempTable will already have called handleSchemaChangeError anf handleConversionError
+		// copyChunkToTempTable returns a conversion error
 		return err
 	}
 
@@ -155,7 +155,8 @@ func (w *Converter) insertBatchIntoDuckLake(filenames []string) (err error) {
 	rowCount, err := w.insertIntoDucklake(w.Partition.TableName)
 	if err != nil {
 		slog.Error("failed to insert into DuckLake table", "table", w.Partition.TableName, "error", err)
-		return err
+		// wrap in a conversion error, so the rows of these chunks are reported as errors
+		return handleConversionError("failed to insert rows", err, filenames...)
 	}
 
 	td := tempTime.Sub(t)
@@ -212,7 +213,10 @@ create temp table temp_data as
 		// if the error is a schema change error, determine whether the schema of these chunks is
 		// different to the inferred schema
 		// w.handleSchemaChangeError either returns a schema change error or the original error
-		return w.handleSchemaChangeError(err, jsonlFilePaths...)
+		err = w.handleSchemaChangeError(err, jsonlFilePaths...)
+		// wrap in a conversion error, so the rows of these chunks are reported as errors (not silently dropped)
+		// and the database's error (for example a partition filter naming a column that does not exist) is shown
+		return handleConversionError("failed to read chunk", err, jsonlFilePaths...)
 	}
 
 	return nil

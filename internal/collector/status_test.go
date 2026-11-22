@@ -1,7 +1,10 @@
 package collector
 
 import (
+	"errors"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestErrorCountsToDisplay(t *testing.T) {
@@ -44,5 +47,41 @@ func TestErrorCountsToDisplay(t *testing.T) {
 				t.Errorf("total displayed errors %d exceeds max %d", displayed, tt.max)
 			}
 		})
+	}
+}
+
+// a conversion error (for example a partition filter naming a missing column) shows the database's error and counts
+// its rows as errors, not as saved
+func TestStatusString_ConversionError(t *testing.T) {
+	s := &status{partitionName: "t.p", started: time.Now()}
+	s.RowsReceived = 5
+	s.RowsEnriched = 5
+	s.UpdateConversionStatus(0, 5, errors.New(`exec-0.jsonl: failed to read chunk: Binder Error: Referenced column "invalid_column" not found in FROM clause!`))
+
+	out := s.String()
+	if !strings.Contains(out, `Referenced column "invalid_column" not found in FROM clause!`) {
+		t.Errorf("output does not show the database error:\n%s", out)
+	}
+	if !strings.Contains(out, "Saved:    0") {
+		t.Errorf("expected 0 rows saved:\n%s", out)
+	}
+	if !strings.Contains(out, "Errors:   5") {
+		t.Errorf("expected 5 rows reported as errors:\n%s", out)
+	}
+}
+
+// the happy side: no conversion errors means no Errors lines at all
+func TestStatusString_NoConversionError(t *testing.T) {
+	s := &status{partitionName: "t.p", started: time.Now()}
+	s.RowsReceived = 5
+	s.RowsEnriched = 5
+	s.UpdateConversionStatus(5, 0)
+
+	out := s.String()
+	if strings.Contains(out, "Errors:") {
+		t.Errorf("expected no errors section:\n%s", out)
+	}
+	if !strings.Contains(out, "Saved:    5") {
+		t.Errorf("expected 5 rows saved:\n%s", out)
 	}
 }
