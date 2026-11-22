@@ -6,6 +6,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/turbot/pipe-fittings/v2/ociinstaller"
+	pluginsdk "github.com/turbot/pipe-fittings/v2/plugin"
+	"github.com/turbot/pipe-fittings/v2/versionfile"
 	"github.com/turbot/tailpipe-plugin-sdk/helpers"
 	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
@@ -36,12 +39,14 @@ func listTables(ctx context.Context, input *HandlerInput, views []string) error 
 	var rows [][]string
 	rows = append(rows, []string{"Table", "Plugin"}) // Header
 
+	// installed plugins (with versions) are the same for every table - read them once
+	installed, err := plugin.GetInstalledPlugins(ctx, config.GlobalConfig.PluginVersions)
+	if err != nil {
+		return fmt.Errorf("failed to get installed plugins: %w", err)
+	}
+
 	for _, view := range views {
-		// TODO look at using config.GetPluginForTable(ctx, view) instead of this - or perhaps add function
-		//  https://github.com/turbot/tailpipe/issues/500
-		// GetPluginAndVersionForTable?
-		// getPluginForTable looks at plugin binaries (slower but mre reliable)
-		p, _ := getPluginForTable(ctx, view)
+		p := getPluginForTable(view, config.GlobalConfig.CustomTables, config.GlobalConfig.PluginVersions, installed)
 		rows = append(rows, []string{view, p})
 	}
 
@@ -74,29 +79,25 @@ func getTableSchema(ctx context.Context, input *HandlerInput, tableName string) 
 	return nil
 }
 
-// getPluginForTable returns the plugin name and version for a given table name.
-// note - this looks at the installed plugins and their version file entry, not only the version file
-func getPluginForTable(ctx context.Context, tableName string) (string, error) {
-	// First check if this is a custom table
-	if _, isCustom := config.GlobalConfig.CustomTables[tableName]; isCustom {
+// getPluginForTable returns the plugin name and version ("<name>@<version>") for a given table name,
+// or an empty string if the plugin is not installed.
+// The plugin is found in the same way as `tailpipe table show`: custom tables use the core plugin,
+// and any other table belongs to the plugin whose recorded metadata lists it
+// (see config.GetPluginForTable), so the table name need not start with the plugin name.
+// installed is keyed by "<org>/<name>", as returned by plugin.GetInstalledPlugins
+func getPluginForTable(tableName string, customTables map[string]*config.Table, versionMap map[string]*versionfile.InstalledVersion, installed map[string]*pluginsdk.PluginVersionString) string {
+	var fullName string
+	if _, isCustom := customTables[tableName]; isCustom {
 		// Custom tables use the core plugin
-		corePluginName := constants.CorePluginInstallStream()
-		return corePluginName, nil
+		fullName = constants.CorePluginInstallStream()
+	} else {
+		fullName = config.GetPluginForTable(tableName, versionMap)
 	}
 
-	prefix := strings.Split(tableName, "_")[0]
-
-	ps, err := plugin.GetInstalledPlugins(ctx, config.GlobalConfig.PluginVersions)
-	if err != nil {
-		return "", fmt.Errorf("failed to get installed plugins: %w", err)
+	org, name, _ := ociinstaller.NewImageRef(fullName).GetOrgNameAndStream()
+	version, ok := installed[fmt.Sprintf("%s/%s", org, name)]
+	if !ok {
+		return ""
 	}
-
-	for k, v := range ps {
-		pluginShortName := strings.Split(k, "/")[1]
-		if strings.HasPrefix(pluginShortName, prefix) {
-			return fmt.Sprintf("%s@%s", pluginShortName, v.String()), nil
-		}
-	}
-
-	return "", nil
+	return fmt.Sprintf("%s@%s", name, version.String())
 }
