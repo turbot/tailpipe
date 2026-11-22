@@ -274,8 +274,11 @@ func partitionNotFoundError(arg string, cfg *config.TailpipeConfig, loadUnconfig
 
 	// the table is the arg itself (a single part arg which is not a configured partition) or the part before the dot
 	tableName := strings.Split(arg, ".")[0]
-	if cfg != nil && !strings.ContainsAny(tableName, "*?[") && cfg.HasTable(tableName) && !tableHasPartitions(cfg.Partitions, tableName) {
-		return noPartitionsConfiguredError(tableName)
+	if cfg != nil && !strings.ContainsAny(tableName, "*?[") {
+		// use the table's own spelling, which the example block and 'table show' need
+		if table, ok := cfg.FindTable(tableName); ok && !tableHasPartitions(cfg.Partitions, table) {
+			return noPartitionsConfiguredError(table)
+		}
 	}
 	return notFound
 }

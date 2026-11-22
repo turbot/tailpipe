@@ -106,12 +106,13 @@ func GetPluginForTable(tableName string, versionMap map[string]*versionfile.Inst
 	return parts[0]
 }
 
-// HasTable returns whether the table is known: a custom table, or one an installed plugin provides
-// (as recorded in the plugin versions file when the plugin was installed). Matching is case insensitive.
-func (c *TailpipeConfig) HasTable(tableName string) bool {
+// FindTable returns the table's own name, and true, if the table is known: a custom table, or one an installed
+// plugin provides (as recorded in the plugin versions file when the plugin was installed). Matching is case
+// insensitive, but the name returned is the table's own, as it must be spelt wherever a table name is used.
+func (c *TailpipeConfig) FindTable(tableName string) (string, bool) {
 	for name := range c.CustomTables {
 		if strings.EqualFold(name, tableName) {
-			return true
+			return name, true
 		}
 	}
 	for _, version := range c.PluginVersions {
@@ -120,11 +121,11 @@ func (c *TailpipeConfig) HasTable(tableName string) bool {
 		}
 		for _, table := range version.Metadata["tables"] {
 			if strings.EqualFold(table, tableName) {
-				return true
+				return table, true
 			}
 		}
 	}
-	return false
+	return "", false
 }
 
 // GetPluginForFormat determines the plugin which provides the given format, using the plugin versions file,

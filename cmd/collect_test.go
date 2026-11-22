@@ -211,9 +211,9 @@ func Test_partitionNotFoundError_tableWithNoPartitions(t *testing.T) {
 			t.Fatalf("expected a 'no partitions are configured' error, got: %v", err)
 		}
 	})
-	t.Run("the table check is not case sensitive", func(t *testing.T) {
+	t.Run("the table check is not case sensitive and names the table as it is spelt", func(t *testing.T) {
 		err := partitionNotFoundError("GitHub_Audit_Log", testConfig(nil), none)
-		if err == nil || !strings.Contains(err.Error(), "no partitions are configured for table GitHub_Audit_Log") {
+		if err == nil || !strings.Contains(err.Error(), "no partitions are configured for table github_audit_log") || strings.Contains(err.Error(), "GitHub_Audit_Log") {
 			t.Fatalf("expected a 'no partitions are configured' error, got: %v", err)
 		}
 	})
