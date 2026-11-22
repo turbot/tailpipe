@@ -58,6 +58,9 @@ type Collector struct {
 	// bubble tea app
 	app    *tea.Program
 	cancel context.CancelFunc
+
+	// tracks the goroutine running listenToEvents, so Close can wait for it
+	listener sync.WaitGroup
 }
 
 // New creates a new collector
@@ -114,9 +117,12 @@ func New(pluginManager *plugin.PluginManager, partition *config.Partition, cance
 func (c *Collector) Close() {
 	close(c.Events)
 
-	// stop the parquet convertor, and wait for it to finish any conversion running, BEFORE removing the
-	// collection temp dir: it reads the JSONL files in that dir, so removing them from under it (as happens
-	// when a collect is cancelled) makes it report "file does not exist" errors
+	// the collection temp dir holds the JSONL files which the parquet convertor reads. When a collect is cancelled,
+	// chunks may still be waiting to be converted: let the listener hand over the ones it has received and the
+	// convertor save them, and only then remove the dir - the plugin has already saved its collection state past
+	// those chunks, so dropping them would lose their rows from the next collect, and removing their files
+	// under the convertor makes it report "file does not exist" errors
+	c.listener.Wait()
 	if c.parquetConvertor != nil {
 		c.parquetConvertor.Close()
 	}
@@ -210,7 +216,11 @@ func (c *Collector) Collect(ctx context.Context, fromTime, toTime time.Time, ove
 	c.parquetConvertor = parquetConvertor
 
 	// start listening to plugin events asynchronously
-	go c.listenToEvents(ctx)
+	c.listener.Add(1)
+	go func() {
+		defer c.listener.Done()
+		c.listenToEvents(ctx)
+	}()
 
 	return nil
 }
@@ -400,10 +410,13 @@ func (c *Collector) waitForConversions(ctx context.Context, ce *events.Complete)
 }
 
 // listenToEvents listens to the events channel and handles events
+// It returns when the channel is closed, or the context is cancelled. On cancel it first handles the events which
+// are already in the channel: the plugin has already saved its collection state for any chunk among them.
 func (c *Collector) listenToEvents(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			c.handleBufferedEvents(ctx)
 			return
 		case e, ok := <-c.Events:
 			// Close closes the channel when the partition is done - stop listening, otherwise every receive
@@ -412,6 +425,21 @@ func (c *Collector) listenToEvents(ctx context.Context) {
 				return
 			}
 			c.handlePluginEvent(ctx, e)
+		}
+	}
+}
+
+// handleBufferedEvents handles the events waiting in the events channel, without blocking for more
+func (c *Collector) handleBufferedEvents(ctx context.Context) {
+	for {
+		select {
+		case e, ok := <-c.Events:
+			if !ok {
+				return
+			}
+			c.handlePluginEvent(ctx, e)
+		default:
+			return
 		}
 	}
 }

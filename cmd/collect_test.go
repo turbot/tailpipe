@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/turbot/tailpipe/internal/config"
+	"github.com/turbot/tailpipe/internal/error_helpers"
 )
 
 func Test_getSyntheticPartition(t *testing.T) {
@@ -204,6 +206,73 @@ func Test_resolvePartitionArgs(t *testing.T) {
 		_, err := resolvePartitionArgs(partitions, []string{"aws_cloudtrail_log.nope"}, notFound)
 		if err == nil || err.Error() != "nf: aws_cloudtrail_log.nope" {
 			t.Fatalf("expected the not found error, got %v", err)
+		}
+	})
+}
+
+func TestCollectPartitionsSerially(t *testing.T) {
+	parts := []*config.Partition{{TableName: "a"}, {TableName: "b"}, {TableName: "c"}}
+
+	collectedWith := func(ctx context.Context, fn func(p *config.Partition) error) ([]string, error) {
+		var collected []string
+		err := collectPartitionsSerially(ctx, parts, func(p *config.Partition) error {
+			collected = append(collected, p.TableName)
+			return fn(p)
+		})
+		return collected, err
+	}
+
+	t.Run("collects every partition", func(t *testing.T) {
+		collected, err := collectedWith(context.Background(), func(*config.Partition) error { return nil })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(collected, ","); got != "a,b,c" {
+			t.Fatalf("collected %s, want a,b,c", got)
+		}
+	})
+
+	t.Run("an error does not stop the other partitions, and all are reported", func(t *testing.T) {
+		collected, err := collectedWith(context.Background(), func(p *config.Partition) error {
+			if p.TableName != "b" {
+				return nil
+			}
+			return errors.New("b failed")
+		})
+		if len(collected) != 3 {
+			t.Fatalf("collected %v, want all three", collected)
+		}
+		if err == nil || !strings.Contains(err.Error(), "collection error: b failed") {
+			t.Fatalf("err = %v, want it to report b's error", err)
+		}
+	})
+
+	t.Run("a cancel stops the remaining partitions starting, and is reported as a cancel", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		collected, err := collectedWith(ctx, func(p *config.Partition) error {
+			cancel() // Ctrl+C during the first partition, which then ends without an error
+			return nil
+		})
+		if got := strings.Join(collected, ","); got != "a" {
+			t.Fatalf("collected %s after the cancel, want only a", got)
+		}
+		if !errors.Is(err, context.Canceled) || !error_helpers.IsCancelledError(err) {
+			t.Fatalf("err = %v, want a cancelled error", err)
+		}
+	})
+
+	t.Run("a cancel during the last partition changes nothing", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		_, err := collectedWith(ctx, func(p *config.Partition) error {
+			if p.TableName == "c" {
+				cancel()
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("err = %v, want none: every partition was collected", err)
 		}
 	})
 }
