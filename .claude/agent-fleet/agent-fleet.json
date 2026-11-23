@@ -13,6 +13,10 @@
     "workflow": "release.yml",
     "base": "main"
   },
+  "releasePrep": {
+    "prepWorkflow": "prep.yml",
+    "releaseWorkflow": "release.yml"
+  },
   "chores": {
     "security-audit": {
       "when": "mon week 3",
