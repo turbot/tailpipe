@@ -139,19 +139,32 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	defer pluginManager.Close()
 
 	// collect each partition serially
+	return collectPartitionsSerially(ctx, partitions, func(partition *config.Partition) error {
+		return collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
+	})
+}
+
+// collectPartitionsSerially calls collect for each partition in turn, returning the errors joined.
+// Once ctx is cancelled the remaining partitions are not started: starting one would have its plugin collect (and
+// save its collection state) for a run which is already stopping.
+func collectPartitionsSerially(ctx context.Context, partitions []*config.Partition, collect func(*config.Partition) error) error {
 	var errList []error
 
-	for _, partition := range partitions {
-		// do the collection
-		err = collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
-		if err != nil {
+	for i, partition := range partitions {
+		if err := collect(partition); err != nil {
 			errList = append(errList, err)
+		}
+		if ctx.Err() != nil && i < len(partitions)-1 {
+			// make sure the cancel is reported, even if this partition finished without an error
+			if len(errList) == 0 {
+				errList = append(errList, ctx.Err())
+			}
+			break
 		}
 	}
 
 	if len(errList) > 0 {
-		err = errors.Join(errList...)
-		return fmt.Errorf("collection error: %w", err)
+		return fmt.Errorf("collection error: %w", errors.Join(errList...))
 	}
 
 	return nil

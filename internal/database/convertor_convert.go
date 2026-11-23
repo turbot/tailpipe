@@ -61,6 +61,10 @@ func (w *Converter) processChunks(chunksToProcess []int32) error {
 		w.wg.Add(len(chunksToProcess) * -1)
 	}()
 
+	if w.onBatchStart != nil {
+		w.onBatchStart(chunksToProcess)
+	}
+
 	// build a list of filenames to process
 	filenamesToProcess, err := w.chunkNumbersToFilenames(chunksToProcess)
 	if err != nil {

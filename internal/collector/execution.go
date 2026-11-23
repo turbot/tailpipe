@@ -50,7 +50,13 @@ func (e *execution) done(err error) {
 		// if state has not already been set to error, set to complete
 		e.state = ExecutionState_COMPLETE
 	}
-	e.completionChan <- err
+	// the channel holds one result, which is all waitForCompletion reads: if one is already waiting (the wait
+	// ended on a cancel, say) a later result is dropped - blocking here would hang whoever is reporting it,
+	// including the listener which Collector.Close waits for
+	select {
+	case e.completionChan <- err:
+	default:
+	}
 }
 
 func (e *execution) complete() bool {
