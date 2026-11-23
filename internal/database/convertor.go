@@ -225,18 +225,18 @@ func (w *Converter) WaitForConversions(ctx context.Context) error {
 
 // addJobErrors calls the status func with any job errors, first summing the failed rows in any conversion errors
 func (w *Converter) addJobErrors(errorList ...error) {
-	var failedRowCount int64
-
 	for _, err := range errorList {
 		var conversionError = &ConversionError{}
 		if errors.As(err, &conversionError) {
-			failedRowCount = atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
+			atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
 		}
 		slog.Error("conversion error", "error", err)
 	}
 
-	// update the status function with the new error count (no need to use atomic for errorList as we are already locked)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), failedRowCount, errorList...)
+	// update the status function with the total failed row count so far, NOT just this error's rows: an error that
+	// is not a conversion error must not reset the count of rows already reported as failed
+	// (no need to use atomic for errorList as we are already locked)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount), errorList...)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc
