@@ -128,8 +128,6 @@ func sourceShowCmd() *cobra.Command {
 
 func runSourceShowCmd(cmd *cobra.Command, args []string) {
 	// use the signal-aware/cancelable context created upstream in preRunHook
-	// TODO: https://github.com/turbot/tailpipe/issues/563 none of the functions called in this command will return a
-	// cancellation error. Cancellation won't work right now
 	ctx := cmd.Context()
 	utils.LogTime("runSourceShowCmd start")
 	var err error

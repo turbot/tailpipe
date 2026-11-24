@@ -89,7 +89,8 @@ func newFakePluginManager(t *testing.T, mode string) (*PluginManager, string) {
 		if err != nil {
 			return nil, err
 		}
-		cmd := exec.CommandContext(ctx, exe)
+		// run it through the shell, as a real plugin is
+		cmd := shellCommand(ctx, exe)
 		cmd.Env = append(os.Environ(), fakePluginModeEnv+"="+mode, fakePluginPidEnv+"="+pidFile)
 		return cmd, nil
 	}

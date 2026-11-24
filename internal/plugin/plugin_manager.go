@@ -490,6 +490,13 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 	return client, nil
 }
 
+// shellCommand returns a command which runs the plugin at pluginPath through the shell, bound to ctx.
+// The shell replaces itself with the plugin (exec), so the process the command kills, and go-plugin waits on, is the
+// plugin itself: otherwise the shell forks, and killing it leaves the plugin running
+func shellCommand(ctx context.Context, pluginPath string) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", "exec "+pluginPath) //nolint:gosec // the plugin path is from the installed plugin
+}
+
 // getPluginCommand builds the command which runs the plugin. The command is killed if ctx is cancelled before the plugin
 // has started (see startPlugin)
 func getPluginCommand(ctx context.Context, tp *pplugin.Plugin) (*exec.Cmd, error) {
@@ -498,7 +505,7 @@ func getPluginCommand(ctx context.Context, tp *pplugin.Plugin) (*exec.Cmd, error
 		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
 	}
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", pluginPath) //nolint:gosec // the plugin path is from the installed plugin
+	cmd := shellCommand(ctx, pluginPath)
 
 	// set the max memory for the plugin (if specified)
 	maxMemoryBytes := tp.GetMaxMemoryBytes()
