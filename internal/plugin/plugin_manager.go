@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -55,12 +56,20 @@ type PluginManager struct {
 	// (this will be the collector)
 	obs        observable.Observer
 	pluginPath string
+
+	// startCtx is cancelled by abortStarts (and Close) to stop any plugin which is still starting up.
+	// It does not affect a plugin which has finished starting
+	startCtx    context.Context
+	abortStarts context.CancelFunc
 }
 
 func NewPluginManager() *PluginManager {
+	startCtx, abortStarts := context.WithCancel(context.Background())
 	return &PluginManager{
-		Plugins:    make(map[string]*grpc.PluginClient),
-		pluginPath: filepath.Join(app_specific.InstallDir, "plugins"),
+		Plugins:     make(map[string]*grpc.PluginClient),
+		pluginPath:  filepath.Join(app_specific.InstallDir, "plugins"),
+		startCtx:    startCtx,
+		abortStarts: abortStarts,
 	}
 }
 
@@ -220,13 +229,15 @@ func (p *PluginManager) getSupportedOperations(tablePluginClient *grpc.PluginCli
 }
 
 // Describe starts the plugin if needed, and returns the plugin description, including description of any custom formats
-func (p *PluginManager) Describe(_ context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
+//
+// If ctx is cancelled before the plugin has answered, Describe returns promptly with an error wrapping ctx.Err().
+// The plugin may still be starting or describing at that point: the caller must call Close to stop it.
+func (p *PluginManager) Describe(ctx context.Context, pluginName string, opts ...DescribeOpts) (*types.DescribeResponse, error) {
 	// build plugin ref from the name
 	pluginDef := pplugin.NewPlugin(pluginName)
 
-	pluginClient, err := p.getPlugin(pluginDef)
-	if err != nil {
-		return nil, fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)
+	if err := ctx.Err(); err != nil {
+		return nil, describeCancelledError(pluginDef, err)
 	}
 
 	req := &proto.DescribeRequest{}
@@ -235,13 +246,42 @@ func (p *PluginManager) Describe(_ context.Context, pluginName string, opts ...D
 		opt(req)
 	}
 
-	describeResponse, err := pluginClient.Describe(req)
-	if err != nil {
-		return nil, fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
+	// the plugin client does not take a context, so run the start and the call in a goroutine and
+	// stop waiting for it if the context is cancelled
+	type describeResult struct {
+		resp *proto.DescribeResponse
+		err  error
+	}
+	// buffered, so the goroutine can finish after we have stopped waiting
+	resultChan := make(chan describeResult, 1)
+	go func() {
+		pluginClient, err := p.getPlugin(pluginDef)
+		if err != nil {
+			resultChan <- describeResult{err: fmt.Errorf("error starting plugin %s: %w", pluginDef.Alias, err)}
+			return
+		}
+		resp, err := pluginClient.Describe(req)
+		if err != nil {
+			err = fmt.Errorf("error calling describe for plugin %s: %w", pluginClient.Name, err)
+		}
+		resultChan <- describeResult{resp: resp, err: err}
+	}()
+
+	var result describeResult
+	select {
+	case <-ctx.Done():
+		// stop a plugin which is still starting - this releases the plugin lock so Close does not wait for the start.
+		// A plugin which is describing is stopped by Close
+		p.abortStarts()
+		return nil, describeCancelledError(pluginDef, ctx.Err())
+	case result = <-resultChan:
+	}
+	if result.err != nil {
+		return nil, result.err
 	}
 
 	// build DescribeResponse from proto
-	res := types.DescribeResponseFromProto(describeResponse)
+	res := types.DescribeResponseFromProto(result.resp)
 
 	// add non-proto fields
 	res.PluginName = pluginDef.Plugin
@@ -249,7 +289,14 @@ func (p *PluginManager) Describe(_ context.Context, pluginName string, opts ...D
 	return res, nil
 }
 
+func describeCancelledError(pluginDef *pplugin.Plugin, err error) error {
+	return fmt.Errorf("describe of plugin %s cancelled: %w", pluginDef.Alias, err)
+}
+
+// Close stops all plugins, including any which are still starting
 func (p *PluginManager) Close() {
+	// stop any plugin which is still starting, otherwise we would wait for it to finish starting
+	p.abortStarts()
 	p.pluginMutex.Lock()
 	defer p.pluginMutex.Unlock()
 	for _, plg := range p.Plugins {
@@ -399,9 +446,18 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 		pluginName: &shared.TailpipeGRPCPlugin{},
 	}
 
-	cmd, err := p.getPluginCommand(tp)
+	cmd, err := getPluginCommand(p.startCtx, tp)
 	if err != nil {
 		return nil, err
+	}
+	// the plugin is killed if the manager aborts the start before it is up. Once it is up, aborting does nothing
+	// (a running plugin is stopped by Close)
+	var started atomic.Bool
+	cmd.Cancel = func() error {
+		if started.Load() {
+			return os.ErrProcessDone
+		}
+		return cmd.Process.Kill()
 	}
 
 	pluginStartTimeout := p.getPluginStartTimeout()
@@ -422,6 +478,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 		return nil, err
 
 	}
+	started.Store(true)
 
 	// store the client, keyed by image ref
 	p.Plugins[tp.Plugin] = client
@@ -429,13 +486,22 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 	return client, nil
 }
 
-func (p *PluginManager) getPluginCommand(tp *pplugin.Plugin) (*exec.Cmd, error) {
+// shellCommand returns a command which runs the plugin at pluginPath through the shell, bound to ctx.
+// The shell replaces itself with the plugin (exec), so the process the command kills, and go-plugin waits on, is the
+// plugin itself: otherwise the shell forks, and killing it leaves the plugin running
+func shellCommand(ctx context.Context, pluginPath string) *exec.Cmd {
+	return exec.CommandContext(ctx, "sh", "-c", "exec "+pluginPath) //nolint:gosec // the plugin path is from the installed plugin
+}
+
+// getPluginCommand builds the command which runs the plugin. The command is killed if ctx is cancelled before the plugin
+// has started (see startPlugin)
+func getPluginCommand(ctx context.Context, tp *pplugin.Plugin) (*exec.Cmd, error) {
 	pluginPath, err := pfilepaths.GetPluginPath(tp.Plugin, tp.Alias)
 	if err != nil {
 		return nil, fmt.Errorf("error getting plugin path for plugin '%s': %w", tp.Alias, err)
 	}
 
-	cmd := exec.Command("sh", "-c", pluginPath)
+	cmd := shellCommand(ctx, pluginPath)
 
 	// set the max memory for the plugin (if specified)
 	maxMemoryBytes := tp.GetMaxMemoryBytes()
