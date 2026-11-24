@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/turbot/pipe-fittings/v2/app_specific"
+	"github.com/turbot/pipe-fittings/v2/workspace_profile"
+	"github.com/turbot/tailpipe/internal/config"
 	"github.com/turbot/tailpipe/internal/constants"
 	"github.com/turbot/tailpipe/internal/database"
 )
@@ -39,13 +42,31 @@ func Test_buildInitScript(t *testing.T) {
 	if got := buildInitScript(commands); got != want {
 		t.Errorf("script changed:\ngot:  %q\nwant: %q", got, want)
 	}
+}
 
-	// without them, only the attach is left
-	got := buildInitScript(commands[2:])
-	if strings.Contains(strings.ToLower(got), "install") {
-		t.Errorf("script still has install lines: %q", got)
+// the script `tailpipe connect --no-install` writes: the commands from the database package, rendered
+func Test_buildInitScript_noInstall(t *testing.T) {
+	prevDir, prevProfile := app_specific.InstallDir, config.GlobalWorkspaceProfile
+	app_specific.InstallDir = t.TempDir()
+	config.GlobalWorkspaceProfile = &workspace_profile.TailpipeWorkspaceProfile{ProfileName: "test"}
+	t.Cleanup(func() {
+		app_specific.InstallDir, config.GlobalWorkspaceProfile = prevDir, prevProfile
+	})
+
+	withInstall := buildInitScript(database.GetDucklakeInitCommandsWithOptions(true, false))
+	without := buildInitScript(database.GetDucklakeInitCommandsWithOptions(true, true))
+
+	if !strings.Contains(withInstall, "install sqlite;") || !strings.Contains(withInstall, "install ducklake;") {
+		t.Errorf("script without the option lost its install lines: %q", withInstall)
 	}
-	if got != "-- attach to ducklake database\nattach 'x';\n\n" {
-		t.Errorf("unexpected script: %q", got)
+	if strings.Contains(strings.ToLower(without), "install") {
+		t.Errorf("script still has install lines: %q", without)
+	}
+	if !strings.Contains(without, "attach 'ducklake:sqlite:") {
+		t.Errorf("script lost its attach: %q", without)
+	}
+	// only the install lines differ
+	if !strings.HasSuffix(withInstall, without) {
+		t.Errorf("scripts differ by more than the install lines:\n%q\n%q", withInstall, without)
 	}
 }

@@ -265,7 +265,7 @@ func (d *DuckDb) setTempDir() error {
 }
 
 // GetDucklakeInitCommands returns the set of SQL commands required to initialize and connect to DuckLake.
-// this is used both for tailpipe to connect to ducklake and also for tailpipe connect to build the init script
+// this is used for tailpipe to connect to ducklake (tailpipe connect uses GetDucklakeInitCommandsWithOptions)
 // It returns an ordered slice of SQL commands.
 func GetDucklakeInitCommands(readonly bool) []SqlCommand {
 	return GetDucklakeInitCommandsWithOptions(readonly, false)

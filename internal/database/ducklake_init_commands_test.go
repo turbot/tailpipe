@@ -175,8 +175,13 @@ func Test_skipInstall_lockedDuckDb(t *testing.T) {
 				t.Fatalf("command %q failed on a locked duckdb: %v", c.Command, err)
 			}
 		}
+		// a view over the attached data, as the script's view commands make
+		view := "create or replace view t as select * from " + pconstants.DuckLakeCatalog + ".t"
+		if err := exec(db, view); err != nil {
+			t.Fatalf("view creation failed on a locked duckdb: %v", err)
+		}
 		var answer int
-		if err := db.QueryRow("select answer from " + pconstants.DuckLakeCatalog + ".t").Scan(&answer); err != nil {
+		if err := db.QueryRow("select answer from t").Scan(&answer); err != nil {
 			t.Fatalf("query failed: %v", err)
 		}
 		if answer != 42 {
