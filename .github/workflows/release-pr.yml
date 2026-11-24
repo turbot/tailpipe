@@ -57,5 +57,5 @@ jobs:
       results-run: ${{ github.run_id }}
       review: ${{ github.event_name == 'pull_request_review' }}
       ignore-checks: record / record
-      # The test workflows a release PR must pass (Test Linting; Build is the goreleaser job of the acceptance workflow). 01-ci.yaml skips PRs into main, so a release PR runs these directly, and the record can start them by hand.
+      # The test workflows a release PR must pass (Test Linting; Build is the goreleaser job of the acceptance workflow). 01-ci.yaml skips PRs into main, so a release PR runs these directly, and the record can start them with workflow_dispatch.
       required-check-workflows: 10-test-lint.yaml,11-test-acceptance.yaml
