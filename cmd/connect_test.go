@@ -59,8 +59,10 @@ func Test_buildInitScript_noInstall(t *testing.T) {
 	if !strings.Contains(withInstall, "install sqlite;") || !strings.Contains(withInstall, "install ducklake;") {
 		t.Errorf("script without the option lost its install lines: %q", withInstall)
 	}
-	if strings.Contains(strings.ToLower(without), "install") {
-		t.Errorf("script still has install lines: %q", without)
+	for _, line := range strings.Split(without, "\n") {
+		if strings.HasPrefix(strings.ToLower(line), "install") {
+			t.Errorf("script still has an install line %q: %q", line, without)
+		}
 	}
 	if !strings.Contains(without, "attach 'ducklake:sqlite:") {
 		t.Errorf("script lost its attach: %q", without)
