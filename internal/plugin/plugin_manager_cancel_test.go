@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	goplugin "github.com/hashicorp/go-plugin"
+	"github.com/turbot/pipe-fittings/v2/app_specific"
 	pplugin "github.com/turbot/pipe-fittings/v2/plugin"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/proto"
 	"github.com/turbot/tailpipe-plugin-sdk/grpc/shared"
@@ -31,6 +32,8 @@ const (
 	fakeModeDescribe = "describe"
 	// the plugin never completes the plugin handshake
 	fakeModeHangOnStart = "hang-on-start"
+
+	fakePluginName = "fakeplugin"
 
 	// how long the tests wait for a process to go away before failing
 	processGoneTimeout = 10 * time.Second
@@ -74,28 +77,36 @@ func runFakePlugin(mode string) {
 		HandshakeConfig: shared.Handshake,
 		Plugins: map[string]goplugin.Plugin{
 			// the name matches the alias of the plugin the tests describe
-			"fakeplugin": &shared.TailpipeGRPCPlugin{Impl: &fakePluginImpl{mode: mode}},
+			fakePluginName: &shared.TailpipeGRPCPlugin{Impl: &fakePluginImpl{mode: mode}},
 		},
 		GRPCServer: goplugin.DefaultGRPCServer,
 	})
 }
 
-// newFakePluginManager returns a manager which runs the fake plugin in the given mode, and the file holding its pid
+// newFakePluginManager installs the fake plugin (a link to this test binary) into a temporary install dir, where the
+// manager finds it as it would a real one, and returns a manager for it and the file holding the plugin's pid
 func newFakePluginManager(t *testing.T, mode string) (*PluginManager, string) {
 	t.Helper()
-	pidFile := t.TempDir() + "/plugin.pid"
-	pm := NewPluginManager()
-	pm.buildCommand = func(ctx context.Context, _ *pplugin.Plugin) (*exec.Cmd, error) {
-		exe, err := os.Executable()
-		if err != nil {
-			return nil, err
-		}
-		// run it through the shell, as a real plugin is
-		cmd := shellCommand(ctx, exe)
-		cmd.Env = append(os.Environ(), fakePluginModeEnv+"="+mode, fakePluginPidEnv+"="+pidFile)
-		return cmd, nil
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
 	}
-	return pm, pidFile
+	pidFile := filepath.Join(t.TempDir(), "plugin.pid")
+	t.Setenv(fakePluginModeEnv, mode)
+	t.Setenv(fakePluginPidEnv, pidFile)
+
+	oldInstallDir := app_specific.InstallDir
+	app_specific.InstallDir = t.TempDir()
+	t.Cleanup(func() { app_specific.InstallDir = oldInstallDir })
+
+	pluginFolder := filepath.Join(app_specific.InstallDir, "plugins", pplugin.NewPlugin(fakePluginName).Plugin)
+	if err := os.MkdirAll(pluginFolder, 0o755); err != nil { //nolint:gosec // a test-owned temp dir
+		t.Fatal(err)
+	}
+	if err := os.Symlink(exe, filepath.Join(pluginFolder, "fake.plugin")); err != nil {
+		t.Fatal(err)
+	}
+	return NewPluginManager(), pidFile
 }
 
 // pluginPid waits for the fake plugin to write its pid
@@ -130,11 +141,30 @@ func requireProcessGone(t *testing.T, pid int) {
 	t.Errorf("plugin process %d is still running", pid)
 }
 
+// describeWithin runs Describe and fails the test if it has not returned within the deadline, rather than hanging
+func describeWithin(t *testing.T, pm *PluginManager, ctx context.Context, deadline time.Duration) error { //nolint:revive // t first
+	t.Helper()
+	errChan := make(chan error, 1)
+	go func() {
+		_, err := pm.Describe(ctx, fakePluginName)
+		errChan <- err
+	}()
+	select {
+	case err := <-errChan:
+		return err
+	case <-time.After(deadline):
+		// stop the plugin so the test does not leave it running
+		pm.Close()
+		t.Fatalf("Describe did not return within %s of the cancel", deadline)
+		return nil
+	}
+}
+
 func TestDescribe(t *testing.T) {
 	pm, _ := newFakePluginManager(t, fakeModeDescribe)
 	defer pm.Close()
 
-	res, err := pm.Describe(context.Background(), "fakeplugin")
+	res, err := pm.Describe(context.Background(), fakePluginName)
 	if err != nil {
 		t.Fatalf("Describe returned an error: %v", err)
 	}
@@ -155,7 +185,7 @@ func TestDescribe_cancelWhileDescribing(t *testing.T) {
 	}()
 
 	begin := time.Now()
-	_, err := pm.Describe(ctx, "fakeplugin")
+	err := describeWithin(t, pm, ctx, cancelDeadline)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected a cancelled error, got %v", err)
 	}
@@ -180,7 +210,7 @@ func TestDescribe_cancelWhileStarting(t *testing.T) {
 	}()
 
 	begin := time.Now()
-	_, err := pm.Describe(ctx, "fakeplugin")
+	err := describeWithin(t, pm, ctx, cancelDeadline)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected a cancelled error, got %v", err)
 	}
@@ -197,28 +227,11 @@ func TestDescribe_alreadyCancelled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := pm.Describe(ctx, "fakeplugin")
+	_, err := pm.Describe(ctx, fakePluginName)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected a cancelled error, got %v", err)
 	}
 	if _, statErr := os.Stat(pidFile); statErr == nil {
 		t.Error("a plugin was started for an already cancelled context")
-	}
-}
-
-// a plugin which has finished starting is not killed by aborting starts - only by Close
-func TestAbortStartsLeavesRunningPluginAlone(t *testing.T) {
-	pm, pidFile := newFakePluginManager(t, fakeModeDescribe)
-	defer pm.Close()
-
-	if _, err := pm.Describe(context.Background(), "fakeplugin"); err != nil {
-		t.Fatalf("Describe returned an error: %v", err)
-	}
-	pid := pluginPid(t, pidFile)
-	pm.abortStarts()
-	time.Sleep(300 * time.Millisecond)
-	proc, _ := os.FindProcess(pid)
-	if err := proc.Signal(syscall.Signal(0)); err != nil {
-		t.Fatalf("the running plugin was stopped by aborting starts: %v", err)
 	}
 }

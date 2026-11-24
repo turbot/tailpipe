@@ -61,20 +61,16 @@ type PluginManager struct {
 	// It does not affect a plugin which has finished starting
 	startCtx    context.Context
 	abortStarts context.CancelFunc
-	// buildCommand builds the command which runs a plugin, bound to the start context (a field so tests can run a fake plugin)
-	buildCommand func(ctx context.Context, tp *pplugin.Plugin) (*exec.Cmd, error)
 }
 
 func NewPluginManager() *PluginManager {
 	startCtx, abortStarts := context.WithCancel(context.Background())
-	p := &PluginManager{
+	return &PluginManager{
 		Plugins:     make(map[string]*grpc.PluginClient),
 		pluginPath:  filepath.Join(app_specific.InstallDir, "plugins"),
 		startCtx:    startCtx,
 		abortStarts: abortStarts,
 	}
-	p.buildCommand = getPluginCommand
-	return p
 }
 
 // AddObserver adds a
@@ -450,7 +446,7 @@ func (p *PluginManager) startPlugin(tp *pplugin.Plugin) (*grpc.PluginClient, err
 		pluginName: &shared.TailpipeGRPCPlugin{},
 	}
 
-	cmd, err := p.buildCommand(p.startCtx, tp)
+	cmd, err := getPluginCommand(p.startCtx, tp)
 	if err != nil {
 		return nil, err
 	}
