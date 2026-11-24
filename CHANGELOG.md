@@ -1,3 +1,20 @@
+## [0.9.0] - 2026-11-24
+
+### What's new
+
+- `tailpipe connect --no-install` writes the DuckDB start-up script without its `install` lines, for a DuckDB that has already loaded the `sqlite` and `ducklake` extensions and been locked. Without the flag the script is the same as before. (#701)
+
+### Improvements
+
+- Tailpipe now builds on newer versions of its Go dependencies, including cobra 1.10.2, viper 1.21.0, grpc 1.85.0, hcl 2.25.0 and go-duckdb 2.4.3, picking up their patch and minor fixes. (#689)
+
+### Bug fixes
+
+- `.inspect` now shows the right plugin for every table, including tables not named after their plugin, and a custom table shows the installed core version. (#686)
+- Collecting a table that has no partitions configured now says so and how to add one, instead of "partition not found". A table or partition that does not exist is still reported as not found. (#687)
+- Pressing Ctrl+C during `tailpipe collect` now stops it with the cancelled message and no "file does not exist" errors or crash, and it saves the rows it had already received. (#508) (#692)
+- `tailpipe collect` now shows the database's error, and counts the rows as errors, when a partition's `filter` names a column that does not exist, where it saved 0 rows with no error before. (#696)
+
 ## [0.8.0] - 2026-11-21
 
 ### Security
