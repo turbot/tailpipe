@@ -71,7 +71,7 @@ func runCompactCmd(cmd *cobra.Command, args []string) {
 	// verify that the provided args resolve to at least one partition
 	// (use the existing connection to check for partitions which are no longer configured)
 	_, err = resolvePartitionArgs(config.GlobalConfig.Partitions, args, func(arg string) error {
-		return partitionNotFoundError(arg, func() (map[string]*config.Partition, error) {
+		return partitionNotFoundError(arg, config.GlobalConfig, func() (map[string]*config.Partition, error) {
 			return database.GetUnconfiguredPartitions(ctx, db, config.GlobalConfig)
 		})
 	})

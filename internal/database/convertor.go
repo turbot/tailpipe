@@ -77,8 +77,14 @@ type Converter struct {
 	// the DuckDB database connection - this must have a ducklake attachment
 	db *DuckDb
 
+	// set by Close (under scheduleLock): no further chunks are accepted
+	closed    bool
+	closeOnce sync.Once
+
 	// test hook: called by the chunk processor when it finds the queue empty, just before it releases the process lock
 	onQueueEmpty func()
+	// test hook: called by the chunk processor with the chunks of a batch, before it converts them
+	onBatchStart func(chunks []int32)
 }
 
 func NewParquetConverter(ctx context.Context, cancel context.CancelFunc, executionId string, partition *config.Partition, sourceDir string, tableSchema *schema.TableSchema, statusFunc func(int64, int64, ...error), db *DuckDb) (*Converter, error) {
@@ -122,13 +128,18 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 		return fmt.Errorf("failed to infer schema: %w", err)
 	}
 
+	// lock the schedule lock to ensure that we can safely add to the scheduled scheduledChunks
+	w.scheduleLock.Lock()
+	// once closed, the chunk files are about to be removed: drop the chunk rather than schedule it
+	if w.closed {
+		w.scheduleLock.Unlock()
+		return nil
+	}
 	// increment the wait group to track the scheduled chunk
 	// NOTE: this must happen BEFORE the chunk is scheduled - once it is scheduled a running processor may
 	// process it and decrement the wait group, which must never go below zero
+	// (it is also done under the schedule lock so that Close, which waits on the group, never races an Add)
 	w.wg.Add(1)
-
-	// lock the schedule lock to ensure that we can safely add to the scheduled scheduledChunks
-	w.scheduleLock.Lock()
 	// add to scheduled scheduledChunks
 	w.scheduledChunks = append(w.scheduledChunks, chunk)
 	w.scheduleLock.Unlock()
@@ -137,6 +148,26 @@ func (w *Converter) AddChunk(executionId string, chunk int32) error {
 	w.startProcessorIfIdle()
 
 	return nil
+}
+
+// Close finishes the converter: it stops accepting chunks, then waits until every chunk already accepted has been
+// converted and the chunk processor has stopped. The caller can then safely remove the files the converter reads.
+//
+// Chunks are converted, not dropped, because the plugin saves its collection state as it sends each chunk: a chunk
+// which was accepted but never converted would be skipped, and its rows lost, by the next collect.
+// The converter cannot be used again once closed.
+func (w *Converter) Close() {
+	w.closeOnce.Do(func() {
+		w.scheduleLock.Lock()
+		w.closed = true
+		w.scheduleLock.Unlock()
+
+		// every accepted chunk is now converted (or has failed, which is reported as usual)
+		w.wg.Wait()
+		// the chunk processor holds the process lock for as long as it is running, so taking the lock waits for it
+		// to stop. NOTE: we never release it, which also stops a processor being started
+		w.processLock.Lock()
+	})
 }
 
 // startProcessorIfIdle starts processAllChunks if no processor is running
@@ -225,18 +256,18 @@ func (w *Converter) WaitForConversions(ctx context.Context) error {
 
 // addJobErrors calls the status func with any job errors, first summing the failed rows in any conversion errors
 func (w *Converter) addJobErrors(errorList ...error) {
-	var failedRowCount int64
-
 	for _, err := range errorList {
 		var conversionError = &ConversionError{}
 		if errors.As(err, &conversionError) {
-			failedRowCount = atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
+			atomic.AddInt64(&w.failedRowCount, conversionError.RowsAffected)
 		}
 		slog.Error("conversion error", "error", err)
 	}
 
-	// update the status function with the new error count (no need to use atomic for errorList as we are already locked)
-	w.statusFunc(atomic.LoadInt64(&w.rowCount), failedRowCount, errorList...)
+	// update the status function with the total failed row count so far, NOT just this error's rows: an error that
+	// is not a conversion error must not reset the count of rows already reported as failed
+	// (no need to use atomic for errorList as we are already locked)
+	w.statusFunc(atomic.LoadInt64(&w.rowCount), atomic.LoadInt64(&w.failedRowCount), errorList...)
 }
 
 // updateRowCount atomically increments the row count and calls the statusFunc

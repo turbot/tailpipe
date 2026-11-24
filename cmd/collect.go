@@ -139,19 +139,32 @@ func doCollect(ctx context.Context, cancel context.CancelFunc, args []string) er
 	defer pluginManager.Close()
 
 	// collect each partition serially
+	return collectPartitionsSerially(ctx, partitions, func(partition *config.Partition) error {
+		return collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
+	})
+}
+
+// collectPartitionsSerially calls collect for each partition in turn, returning the errors joined.
+// Once ctx is cancelled the remaining partitions are not started: starting one would have its plugin collect (and
+// save its collection state) for a run which is already stopping.
+func collectPartitionsSerially(ctx context.Context, partitions []*config.Partition, collect func(*config.Partition) error) error {
 	var errList []error
 
-	for _, partition := range partitions {
-		// do the collection
-		err = collectPartition(ctx, cancel, partition, fromTime, toTime, pluginManager)
-		if err != nil {
+	for i, partition := range partitions {
+		if err := collect(partition); err != nil {
 			errList = append(errList, err)
+		}
+		if ctx.Err() != nil && i < len(partitions)-1 {
+			// make sure the cancel is reported, even if this partition finished without an error
+			if len(errList) == 0 {
+				errList = append(errList, ctx.Err())
+			}
+			break
 		}
 	}
 
 	if len(errList) > 0 {
-		err = errors.Join(errList...)
-		return fmt.Errorf("collection error: %w", err)
+		return fmt.Errorf("collection error: %w", errors.Join(errList...))
 	}
 
 	return nil
@@ -216,7 +229,7 @@ func getPartitions(args []string) ([]*config.Partition, error) {
 
 	// we have no database connection - if an arg is not found, open one to see whether it is an unconfigured partition
 	return resolvePartitionArgs(tailpipeConfig.Partitions, args, func(arg string) error {
-		return partitionNotFoundError(arg, func() (map[string]*config.Partition, error) {
+		return partitionNotFoundError(arg, tailpipeConfig, func() (map[string]*config.Partition, error) {
 			return database.ReadUnconfiguredPartitions(context.Background(), tailpipeConfig)
 		})
 	})
@@ -255,23 +268,47 @@ func resolvePartitionArgs(partitionMap map[string]*config.Partition, args []stri
 }
 
 // partitionNotFoundError returns the error for a partition arg which matches no configured partition.
-// If the arg matches partitions which have collected data but have been removed from the config (as loaded
-// by loadUnconfigured), the error says so, rather than saying the partition does not exist.
-func partitionNotFoundError(arg string, loadUnconfigured func() (map[string]*config.Partition, error)) error {
+//   - If the arg matches partitions which have collected data but have been removed from the config (as loaded
+//     by loadUnconfigured), the error says so, rather than saying the partition does not exist.
+//   - If the arg is, or starts with, the name of a table which has no partitions configured, the error says
+//     so and how to add one, rather than saying the partition does not exist.
+//   - Otherwise the partition was not found.
+func partitionNotFoundError(arg string, cfg *config.TailpipeConfig, loadUnconfigured func() (map[string]*config.Partition, error)) error {
 	notFound := fmt.Errorf("partition not found: %s", arg)
 
 	unconfigured, err := loadUnconfigured()
 	if err != nil {
-		// we cannot tell - fall back to the plain error
+		// we cannot tell whether it is unconfigured - carry on to the table check
 		slog.Warn("failed to read unconfigured partitions", "error", err)
-		return notFound
+	} else if names, err := database.GetPartitionsForArg(unconfigured, arg); err == nil && len(names) > 0 {
+		sort.Strings(names)
+		return fmt.Errorf("partition %s is not configured: it has collected data but is no longer in the configuration. Add its partition block back to collect it, or run 'tailpipe partition delete %s' to remove its data", strings.Join(names, ", "), names[0])
 	}
-	names, err := database.GetPartitionsForArg(unconfigured, arg)
-	if err != nil || len(names) == 0 {
-		return notFound
+
+	// the table is the arg itself (a single part arg which is not a configured partition) or the part before the dot
+	tableName := strings.Split(arg, ".")[0]
+	if cfg != nil && !strings.ContainsAny(tableName, "*?[") {
+		// use the table's own spelling, which the example block and 'table show' need
+		if table, ok := cfg.FindTable(tableName); ok && !tableHasPartitions(cfg.Partitions, table) {
+			return noPartitionsConfiguredError(table)
+		}
 	}
-	sort.Strings(names)
-	return fmt.Errorf("partition %s is not configured: it has collected data but is no longer in the configuration. Add its partition block back to collect it, or run 'tailpipe partition delete %s' to remove its data", strings.Join(names, ", "), names[0])
+	return notFound
+}
+
+// tableHasPartitions returns whether any of the partitions belongs to the table
+func tableHasPartitions(partitions map[string]*config.Partition, tableName string) bool {
+	for _, p := range partitions {
+		if strings.EqualFold(p.TableName, tableName) {
+			return true
+		}
+	}
+	return false
+}
+
+// noPartitionsConfiguredError is the error for a table which exists but has no partitions configured
+func noPartitionsConfiguredError(tableName string) error {
+	return fmt.Errorf("no partitions are configured for table %s: add a partition block for it, for example 'partition \"%s\" \"my_partition\" { source \"<source_type>\" { ... } }', to a .tpc file in your config folder (%s). Run 'tailpipe table show %s' for the table's details", tableName, tableName, viper.GetString(pconstants.ArgConfigPath), tableName)
 }
 
 // formatErrorsWithCount returns an error summarizing a list of errors with a count and indented lines

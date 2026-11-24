@@ -55,7 +55,6 @@ EOF
 }
 
 @test "verify invalid filter syntax" {
-  skip "TODO - re-enable this test, when the error handling is fixed in ducklake - https://github.com/turbot/tailpipe/issues/544"
   # Create a test partition configuration with invalid filter
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/invalid_filter_test.tpc
 partition "chaos_all_columns" "invalid_filter_test_1" {
@@ -185,6 +184,47 @@ EOF
   rm -rf $TAILPIPE_INSTALL_DIR/config/incompatible_source_test.tpc
 }
 
+@test "verify collecting a table with no partitions says none are configured" {
+  # a custom table with no partition blocks, so it exists but has no partitions
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/no_partitions_format.tpc
+format "delimited" "no_partitions_test" {
+  delimiter = ","
+}
+EOF
+  cat << EOF > $TAILPIPE_INSTALL_DIR/config/no_partitions_table.tpc
+table "no_partitions_test" {
+  format = format.delimited.no_partitions_test
+
+  column "tp_timestamp" {
+    source = "timestamp"
+    type = "timestamp"
+  }
+}
+EOF
+
+  # by table name
+  run tailpipe collect no_partitions_test --progress=false
+  echo $output
+  assert_failure
+  assert_output --partial "no partitions are configured for table no_partitions_test"
+  refute_output --partial "partition not found"
+
+  # by a partition of the table
+  run tailpipe collect no_partitions_test.missing --progress=false
+  echo $output
+  assert_failure
+  assert_output --partial "no partitions are configured for table no_partitions_test"
+
+  # a table which does not exist is still not found
+  run tailpipe collect no_such_table_at_all --progress=false
+  echo $output
+  assert_failure
+  assert_output --partial "partition not found: no_such_table_at_all"
+  refute_output --partial "no partitions are configured"
+
+  rm -rf $TAILPIPE_INSTALL_DIR/config/no_partitions_format.tpc $TAILPIPE_INSTALL_DIR/config/no_partitions_table.tpc
+}
+
 @test "verify behavior when no partitions match pattern" {
   # Create a test partition configuration with a specific name
   cat << EOF > $TAILPIPE_INSTALL_DIR/config/no_match_test.tpc
@@ -203,7 +243,8 @@ EOF
   assert_output --partial "Error: failed to get partition config: partition not found: chaos_all_columns.non_matching_*"
 
   # Verify that no data was collected
-  run tailpipe query "select count(*) as count from chaos_all_columns" --output csv
+  # (table output, so the warning is on stdout: the acceptance job sends tailpipe's stderr to its debug log)
+  run tailpipe query "select count(*) as count from chaos_all_columns"
   echo $output
 
   # Should show warning that no data has been collected

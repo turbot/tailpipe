@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -94,9 +95,21 @@ func (c *ConversionError) Error() string {
 	return fmt.Sprintf("%s: %s", strings.Join(c.SourceFiles, ", "), c.displayError)
 }
 
-// Merge adds a second error to the conversion error message.
+// Merge adds a second error to the conversion error.
+// If the second error is itself a conversion error it covers the whole chunk (including any rows already counted
+// here), so take the larger row count, and show its message as well as ours.
 func (c *ConversionError) Merge(err error) {
 	c.BaseError = fmt.Errorf("%w: %w", c.BaseError, err)
+
+	display := strings.Split(err.Error(), "\n")[0]
+	var other *ConversionError
+	if errors.As(err, &other) {
+		display = other.displayError
+		if other.RowsAffected > c.RowsAffected {
+			c.RowsAffected = other.RowsAffected
+		}
+	}
+	c.displayError = fmt.Sprintf("%s; %s", c.displayError, display)
 }
 func (c *ConversionError) Unwrap() error {
 	return c.BaseError
