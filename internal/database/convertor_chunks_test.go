@@ -124,3 +124,46 @@ func chunkAddedAsProcessorFindsQueueEmpty(t *testing.T, iteration int) {
 		t.Fatalf("iteration %d: chunks left scheduled after WaitForConversions", iteration)
 	}
 }
+
+// WaitForConversions must not return until the errors of every chunk are reported: the status func here is slow, so a
+// chunk marked done before its error is reported is seen as unreported the moment the wait returns
+func TestConverter_WaitReturnsAfterErrorsReported(t *testing.T) {
+	var (
+		mu       sync.Mutex
+		reported []error
+	)
+	w := newTestChunkConverter(t)
+	w.statusFunc = func(_, _ int64, errs ...error) {
+		if len(errs) == 0 {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+		mu.Lock()
+		defer mu.Unlock()
+		reported = append(reported, errs...)
+	}
+
+	// the chunk file does not exist, so converting it ends in a conversion error
+	if err := w.AddChunk("exec", 0); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := w.WaitForConversions(ctx); err != nil {
+		t.Fatalf("conversion did not finish: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(reported) != 1 {
+		t.Errorf("expected the chunk's error reported before the wait returned, got %d errors", len(reported))
+	}
+}
+
+// the happy side: a chunk which converts without error reports no error, and the wait still returns
+func TestConverter_WaitReturnsWithNoErrors(t *testing.T) {
+	res := runConversionRows(t, "", `{"id": 1}`+"\n"+`{"id": 2}`+"\n", true)
+	if len(res.errs) != 0 || res.failedRows != 0 || res.rowCount != 2 {
+		t.Errorf("expected 2 rows, no failures, got reported=%d failed=%d errs=%v", res.rowCount, res.failedRows, res.errs)
+	}
+}

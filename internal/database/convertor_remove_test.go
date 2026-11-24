@@ -7,17 +7,37 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
+// lockedBuffer is a log buffer that is safe to read while the converter's processor goroutine is still writing:
+// the processor logs one last line after the wait for conversions has returned
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 // captureLog redirects slog to a buffer for the test
-func captureLog(t *testing.T) *bytes.Buffer {
+func captureLog(t *testing.T) *lockedBuffer {
 	t.Helper()
-	var buf bytes.Buffer
+	buf := &lockedBuffer{}
 	prev := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
-	return &buf
+	return buf
 }
 
 // a directory with a file in it cannot be removed by os.Remove: a real (not "no such file") delete failure
@@ -58,7 +78,7 @@ func TestRemoveChunkFiles_DeletesFilesOnce(t *testing.T) {
 	if err := removeChunkFiles(filenames, nil); err != nil {
 		t.Fatalf("already-deleted files must not be an error: %v", err)
 	}
-	if logs.Len() != 0 {
+	if logs.String() != "" {
 		t.Errorf("nothing should be logged for files which are already gone, got: %s", logs.String())
 	}
 }
@@ -74,7 +94,7 @@ func TestRemoveChunkFiles_AlreadyGoneKeepsConversionResult(t *testing.T) {
 	if err := removeChunkFiles([]string{missing}, convErr); err != convErr {
 		t.Errorf("the conversion error must be returned unchanged, got: %v", err)
 	}
-	if logs.Len() != 0 {
+	if logs.String() != "" {
 		t.Errorf("unexpected log output: %s", logs.String())
 	}
 }

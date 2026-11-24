@@ -25,12 +25,7 @@ func (w *Converter) processAllChunks() {
 		// (scheduledChunks may be empty, in which case we will break out of the loop)
 		chunksToProcess := w.getChunksToProcess()
 		for len(chunksToProcess) > 0 {
-			err := w.processChunks(chunksToProcess)
-			if err != nil {
-				slog.Error("Error processing chunks", "error", err)
-				// call add job errors and carry on
-				w.addJobErrors(err)
-			}
+			w.processAndReport(chunksToProcess)
 			//- get next batch of chunks
 			chunksToProcess = w.getChunksToProcess()
 		}
@@ -53,14 +48,24 @@ func (w *Converter) processAllChunks() {
 	log.Print("BatchProcessor: all scheduled chunks processed for execution")
 }
 
-// process a batch of chunks
-// Note whether successful of not, this decrements w.wg by the chunk count on return
-func (w *Converter) processChunks(chunksToProcess []int32) error {
-	// decrement the wait group by the number of chunks processed
-	defer func() {
-		w.wg.Add(len(chunksToProcess) * -1)
-	}()
+// processAndReport processes a batch of chunks, reports any error (counting its failed rows), and only THEN marks the
+// chunks as done by decrementing w.wg by the chunk count.
+// The order matters: WaitForConversions returns as soon as w.wg reaches zero, so a chunk must not be marked done until its
+// errors and failed row count have been recorded, or a caller reading the totals straight away would miss them.
+func (w *Converter) processAndReport(chunksToProcess []int32) {
+	// mark the chunks as done on the way out, whether or not processing (or reporting) succeeded
+	defer w.wg.Add(len(chunksToProcess) * -1)
 
+	if err := w.processChunks(chunksToProcess); err != nil {
+		slog.Error("Error processing chunks", "error", err)
+		// call add job errors and carry on
+		w.addJobErrors(err)
+	}
+}
+
+// process a batch of chunks
+// Note this does NOT decrement w.wg - the caller does, once the result (including any error) has been reported
+func (w *Converter) processChunks(chunksToProcess []int32) error {
 	if w.onBatchStart != nil {
 		w.onBatchStart(chunksToProcess)
 	}
