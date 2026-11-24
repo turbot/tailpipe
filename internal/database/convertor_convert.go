@@ -76,18 +76,29 @@ func (w *Converter) processChunks(chunksToProcess []int32) error {
 	// execute conversion query for the chunks
 	// (insertBatchIntoDuckLake will return a coinversionError)
 	err = w.insertBatchIntoDuckLake(filenamesToProcess)
-	// delete the files after processing (successful or otherwise) - we will just return err
-	for _, filename := range filenamesToProcess {
-		if deleteErr := os.Remove(filename); deleteErr != nil {
-			slog.Error("Failed to delete file after processing", "file", filename, "error", err)
-			// give conversion error precedence
-			if err == nil {
-				err = deleteErr
+	// delete the files after processing (successful or otherwise)
+	// give conversion error precedence over any error deleting the files
+	return removeChunkFiles(filenamesToProcess, err)
+}
+
+// removeChunkFiles deletes the chunk files that have been processed (successfully or not).
+//
+// convErr is the result of the conversion: it is returned unchanged unless it is nil and a file could not be deleted,
+// in which case the (first) delete error is returned.
+// A file which is already gone is not an error - the aim was to remove it - so nothing is logged or returned for it.
+// Any other delete error is logged as its own error, not the conversion's.
+func removeChunkFiles(filenames []string, convErr error) error {
+	for _, filename := range filenames {
+		// the filenames are escaped for use in SQL queries, so unescape to get the path on disk
+		path := strings.ReplaceAll(filename, "''", "'")
+		if deleteErr := os.Remove(path); deleteErr != nil && !errors.Is(deleteErr, os.ErrNotExist) {
+			slog.Error("Failed to delete file after processing", "file", path, "error", deleteErr)
+			if convErr == nil {
+				convErr = deleteErr
 			}
 		}
 	}
-	// return error (if any)
-	return err
+	return convErr
 }
 
 func (w *Converter) chunkNumbersToFilenames(chunks []int32) ([]string, error) {
