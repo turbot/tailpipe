@@ -39,7 +39,7 @@ func connectCmd() *cobra.Command {
 		Long: `Return the path of SQL script to initialise DuckDB to use the tailpipe database.
 
 The generated SQL script contains:
-- DuckDB extension installations (sqlite, ducklake)
+- DuckDB extension installations (sqlite, ducklake), unless --no-install is set
 - Database attachment configuration
 - View definitions with optional filters
 
@@ -61,6 +61,10 @@ Examples:
 
   # Output as JSON
   tailpipe connect --output json
+
+  # Leave out the extension install commands, for a DuckDB that has already loaded
+  # the sqlite and ducklake extensions and been locked (which refuses 'install')
+  tailpipe connect --no-install
 
 Time formats supported:
   - ISO 8601 date: 2024-01-01
@@ -84,6 +88,7 @@ The generated script can be used with DuckDB:
 		AddStringFlag(pconstants.ArgTo, "", "Specify the end time").
 		AddStringSliceFlag(pconstants.ArgIndex, nil, "Specify the index to use").
 		AddStringSliceFlag(pconstants.ArgPartition, nil, "Specify the partition to use").
+		AddBoolFlag(constants.ArgNoInstall, false, "Leave the extension install commands out of the script, for a DuckDB that has already loaded the sqlite and ducklake extensions").
 		AddVarFlag(enumflag.New(&connectOutputMode, pconstants.ArgOutput, constants.ConnectOutputModeIds, enumflag.EnumCaseInsensitive),
 			pconstants.ArgOutput,
 			fmt.Sprintf("Output format; one of: %s", strings.Join(constants.FlagValues(constants.PluginOutputModeIds), ", ")))
@@ -135,7 +140,8 @@ func generateInitFile(ctx context.Context) (string, error) {
 	initFilePath := generateInitFilename(config.GlobalWorkspaceProfile.GetDataDir())
 
 	// get the sql to attach readonly to the database
-	commands := database.GetDucklakeInitCommands(true)
+	// (without the extension install commands if requested)
+	commands := database.GetDucklakeInitCommandsWithOptions(true, viper.GetBool(constants.ArgNoInstall))
 
 	// build the filters from the to, from and index args
 	// these will be used in the view definitions
@@ -158,17 +164,21 @@ func generateInitFile(ctx context.Context) (string, error) {
 	}
 	commands = append(commands, viewCommands...)
 
-	// now build a string
-	var str strings.Builder
-	for _, cmd := range commands {
-		str.WriteString(fmt.Sprintf("-- %s\n%s;\n\n", cmd.Description, cmd.Command))
-	}
 	// write out the init file
-	err = os.WriteFile(initFilePath, []byte(str.String()), 0644) //nolint:gosec // we want the init file to be readable
+	err = os.WriteFile(initFilePath, []byte(buildInitScript(commands)), 0644) //nolint:gosec // we want the init file to be readable
 	if err != nil {
 		return "", fmt.Errorf("failed to write init file: %w", err)
 	}
 	return initFilePath, err
+}
+
+// buildInitScript renders the commands as the text of the init script
+func buildInitScript(commands []database.SqlCommand) string {
+	var str strings.Builder
+	for _, cmd := range commands {
+		str.WriteString(fmt.Sprintf("-- %s\n%s;\n\n", cmd.Description, cmd.Command))
+	}
+	return str.String()
 }
 
 // cleanupOldInitFiles deletes old db init files (older than a day)
