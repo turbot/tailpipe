@@ -268,6 +268,17 @@ func (d *DuckDb) setTempDir() error {
 // this is used both for tailpipe to connect to ducklake and also for tailpipe connect to build the init script
 // It returns an ordered slice of SQL commands.
 func GetDucklakeInitCommands(readonly bool) []SqlCommand {
+	return GetDucklakeInitCommandsWithOptions(readonly, false)
+}
+
+// GetDucklakeInitCommandsWithOptions is GetDucklakeInitCommands with the choice of leaving out the
+// `install` commands for the sqlite and ducklake extensions.
+//
+// The commands are left out for a caller that has already installed and loaded both extensions and then
+// locked DuckDB: a locked DuckDB refuses `install` (it writes to the extension folder), so a script
+// that still carries the `install` lines fails. With skipInstall false, the result is the same as
+// GetDucklakeInitCommands.
+func GetDucklakeInitCommandsWithOptions(readonly bool, skipInstall bool) []SqlCommand {
 	attachOptions := []string{
 		fmt.Sprintf("data_path '%s'", config.GlobalWorkspaceProfile.GetDataDir()),
 		"meta_journal_mode 'WAL'",
@@ -282,10 +293,13 @@ func GetDucklakeInitCommands(readonly bool) []SqlCommand {
 		pconstants.DuckLakeCatalog,
 		strings.Join(attachOptions, ",\n\t"))
 
-	commands := []SqlCommand{
-		{Description: "install sqlite extension", Command: "install sqlite"},
-		{Description: "install ducklake extension", Command: "install ducklake;"},
-		{Description: "attach to ducklake database", Command: attachQuery},
+	var commands []SqlCommand
+	if !skipInstall {
+		commands = append(commands,
+			SqlCommand{Description: "install sqlite extension", Command: "install sqlite"},
+			SqlCommand{Description: "install ducklake extension", Command: "install ducklake;"},
+		)
 	}
+	commands = append(commands, SqlCommand{Description: "attach to ducklake database", Command: attachQuery})
 	return commands
 }
