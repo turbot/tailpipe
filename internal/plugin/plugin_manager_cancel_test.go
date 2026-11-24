@@ -62,7 +62,8 @@ func (f *fakePluginImpl) Describe(ctx context.Context, _ *proto.DescribeRequest)
 
 func runFakePlugin(mode string) {
 	// record our pid so the test can check we are gone
-	if err := os.WriteFile(os.Getenv(fakePluginPidEnv), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+	pidFile := os.Getenv(fakePluginPidEnv)
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(os.Getpid())), 0600); err != nil { //nolint:gosec // a test-owned temp path
 		os.Exit(2)
 	}
 	if mode == fakeModeHangOnStart {
