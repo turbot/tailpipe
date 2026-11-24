@@ -43,6 +43,12 @@ func runConversion(t *testing.T, filter string, rows int, createTable bool) filt
 // runConversionRows converts one chunk with the given JSONL content
 func runConversionRows(t *testing.T, filter, jsonl string, createTable bool) filterTestResult {
 	t.Helper()
+	return runConversionRowsIn(t, t.TempDir(), filter, jsonl, createTable)
+}
+
+// runConversionRowsIn is runConversionRows with the chunk files read from (and removed from) the given source dir
+func runConversionRowsIn(t *testing.T, sourceDir, filter, jsonl string, createTable bool) filterTestResult {
+	t.Helper()
 
 	sqlDb, err := sql.Open("duckdb", "")
 	if err != nil {
@@ -53,7 +59,6 @@ func runConversionRows(t *testing.T, filter, jsonl string, createTable bool) fil
 	db := &DuckDb{DB: sqlDb}
 
 	// write a chunk of JSONL, one row per line
-	sourceDir := t.TempDir()
 	chunkFile := filepath.Join(sourceDir, table.ExecutionIdToJsonlFileName("exec", 0))
 	if err := os.WriteFile(chunkFile, []byte(jsonl), 0600); err != nil {
 		t.Fatal(err)
@@ -208,5 +213,30 @@ func TestConverter_ValidationFailureOnly(t *testing.T) {
 
 	if res.failedRows != 1 || res.rowCount != 2 || res.savedRows != 2 {
 		t.Errorf("expected 1 failed and 2 saved, got failed=%d reported=%d table=%d", res.failedRows, res.rowCount, res.savedRows)
+	}
+}
+
+// a collection whose chunk files are in a folder with a quote in its name (the SQL-escaped filename is not the path on
+// disk) must delete each chunk file, report no error and keep every row
+func TestConverter_ChunkFileInFolderWithQuote(t *testing.T) {
+	sourceDir := filepath.Join(t.TempDir(), "o'brien")
+	if err := os.Mkdir(sourceDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	logs := captureLog(t)
+
+	res := runConversionRowsIn(t, sourceDir, "", `{"id": 1}`+"\n"+`{"id": 2}`+"\n", true)
+
+	if len(res.errs) != 0 {
+		t.Errorf("expected no errors, got: %v", res.errs)
+	}
+	if res.rowCount != 2 || res.savedRows != 2 {
+		t.Errorf("expected 2 rows saved, got reported=%d table=%d", res.rowCount, res.savedRows)
+	}
+	if entries, err := os.ReadDir(sourceDir); err != nil || len(entries) != 0 {
+		t.Errorf("expected the chunk file to be deleted, found %v (err %v)", entries, err)
+	}
+	if strings.Contains(logs.String(), "Failed to delete") {
+		t.Errorf("unexpected delete error logged: %s", logs.String())
 	}
 }
