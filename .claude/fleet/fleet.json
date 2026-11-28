@@ -26,13 +26,9 @@
         "DuckDB access and queries run against collected data (internal/database, internal/query)",
         "config parsing, including connections and credentials (internal/parse, internal/config)",
         "database migrations on upgrade (internal/migration)"
-      ],
-      "off": true
+      ]
     },
     "secret-scan": {
-      "off": true
-    },
-    "dependabot-cant-fix": {
       "off": true
     }
   }
